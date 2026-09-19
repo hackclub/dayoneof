@@ -21,12 +21,18 @@ export async function runReconcile() {
 	const days = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} = "${date}"` });
 	const postedBySlackId = new Set(days.map((d) => d.fields[F.days.slackId]));
 
+	// Someone whose first-ever activity is today has no days row before yesterday — without
+	// this check they'd be treated as having missed a day that predates their own sign-up.
+	const priorDays = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} < "${date}"` });
+	const hasHistoryBeforeYesterday = new Set(priorDays.map((d) => d.fields[F.days.slackId]));
+
 	let frozen = 0;
 	let broken = 0;
 
 	for (const participant of participants) {
 		const slackId = participant.fields[F.participants.slackId];
 		if (postedBySlackId.has(slackId)) continue;
+		if (!hasHistoryBeforeYesterday.has(slackId)) continue;
 
 		const freezesAvailable = participant.fields[F.participants.streakFreezes] ?? 0;
 		const { status, freezesRemaining, broke } = resolveMissedDay(freezesAvailable);
