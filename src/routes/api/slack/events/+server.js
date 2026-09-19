@@ -221,10 +221,25 @@ async function handleAppMention(event) {
 
 /** @param {SlackEvent} [event] */
 async function handleEvent(event) {
-	if (!event) return;
+	// [SLACKEVENT] logs below show every inbound event and why it was (or wasn't) handled —
+	// grep for that tag to strip them once the bot is behaving as expected.
+	if (!event) {
+		console.log('[SLACKEVENT] no event on payload, ignoring');
+		return;
+	}
+	console.log('[SLACKEVENT]', event.type, 'channel=' + event.channel, 'subtype=' + event.subtype, 'bot_id=' + event.bot_id);
+
 	if (event.type === 'app_mention') return handleAppMention(event);
-	if (event.type === 'message' && event.channel === config.submissionChannelId) {
-		if (event.subtype || event.bot_id) return;
+
+	if (event.type === 'message') {
+		if (event.channel !== config.submissionChannelId) {
+			console.log('[SLACKEVENT] skipped: channel does not match SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId);
+			return;
+		}
+		if (event.subtype || event.bot_id) {
+			console.log('[SLACKEVENT] skipped: has subtype/bot_id (likely a bot/edit/join message)');
+			return;
+		}
 		if (event.thread_ts && event.thread_ts !== event.ts) return handleThreadReply(event);
 		return handleSubmission(event);
 	}
@@ -236,10 +251,12 @@ export async function POST({ request }) {
 	const timestamp = request.headers.get('x-slack-request-timestamp');
 
 	if (!verifySignature(rawBody, timestamp, signature)) {
+		console.log('[SLACKEVENT] signature verification failed — check SLACK_SIGNING_SECRET');
 		return json({ error: 'invalid signature' }, { status: 401 });
 	}
 
 	const body = JSON.parse(rawBody);
+	console.log('[SLACKEVENT] received', body.type);
 
 	if (body.type === 'url_verification') {
 		return json({ challenge: body.challenge });
