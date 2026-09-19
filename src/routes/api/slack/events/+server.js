@@ -1,12 +1,15 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { json } from '@sveltejs/kit';
-import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
+import { config, requireEnv, isAdmin, TABLES, F } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-// unified-socials write is disabled — see src/lib/server/unified.js
-// import * as unified from '$lib/server/unified.js';
+// unified-socials write is disabled — see src/lib/server/unified.js. The read path is used by
+// the `debug stats` command below.
+import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
+import { isHcaVerified } from '$lib/server/verification.js';
+import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
 import {
 	utcDateString,
 	isDuplicatePost,
@@ -54,29 +57,12 @@ async function getDays(slackId) {
 	return records.map((r) => ({ date: r.fields[F.days.date], status: r.fields[F.days.status] }));
 }
 
+// Participants are only ever created by the HCA sign-in flow (src/routes/api/auth/callback) —
+// the bot no longer auto-creates one on first post, since a post only counts once someone has
+// signed in and HCA has verified them. See handleSubmission's sign-in/verification gate below.
 /** @param {string} slackId */
-async function getOrCreateParticipant(slackId) {
-	const existing = await airtable.find(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`);
-	if (existing) return existing;
-
-	// users.info can fail (e.g. user_not_found across Enterprise Grid teams) — that's profile
-	// enrichment, not something that should block recording the submission itself.
-	let user;
-	try {
-		user = await slack.usersInfo(slackId);
-	} catch (err) {
-		console.error('users.info failed, creating participant without profile info', err);
-	}
-
-	return airtable.create(TABLES.participants, {
-		[F.participants.slackId]: slackId,
-		[F.participants.name]: user?.real_name,
-		[F.participants.email]: user?.profile?.email,
-		[F.participants.tz]: user?.tz,
-		[F.participants.status]: 'active',
-		[F.participants.streakFreezes]: 0,
-		[F.participants.daysCompleted]: 0
-	});
+async function getParticipant(slackId) {
+	return airtable.find(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`);
 }
 
 /** @param {SlackEvent} event */
@@ -85,6 +71,18 @@ async function handleSubmission(event) {
 	if (!link) {
 		await slack.addReaction(event.channel, event.ts, 'question');
 		await slack.postEphemeral(event.channel, event.user, messages.unsupportedLink());
+		return;
+	}
+
+	const participant = await getParticipant(event.user);
+	if (!participant) {
+		await slack.addReaction(event.channel, event.ts, 'lock');
+		await slack.postEphemeral(event.channel, event.user, messages.notSignedIn());
+		return;
+	}
+	if (!isHcaVerified(participant.fields[F.participants.verificationStatus])) {
+		await slack.addReaction(event.channel, event.ts, 'lock');
+		await slack.postEphemeral(event.channel, event.user, messages.notVerified(participant.fields[F.participants.verificationStatus]));
 		return;
 	}
 
@@ -107,7 +105,6 @@ async function handleSubmission(event) {
 		return;
 	}
 
-	const participant = await getOrCreateParticipant(event.user);
 	await airtable.create(TABLES.days, {
 		[F.days.slackId]: event.user,
 		[F.days.date]: today,
@@ -225,7 +222,73 @@ async function handleAppMention(event) {
 			filterByFormula: `{${F.reviews.reviewerId}} = "${event.user}"`
 		});
 		await slack.postMessage(event.channel, `You've left ${reviews.length} reviews.`, event.ts);
+		return;
 	}
+
+	// === DEBUG COMMANDS — admin-only (config.js's ADMIN_SLACK_IDS). Delete this whole `if`
+	// block (and the imports it's the only user of: isAdmin, fetchPostByPlatformId, runReconcile,
+	// runLeaderboard, runRemind) before shipping to prod. ===================================
+	if (command === 'debug') {
+		if (!isAdmin(event.user)) {
+			await slack.postEphemeral(event.channel, event.user, "You're not allowed to run debug commands.");
+			return;
+		}
+
+		if (arg === 'reconcile') {
+			const result = await runReconcile();
+			await slack.postMessage(event.channel, `[debug] reconcile: ${JSON.stringify(result)}`, event.ts);
+			return;
+		}
+
+		if (arg === 'leaderboard') {
+			const result = await runLeaderboard();
+			await slack.postMessage(event.channel, `[debug] leaderboard posted: ${JSON.stringify(result)}`, event.ts);
+			return;
+		}
+
+		if (arg === 'remind') {
+			const result = await runRemind();
+			await slack.postMessage(event.channel, `[debug] remind: ${JSON.stringify(result)}`, event.ts);
+			return;
+		}
+
+		if (arg === 'stats') {
+			// Reply in-thread with a submission's live unified-socials stats, without waiting
+			// for the nightly reconcile job. Use as a threaded reply under the submission.
+			if (!event.thread_ts) {
+				await slack.postMessage(event.channel, '[debug] reply to a submission thread to use `debug stats`', event.ts);
+				return;
+			}
+			const submission = await airtable.find(
+				TABLES.submissions,
+				`{${F.submissions.messageTs}} = "${event.thread_ts}"`
+			);
+			if (!submission) {
+				await slack.postMessage(event.channel, '[debug] no submission found for this thread', event.ts);
+				return;
+			}
+			try {
+				const post = await fetchPostByPlatformId(
+					submission.fields[F.submissions.platform],
+					submission.fields[F.submissions.videoId]
+				);
+				await slack.postMessage(
+					event.channel,
+					post
+						? `[debug] unified-socials: views=${post.views} id=${post.id}`
+						: '[debug] no unified-socials match for this video yet',
+					event.ts
+				);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				await slack.postMessage(event.channel, `[debug] unified-socials lookup failed: ${message}`, event.ts);
+			}
+			return;
+		}
+
+		await slack.postMessage(event.channel, '[debug] usage: `debug reconcile|leaderboard|remind|stats`', event.ts);
+	}
+	// === END DEBUG COMMANDS ===================================================================
 }
 
 // TESTER: fires when the bot itself is invited to a channel, independent of link-posting
