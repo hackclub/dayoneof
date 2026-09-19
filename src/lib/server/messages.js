@@ -1,6 +1,15 @@
+import { config } from './config.js';
+
 export const messages = {
 	unsupportedLink() {
 		return "That doesn't look like a YouTube, TikTok, or Instagram link. Post a link to today's video to keep your streak going.";
+	},
+	notSignedIn() {
+		return `You need to sign in with Hack Club Auth before your posts count. Sign in at ${config.siteUrl}/api/auth/login, then post your link again.`;
+	},
+	/** @param {string | undefined} status */
+	notVerified(status) {
+		return `Your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}) — posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
 	},
 	/**
 	 * @param {number} streak

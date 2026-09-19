@@ -16,8 +16,17 @@ export const config = {
 	cronSecret: env.CRON_SECRET,
 	unifiedSocialsToken: env.UNIFIED_SOCIALS_TOKEN,
 	unifiedSocialsApiUrl: env.UNIFIED_SOCIALS_API_URL ?? 'https://unified-socials.hackclub.com/api/v1',
-	minReviewLength: Number(env.MIN_REVIEW_LENGTH ?? 40)
+	minReviewLength: Number(env.MIN_REVIEW_LENGTH ?? 40),
+	adminSlackIds: (env.ADMIN_SLACK_IDS ?? '')
+		.split(',')
+		.map((id) => id.trim())
+		.filter(Boolean)
 };
+
+/** @param {string | undefined} slackId */
+export function isAdmin(slackId) {
+	return !!slackId && config.adminSlackIds.includes(slackId);
+}
 
 /**
  * @param {string} name
@@ -47,6 +56,7 @@ export const F = {
 		streakFreezes: 'streak_freezes',
 		daysElapsed: 'days_elapsed',
 		currentStreak: 'current_streak',
+		verificationStatus: 'verification_status',
 		lastMilestone: 'last_milestone',
 		reminderHour: 'reminder_hour',
 		lastReminderDay: 'last_reminder_day',

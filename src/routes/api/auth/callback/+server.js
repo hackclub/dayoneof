@@ -26,10 +26,22 @@ export async function GET({ url, cookies }) {
 		error(400, 'Your Hack Club Auth account has no linked Slack account.');
 	}
 
+	// tz isn't in the HCA identity — best-effort backfill from Slack, same as
+	// getParticipant's profile enrichment: never let this block the sign-in itself.
+	let tz;
+	try {
+		const slackUser = await slack.usersInfo(slackId);
+		tz = slackUser?.tz;
+	} catch (err) {
+		console.error('users.info failed during sign-in, continuing without tz', err);
+	}
+
 	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
 		[F.participants.slackId]: slackId,
 		[F.participants.name]: [identity.first_name, identity.last_name].filter(Boolean).join(' '),
-		[F.participants.email]: String(identity.primary_email ?? '').toLowerCase()
+		[F.participants.email]: String(identity.primary_email ?? '').toLowerCase(),
+		[F.participants.verificationStatus]: identity.verification_status ?? 'needs_submission',
+		...(tz ? { [F.participants.tz]: tz } : {})
 	});
 
 	try {
