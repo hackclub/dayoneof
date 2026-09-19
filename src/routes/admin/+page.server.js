@@ -29,12 +29,23 @@ export async function load({ locals }) {
 		redirect(302, '/');
 	}
 
-	const participants = await airtable.list(TABLES.participants, {
-		filterByFormula: PARTICIPANT_HAS_SLACK_ID,
-		sort: [{ field: F.participants.currentStreak, direction: 'desc' }]
-	});
+	const [participants, submissions] = await Promise.all([
+		airtable.list(TABLES.participants, {
+			filterByFormula: PARTICIPANT_HAS_SLACK_ID,
+			sort: [{ field: F.participants.currentStreak, direction: 'desc' }]
+		}),
+		airtable.list(TABLES.submissions)
+	]);
+
+	const videoCountBySlackId = new Map();
+	for (const s of submissions) {
+		const slackId = s.fields[F.submissions.slackId];
+		videoCountBySlackId.set(slackId, (videoCountBySlackId.get(slackId) ?? 0) + 1);
+	}
 
 	return {
+		videosPosted: submissions.length,
+		videosTracked: submissions.filter((s) => s.fields[F.submissions.unifiedId]).length,
 		participants: participants.map((p) => ({
 			id: p.id,
 			slackId: p.fields[F.participants.slackId],
@@ -44,6 +55,7 @@ export async function load({ locals }) {
 			currentStreak: p.fields[F.participants.currentStreak] ?? 0,
 			streakFreezes: p.fields[F.participants.streakFreezes] ?? 0,
 			daysCompleted: p.fields[F.participants.daysCompleted] ?? 0,
+			videosPosted: videoCountBySlackId.get(p.fields[F.participants.slackId]) ?? 0,
 			totalViews: p.fields[F.participants.totalViews] ?? 0
 		}))
 	};

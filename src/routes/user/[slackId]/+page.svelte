@@ -11,6 +11,10 @@
 	<p>
 		{data.currentStreak} day streak · {data.streakFreezes} freezes · {data.totalViews} total views
 	</p>
+	<p>
+		{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted ·
+		{data.videosTracked} tracked by unified-socials
+	</p>
 
 	<h2>Posts</h2>
 	<ul>

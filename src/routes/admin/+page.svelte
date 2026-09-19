@@ -19,6 +19,7 @@
 		Participant fields (streak, freezes, status, etc.) are correctable directly in Airtable —
 		this page doesn't duplicate that. Everything for debugging lives here now, not in Slack.
 	</p>
+	<p>{data.videosPosted} videos posted · {data.videosTracked} tracked by unified-socials</p>
 
 	<section>
 		<h2>Jobs</h2>
@@ -95,6 +96,7 @@
 					<th>Streak</th>
 					<th>Freezes</th>
 					<th>Days</th>
+					<th>Videos</th>
 					<th>Views</th>
 					<th></th>
 				</tr>
@@ -109,6 +111,7 @@
 						<td>{p.currentStreak}</td>
 						<td>{p.streakFreezes}</td>
 						<td>{p.daysCompleted}</td>
+						<td>{p.videosPosted}</td>
 						<td>{p.totalViews}</td>
 						<td>
 							{#if !p.verificationStatus?.startsWith('verified')}
