@@ -25,16 +25,19 @@ export async function GET({ url, cookies }) {
 	}
 
 	let tz;
+	let slackName;
 	try {
 		const slackUser = await slack.usersInfo(slackId);
 		tz = slackUser?.tz;
+		slackName = slackUser?.profile?.display_name || slackUser?.profile?.real_name;
 	} catch (err) {
 		console.error('users.info failed during sign-in, continuing without tz', err);
 	}
 
 	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
 		[F.participants.slackId]: slackId,
-		[F.participants.name]: [identity.first_name, identity.last_name].filter(Boolean).join(' '),
+		[F.participants.name]:
+			slackName || [identity.first_name, identity.last_name].filter(Boolean).join(' '),
 		[F.participants.email]: String(identity.primary_email ?? '').toLowerCase(),
 		[F.participants.verificationStatus]: identity.verification_status ?? 'needs_submission',
 		...(tz ? { [F.participants.tz]: tz } : {})
