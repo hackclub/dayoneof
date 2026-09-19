@@ -126,9 +126,10 @@ async function refreshViews() {
 }
 
 export async function runLeaderboard() {
-	const participants = await airtable.list(TABLES.participants, {
-		filterByFormula: PARTICIPANT_HAS_SLACK_ID
-	});
+	const [participants, submissions] = await Promise.all([
+		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
+		airtable.list(TABLES.submissions)
+	]);
 
 	const byStreak = [...participants]
 		.sort((a, b) => {
@@ -143,6 +144,10 @@ export async function runLeaderboard() {
 		.sort((a, b) => (b.fields[F.participants.totalViews] ?? 0) - (a.fields[F.participants.totalViews] ?? 0))
 		.slice(0, 10);
 
+	const byVideo = [...submissions]
+		.sort((a, b) => (b.fields[F.submissions.views] ?? 0) - (a.fields[F.submissions.views] ?? 0))
+		.slice(0, 10);
+
 	const streakLines = byStreak
 		.map((p, i) => `${i + 1}. <@${p.fields[F.participants.slackId]}> — ${p.fields[F.participants.currentStreak] ?? 0} days`)
 		.join('\n');
@@ -151,11 +156,22 @@ export async function runLeaderboard() {
 		.map((p, i) => `${i + 1}. <@${p.fields[F.participants.slackId]}> — ${p.fields[F.participants.totalViews] ?? 0} views`)
 		.join('\n');
 
+	const videoLines = byVideo
+		.map((s, i) => {
+			const url = s.fields[F.submissions.url];
+			const platform = s.fields[F.submissions.platform];
+			const slackId = s.fields[F.submissions.slackId];
+			const views = s.fields[F.submissions.views] ?? 0;
+			return `${i + 1}. <${url}|${platform}> by <@${slackId}> — ${views} views`;
+		})
+		.join('\n');
+
 	const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
 	await slack.postMessage(announceChannelId, `*Longest active streaks*\n${streakLines}`);
 	await slack.postMessage(announceChannelId, `*Most total views*\n${viewLines}`);
+	await slack.postMessage(announceChannelId, `*Highest viewed videos*\n${videoLines}`);
 
-	return { streakEntries: byStreak.length, viewEntries: byViews.length };
+	return { streakEntries: byStreak.length, viewEntries: byViews.length, videoEntries: byVideo.length };
 }
 
 function localHour(/** @type {string | undefined} */ tz) {

@@ -27,5 +27,15 @@
 		</ol>
 	</section>
 
-	<p><a href="/videos">See the highest-viewed individual videos →</a></p>
+	<section>
+		<h2>Highest viewed videos</h2>
+		<ol>
+			{#each data.byVideo as v}
+				<li>
+					<a href={v.url} target="_blank" rel="noopener">{v.platform}</a>
+					by <a href="/user/{v.slackId}">{v.name}</a> — {v.views} views
+				</li>
+			{/each}
+		</ol>
+	</section>
 </main>
