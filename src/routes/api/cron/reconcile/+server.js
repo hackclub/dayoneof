@@ -55,22 +55,37 @@ export async function GET({ request }) {
 	return json({ ok: true, processed: participants.length });
 }
 
+// Looks each submission up by (platform, video_id) — see the caveats in
+// src/lib/server/unified.js about how confirmed this read path actually is.
 async function refreshViews() {
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `NOT({${F.submissions.unifiedId}} = "")`
+		filterByFormula: `NOT({${F.submissions.videoId}} = "")`
 	});
 	if (submissions.length === 0) return;
 
-	const views = await unified.fetchViews(submissions.map((s) => s.fields[F.submissions.unifiedId]));
 	const totalsBySlackId = new Map();
 
 	for (const submission of submissions) {
-		const unifiedId = submission.fields[F.submissions.unifiedId];
-		const count = views[unifiedId] ?? 0;
-		await airtable.update(TABLES.submissions, submission.id, { [F.submissions.views]: count });
+		const platform = submission.fields[F.submissions.platform];
+		const videoId = submission.fields[F.submissions.videoId];
+		if (!platform || !videoId) continue;
+
+		let post;
+		try {
+			post = await unified.fetchPostByPlatformId(platform, videoId);
+		} catch (err) {
+			console.error('unified-socials views fetch failed', err);
+			continue;
+		}
+		if (!post) continue;
+
+		await airtable.update(TABLES.submissions, submission.id, {
+			[F.submissions.views]: post.views,
+			[F.submissions.unifiedId]: String(post.id)
+		});
 
 		const slackId = submission.fields[F.submissions.slackId];
-		totalsBySlackId.set(slackId, (totalsBySlackId.get(slackId) ?? 0) + count);
+		totalsBySlackId.set(slackId, (totalsBySlackId.get(slackId) ?? 0) + post.views);
 	}
 
 	for (const [slackId, total] of totalsBySlackId) {

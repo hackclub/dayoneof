@@ -3,7 +3,8 @@ import { json } from '@sveltejs/kit';
 import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-import * as unified from '$lib/server/unified.js';
+// unified-socials write is disabled — see src/lib/server/unified.js
+// import * as unified from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
 import {
@@ -142,12 +143,15 @@ async function handleSubmission(event) {
 		});
 	}
 
-	try {
-		const unifiedId = await unified.submitPost({ url: link.url, platform: link.platform, slackId: event.user });
-		await airtable.update(TABLES.submissions, submission.id, { [F.submissions.unifiedId]: unifiedId });
-	} catch (err) {
-		console.error('unified-socials handoff failed', err);
-	}
+	// unified-socials handoff is disabled — no confirmed write endpoint exists (see
+	// src/lib/server/unified.js). Views get matched up nightly by (platform, video_id) in the
+	// reconcile cron instead, which doesn't need a submit-time id at all.
+	// try {
+	// 	const unifiedId = await unified.submitPost({ url: link.url, platform: link.platform, slackId: event.user });
+	// 	await airtable.update(TABLES.submissions, submission.id, { [F.submissions.unifiedId]: unifiedId });
+	// } catch (err) {
+	// 	console.error('unified-socials handoff failed', err);
+	// }
 }
 
 /** @param {SlackEvent} event */

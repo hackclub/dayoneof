@@ -5,6 +5,8 @@ import { config } from './config.js';
  * @param {Record<string, unknown>} params
  */
 async function call(method, params) {
+	// prints below are tagged [EXTCALL] — grep for that tag to strip them before shipping
+	console.log('[EXTCALL] slack', method, params);
 	const res = await fetch(`https://slack.com/api/${method}`, {
 		method: 'POST',
 		headers: {
@@ -66,10 +68,4 @@ export async function usersInfo(userId) {
  */
 export function inviteToChannel(channel, users) {
 	return call('conversations.invite', { channel, users: users.join(',') });
-}
-
-/** @param {string} email */
-export async function usersLookupByEmail(email) {
-	const { user } = await call('users.lookupByEmail', { email });
-	return user;
 }

@@ -20,6 +20,8 @@ function headers() {
  * @param {RequestInit} init
  */
 async function request(url, init) {
+	// prints below are tagged [EXTCALL] — grep for that tag to strip them before shipping
+	console.log('[EXTCALL] airtable', init?.method ?? 'GET', url);
 	const res = await fetch(url, init);
 	if (!res.ok) {
 		const body = await res.text();
