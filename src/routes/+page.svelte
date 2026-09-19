@@ -22,6 +22,7 @@
 
 	<nav>
 		<a href="/leaderboard">Leaderboard</a>
+		<a href="/videos">Top videos</a>
 		<a href="/gallery">Gallery</a>
 		{#if data.isAdmin}
 			<a href="/admin">Admin</a>

@@ -9,6 +9,7 @@ export async function load() {
 	const byStreak = [...participants]
 		.sort((a, b) => (b.fields[F.participants.currentStreak] ?? 0) - (a.fields[F.participants.currentStreak] ?? 0))
 		.map((p) => ({
+			slackId: p.fields[F.participants.slackId],
 			name: p.fields[F.participants.name],
 			streak: p.fields[F.participants.currentStreak] ?? 0,
 			freezes: p.fields[F.participants.streakFreezes] ?? 0
@@ -17,6 +18,7 @@ export async function load() {
 	const byViews = [...participants]
 		.sort((a, b) => (b.fields[F.participants.totalViews] ?? 0) - (a.fields[F.participants.totalViews] ?? 0))
 		.map((p) => ({
+			slackId: p.fields[F.participants.slackId],
 			name: p.fields[F.participants.name],
 			views: p.fields[F.participants.totalViews] ?? 0
 		}));
