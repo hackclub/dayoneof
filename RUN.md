@@ -67,7 +67,11 @@ You'll fill in `.env` as you go through the sections below.
 | `permalink` | URL |
 | `review_count` | Number, integer |
 | `views` | Number, integer |
+| `likes` | Number, integer |
 | `unified_id` | Single line text |
+| `reply_message_ts` | Single line text — the `ts` of *our* confirmation reply (not the poster's original message). Lets the reconcile job edit that message in place with fresh stats instead of posting a new one every night. |
+| `streak_at_post` | Number, integer — the streak this post advanced to, captured once at submit time so an edited reply stays historically accurate even after the participant's live streak has moved on. |
+| `freezes_at_post` | Number, integer — same idea, for freezes remaining. |
 
 **`reviews`**
 
@@ -258,12 +262,18 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
   verified your test account, use the admin panel's "Force verify" button (section 9) to unblock
   testing without waiting on real HCA verification.
 - Post a YouTube/TikTok/Instagram link in the submissions channel → bot should react ✅ and
-  reply in-thread with your streak.
-- Post a non-link message → bot reacts ❓ and sends you an ephemeral explanation.
+  reply in-thread with your streak and, if unified-socials already has the video, its stats.
+  Reconcile later edits this same message in place with fresh stats rather than posting a new
+  one (see section 9).
+- Post the same link again the same day → bot reacts 🔁 and still replies in-thread (doesn't
+  advance the streak, but doesn't go silent either).
+- Post a non-link message → bot reacts ❓ and replies in-thread explaining why.
 - Reply in the thread (as a different user, 40+ characters) → bot reacts 👀 and logs a review.
 - `@your-bot status` / `@your-bot remind 9` / `@your-bot reviews` in the channel.
-- `/leaderboard` and `/gallery` read straight from Airtable — check they render once you have a
-  few `participants`/`submissions` rows.
+- `/leaderboard`, `/videos` (top individual videos by views), `/gallery`, and `/user/<slackId>`
+  (one person's post history) read straight from Airtable — check they render once you have a
+  few `participants`/`submissions` rows. Names on `/leaderboard` and `/videos` link to the
+  matching `/user/<slackId>` page.
 - Cron routes are still plain authenticated GETs and work standalone (the `/admin` panel and
   `debug` Slack commands in section 9 are two more ways to trigger the same jobs):
 
@@ -277,15 +287,20 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
 
 `ADMIN_SLACK_IDS` (section 4) gates both of these — set it before trying either.
 
-**`/admin`** on the site: participant table with inline correction forms (adjust streak/freezes/
-status, or force-verify someone whose real HCA verification hasn't come through yet), plus
-buttons to run the three cron jobs on demand. Not gated behind Socket Mode/ngrok — works over the
-same `PUBLIC_SITE_URL` as everything else once you're signed in as an admin.
+**`/admin`** on the site: read-only participant table (edit streak/freezes/status directly in
+Airtable instead — this page deliberately doesn't duplicate that), a "Force verify" button per
+unverified participant, and buttons to run the three cron jobs on demand. Not gated behind
+Socket Mode/ngrok — works over the same `PUBLIC_SITE_URL` as everything else once you're signed
+in as an admin. The "Run remind" button is a pure test blast — DMs everyone regardless of
+reminder hour, whether they've posted, or whether they were already reminded, and doesn't mark
+anyone as reminded (so it can't suppress a real reminder later that day); the real hourly cron
+always respects all of that.
 
 **`@your-bot debug ...`** in Slack (admin-only, checked at the top of the `debug` command in
 `src/routes/api/slack/events/+server.js`):
 - `debug reconcile` / `debug leaderboard` / `debug remind` — runs that job immediately instead
-  of waiting for its cron schedule, replies with a summary.
+  of waiting for its cron schedule, replies with a summary. (`debug remind` here still respects
+  reminder hour/posted-today/already-reminded — only the admin panel's button bypasses those.)
 - `debug stats` — reply to it as a threaded reply under an existing submission and it looks that
   video up in unified-socials live and posts its current view count in-thread, without waiting
   for the nightly reconcile pass.
