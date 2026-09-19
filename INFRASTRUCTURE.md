@@ -1,0 +1,381 @@
+# Infrastructure
+
+How dayoneof is built and how to run it. One app, one process: a SvelteKit site with the Slack
+bot living inside it as a route, deployed on Vercel, backed by Airtable.
+
+## Stack
+
+- **SvelteKit 2 + Svelte 5** (runes mode), plain `.js` server files — no TypeScript, but
+  `tsconfig.json` has `checkJs: true` + `strict: true`, so every `.js` file needs JSDoc
+  `@param`/`@returns` annotations. `npm run check` must stay at 0 errors.
+- **Airtable** is the entire database — four tables, no SQL, plain `fetch` against Airtable's
+  REST API (`src/lib/server/airtable.js`), no SDK.
+- **Vercel** hosts the site and runs the cron jobs (`vercel.json`) via `@sveltejs/adapter-vercel`.
+- **Slack** is the primary interface for participants — a bot listens on `/api/slack/events` for
+  submissions, DMs, and commands.
+- **Hack Club Auth (HCA)** gates who can count a submission — sign-in via OIDC.
+- **unified-socials-db** (Hack Club's own service) supplies view/like counts and video titles for
+  tracked videos, read-only.
+
+## Layout
+
+```
+src/lib/server/          server-only modules (SvelteKit refuses to ship these to the browser)
+  config.js               env vars, Airtable table/field name map (F), isAdmin, requireEnv
+  airtable.js             REST client: find/list/create/update/remove/upsert
+  slack.js                Slack Web API wrappers: postMessage/updateMessage/dm/reactions/etc
+  hca.js                  Hack Club Auth OIDC (authorize/token/userinfo)
+  session.js              signed session cookie for the logged-in participant
+  links.js                extracts + normalizes YouTube/TikTok/Instagram links from message text
+  streak.js                streak/freeze/milestone math — pure functions, unit-tested
+  verification.js         HCA verification_status check — pure, unit-tested
+  messages.js              every user-facing Slack message string, in one place
+  unified.js               unified-socials-db read client (views/likes/title lookup)
+  jobs.js                  the three cron job bodies, shared with the admin panel
+
+src/routes/
+  +page.svelte                      landing page
+  leaderboard/                      three boards: streaks, total views, top videos
+  gallery/                          every submission, sortable by date or views
+  user/[slackId]/                   one person's post history
+  admin/                            admin-only dashboard (see below)
+  api/slack/events/                 the bot
+  api/cron/{reconcile,leaderboard,remind}/   cron endpoints, thin wrappers around jobs.js
+  api/auth/{login,callback,logout}/          HCA sign-in
+```
+
+## Data model (Airtable)
+
+Four tables. Field names live once in `config.js`'s `F` map — rename there too if you rename a
+column in Airtable.
+
+### `participants` — one row per person, keyed on `slack_id`
+
+Only ever created by the HCA sign-in flow (`api/auth/callback`) — the bot never auto-creates a
+participant on first post, since a post only counts once someone has signed in and HCA reports
+them verified.
+
+| field | type | notes |
+| --- | --- | --- |
+| `slack_id` | Single line text | primary field |
+| `name`, `email`, `tz` | text | `tz` best-effort backfilled from Slack at sign-in |
+| `status` | Single select | `notStarted` \| `active` \| `frozen` \| `broken` |
+| `verification_status` | Single line text | HCA's claim — `needs_submission`, `pending`, `verified_eligible`, `verified_but_over_18`, `rejected`, `not_found`. Only rows starting with `verified` count posts. |
+| `days_completed`, `streak_freezes`, `days_elapsed`, `current_streak` | Number | cache rewritten by the reconcile cron and by every submission |
+| `last_milestone` | Number | highest milestone announced, so it fires once |
+| `reminder_hour` | Number | local hour for the daily DM; null = no reminder |
+| `last_reminder_day` | Single line text | guards against double-sending a reminder |
+| `total_views` | Number | recomputed by `syncParticipantTotalViews` (see below), never incremented |
+
+### `days` — one row per participant per UTC calendar day
+
+Source of truth for streaks. `status` is `posted` \| `frozen` \| `missed`. A streak is "count
+back from today while status != missed"; a freeze is a row, not a counter you have to trust.
+
+| field | type |
+| --- | --- |
+| `slack_id` | Single line text (primary field) |
+| `date` | Single line text, `YYYY-MM-DD` — kept as plain text (not an Airtable Date field) because filter formulas do exact string matches like `{date} = "2026-01-01"` |
+| `status` | Single select — `posted` \| `frozen` \| `missed` |
+
+### `submissions`
+
+| field | type | notes |
+| --- | --- | --- |
+| `submission_id` | Autonumber | primary field |
+| `slack_id`, `url`, `platform`, `video_id` | text | `url` is always rebuilt canonical (see links.js below), never the raw pasted link |
+| `posted_at` | Date, with time | |
+| `day` | Single line text | `YYYY-MM-DD`, same reasoning as `days.date` |
+| `counted_toward_streak` | Checkbox | false for a same-day repeat post |
+| `channel_id`, `message_ts`, `permalink` | text | the poster's original message |
+| `review_count` | Number | |
+| `views` | Number | kept in sync by `syncParticipantTotalViews` — see "Views sync" below |
+| `title` | Single line text | video title (YouTube) or first line of caption (TikTok/Instagram), from unified-socials |
+| `unified_id` | Single line text | set once unified-socials confirms a match |
+| `reply_message_ts` | Single line text | the `ts` of *our* confirmation reply (not the poster's message) — lets reconcile edit that message with fresh stats instead of posting a new one nightly |
+| `streak_at_post`, `freezes_at_post` | Number | captured once at submit time so an edited reply stays historically accurate |
+
+`likes` is deliberately not a column — it's cheap to re-fetch live wherever it's actually shown
+(a Slack message, admin's "Check stats"), so persisting it would just be one more field to keep
+in sync for no benefit.
+
+### `reviews`
+
+| field | type |
+| --- | --- |
+| `review_id` | Autonumber (primary field) |
+| `submission_id` | Single line text — stores `submissions.submission_id`, not an Airtable link |
+| `reviewer_id`, `reviewed_at`, `message_ts`, `length`, `text` | — |
+
+## The bot: `POST /api/slack/events`
+
+Single endpoint, HTTP Events API (not Socket Mode). Verifies the Slack v0 signature over the raw
+body, echoes the `url_verification` challenge, acks retries, then routes on `event.type`:
+
+- **`message` in the submissions channel, with a supported link** — not signed in → 🔒 + reply
+  telling them to sign in; signed in but HCA hasn't verified them → 🔒 + reply explaining that;
+  otherwise: records the day, advances the streak, reacts ✅, replies in-thread with the streak
+  and (if the video happens to already be tracked) live stats. A same-day repeat gets 🔁 and
+  still replies in-thread, just without advancing the streak.
+- **`message` in the submissions channel, no supported link** — reacts ❓, replies in-thread
+  explaining which platforms count.
+- **threaded reply by someone other than the poster, 40+ characters** — records a review, ✅ 👀.
+- **`app_mention`** — `status`, `remind <hour>`, `reviews`.
+- **`member_joined_channel`** — if it's the bot itself joining, posts a one-line confirmation.
+  This is a deliberate smoke test for "is Slack delivering events to this endpoint at all" and is
+  independent of everything else — useful when the bot looks totally inert, since it isolates
+  connectivity from application logic.
+
+Never 500s at Slack — errors are logged and swallowed, always returning 200, since a 500 just
+buys a retry of something already broken.
+
+Milestones (2/7/15/25 days) fire inside the submission handler: announce in the announce channel,
+DM the participant, write `last_milestone` so it doesn't repeat.
+
+## Cron jobs
+
+`vercel.json` schedules three `GET /api/cron/<name>` routes, each gated on
+`Authorization: Bearer $CRON_SECRET`. Each route is a thin wrapper around a shared function in
+`jobs.js` (also callable from the admin panel).
+
+| job | schedule | what it does |
+| --- | --- | --- |
+| `reconcile` | `0 0 * * *` | For every active/frozen participant with history before yesterday and no `posted` row for yesterday: spends a freeze (writes a `frozen` day) or breaks the streak. Then refreshes views/likes/title for every tracked submission and edits each one's original Slack reply in place. |
+| `leaderboard` | `15 0 * * *` | Posts three boards to the announce channel: longest streaks, most total views, highest-viewed videos. Scheduled *after* reconcile on purpose, so it reflects that night's refreshed views. |
+| `remind` | `0 * * * *` | DMs anyone whose `reminder_hour` matches the current hour in their `tz` and who hasn't posted today. |
+
+**Views sync**: `submissions.views` and `participants.total_views` get written in two places —
+at submit time (if the video happens to already be tracked) and nightly in reconcile — both
+calling the same `syncParticipantTotalViews(slackId)`, which recomputes a participant's total by
+summing their stored `submissions.views` fresh from Airtable rather than incrementing. This
+matters: an earlier version summed only submissions whose live re-fetch succeeded *in that one
+pass*, so a single transient fetch failure could drop an already-known video's views out of the
+total. Recomputing from stored data instead means a transient failure can no longer corrupt the
+total — the site and the Slack leaderboard always agree with what a thread reply already showed.
+
+## Streak rules (`streak.js`, pure functions)
+
+- First link of a UTC day counts. Later links the same day are stored, react 🔁, don't advance.
+- Every 2 days completed earns a freeze, capped at 3.
+- A gap spends one freeze per missed day. Cover the whole gap and the streak continues; run out
+  and it resets to 1.
+
+## Links (`links.js`)
+
+Slack wraps every URL in message text as `<url>` or `<url|label>` — even a plain pasted link,
+not just markdown-authored ones — before it reaches the Events API. `extractLink` unwraps that
+first, then never stores what was pasted: it always rebuilds a canonical URL from the captured
+platform + id (`youtube.com/watch?v=<id>` even for `youtu.be`/`shorts` input, TikTok keeps the
+`@username` segment, Instagram keeps `reel` vs `p`), so query params, tracking junk, and mobile
+subdomains never end up stored either.
+
+## unified-socials-db integration (`unified.js`)
+
+Read-only. `GET https://unified-socials-db.hackclub.com/api/v1/posts?platform=...&platform_post_id=...`
+looks a video up by its platform + id (confirmed against unified-socials-db's own published API
+docs — `GET /api/v1/<relation>` takes column names as equality query params). Returns views,
+likes, and title (first line only, truncated).
+
+**Writing is disabled** — `submitPost` in `unified.js` is commented out. There's no confirmed
+write endpoint for "register this submission" anywhere this build had access to; the MCP server
+backing this data is explicitly read-only SQL. Do not enable without explicit approval.
+
+## Sign-in and verification gate
+
+Sign-up is HCA → Slack invite. `hca.js` matches `hackclub/jamegam`'s implementation: issuer
+`auth.hackclub.com`, `POST /oauth/token` (JSON body), `GET /api/v1/me` for identity — which
+returns `slack_id` directly, since an HCA account is a Hack Club Slack account, so no separate
+Slack lookup-by-email is needed. The callback route upserts the participant, invites them to the
+submissions channel, and sets a signed session cookie.
+
+A post only counts if the poster has an existing `participants` row (created only via this flow)
+**and** that row's `verification_status` starts with `verified`.
+
+## Admin panel (`/admin`)
+
+Gated by `ADMIN_SLACK_IDS` (comma-separated Slack user IDs). Everything for debugging lives
+here — there is no Slack `debug` command.
+
+- Read-only participant table (correct fields directly in Airtable instead — this page
+  deliberately doesn't duplicate that), with a "Force verify" button per unverified participant
+  for unblocking testing without waiting on real HCA verification.
+- Buttons to run the three cron jobs on demand. "Run remind" here is a pure test blast — DMs
+  everyone regardless of hour/posted-today/already-reminded, and never writes
+  `last_reminder_day`, so it can't interfere with the real hourly cron.
+- "Check unified-socials stats" — paste a video URL, see its live view/like/title lookup.
+- "Danger zone" — a browser-confirmed "Nuke all data" button that deletes every row in every
+  table. For wiping test data only.
+
+## Debug logging
+
+Every outbound call to Airtable, Slack, HCA, and unified-socials prints a line tagged
+`[EXTCALL]`. Every inbound Slack event prints a line tagged `[SLACKEVENT]`, including why it was
+or wasn't handled. Both are grep-tagged on purpose — `grep -rn '\[EXTCALL\]\|\[SLACKEVENT\]' src`
+finds every one when it's time to strip them.
+
+---
+
+## Setup from scratch
+
+Do these roughly in order — later steps need IDs/secrets from earlier ones.
+
+### 0. Prerequisites
+
+- Node 20+
+- A Slack workspace you can install apps into
+- An Airtable account
+- [ngrok](https://ngrok.com/download) (or `cloudflared tunnel`) for local dev — Slack's Events
+  API and HCA's OAuth redirect both need a public HTTPS URL, `localhost` won't work.
+
+```
+npm install
+cp .env.example .env
+```
+
+### 1. Airtable
+
+Create a base with the four tables and fields documented above. Get the **base ID** (Help → API
+documentation, starts with `app...`) and a **personal access token**
+([airtable.com/create/tokens](https://airtable.com/create/tokens), scopes
+`data.records:read` + `data.records:write`, access to your base).
+
+```
+AIRTABLE_TOKEN=pat...
+AIRTABLE_BASE_ID=app...
+```
+
+### 2. Slack app
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → Create New App → From scratch.
+2. **Socket Mode** → make sure it's **off**. This app uses the HTTP Events API. With Socket Mode
+   on, the Request URL still verifies fine (that's a one-time HTTP challenge, unrelated to Socket
+   Mode) but Slack delivers zero real events over HTTP afterward — the single easiest thing to
+   get wrong here.
+3. **OAuth & Permissions** → Bot Token Scopes: `chat:write`, `im:write`, `reactions:write`,
+   `app_mentions:read`, `users:read`, `users:read.email`, plus, depending on whether the
+   submissions channel is public or private:
+   - public: `channels:history`, `channels:manage` (for `conversations.invite`)
+   - private: `groups:history`, `groups:write` (`channels:manage` does not cover private invites)
+4. **Install to Workspace**, copy the **Bot User OAuth Token** (`xoxb-...`).
+5. **Basic Information** → copy the **Signing Secret**.
+
+```
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+```
+
+6. Create (or pick) a channel for submissions and one for announcements — can be the same
+   channel while testing. Invite the bot: `/invite @your-bot-name`. Get each channel's ID
+   (right-click → View channel details).
+
+```
+SLACK_SUBMISSION_CHANNEL_ID=C...
+SLACK_ANNOUNCE_CHANNEL_ID=C...
+```
+
+7. **Don't turn on Event Subscriptions yet** — it verifies the Request URL immediately, which
+   needs the dev server already running and reachable. Come back after step 5 below.
+
+### 3. HCA (Hack Club Auth)
+
+Register an OAuth application with Hack Club Auth (ask in Hack Club's Slack). Enable the
+`openid email name slack_id verification_status` scopes. Set its redirect URI to
+`<PUBLIC_SITE_URL>/api/auth/callback` (step 4 below covers what that URL is locally).
+
+```
+HCA_CLIENT_ID=...
+HCA_CLIENT_SECRET=...
+```
+
+Skippable if you only want to test the Slack bot and cron jobs — sign-in is only used by
+`/api/auth/*` and the landing page.
+
+### 4. Remaining secrets
+
+```
+SESSION_SECRET=$(openssl rand -hex 32)
+CRON_SECRET=$(openssl rand -hex 32)
+```
+
+(Windows without `openssl`: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.)
+
+`UNIFIED_SOCIALS_TOKEN` — mint a personal token from the unified-socials-db web app's MCP/API
+page. Safe to leave blank while testing the rest of the bot — it's only used by reconcile's
+views pass and admin's "Check stats".
+
+`ADMIN_SLACK_IDS` — comma-separated Slack user IDs (the `U...` kind) allowed to use `/admin`.
+Blank means nobody is an admin.
+
+`MIN_REVIEW_LENGTH` — default `40` is fine.
+
+### 5. Start the app and expose it
+
+```
+npm run dev
+```
+
+In a second terminal:
+
+```
+ngrok http 5173
+```
+
+Copy the forwarding URL into `.env`, then restart `npm run dev`:
+
+```
+PUBLIC_SITE_URL=https://xxxx.ngrok-free.app
+```
+
+### 6. Finish the Slack Events subscription
+
+1. Double check Socket Mode is still off.
+2. **Event Subscriptions** → on. Request URL: the **full path**,
+   `<PUBLIC_SITE_URL>/api/slack/events` — not just the bare ngrok URL. Should go green
+   ("Verified") within a couple seconds.
+3. Subscribe to bot events: `app_mention`, `member_joined_channel`, and `message.channels` or
+   `message.groups` matching your submissions channel's public/private-ness.
+4. **Save Changes** on the Event Subscriptions page itself.
+5. Reinstall the app to the workspace if prompted.
+
+### 7. Try it
+
+- Kick the bot from the submissions channel and re-invite it. It should immediately post
+  "👋 I'm in!" — if not, don't bother testing links yet, recheck steps 2 and 6.
+- Sign in at `<PUBLIC_SITE_URL>/api/auth/login`. Use admin's "Force verify" to unblock testing
+  without waiting on real HCA verification.
+- Post a link → ✅ + threaded reply. Post it again → 🔁 + threaded reply. Post a non-link → ❓.
+  Reply in-thread as someone else, 40+ characters → 👀.
+- `@your-bot status` / `remind 9` / `reviews`.
+- `/leaderboard`, `/gallery`, `/user/<slackId>` render from Airtable.
+- Cron routes work standalone too:
+
+  ```
+  curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/reconcile
+  curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/leaderboard
+  curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/remind
+  ```
+
+### 8. Checks
+
+```
+npm run check
+npm test
+```
+
+### 9. Deploying (Vercel)
+
+```
+vercel link
+vercel env add AIRTABLE_TOKEN
+# ...repeat for every var in .env.example, production + preview as needed
+vercel --prod
+```
+
+Set `PUBLIC_SITE_URL` to the real Vercel URL, and point Slack's Event Subscriptions Request URL
+and HCA's redirect URI at it instead of the ngrok URL. `vercel.json` already declares the cron
+schedules — Vercel authenticates its own cron calls with the `CRON_SECRET` env var automatically.
+
+## Not yet built
+
+Per the original plan's "Deferred" list: review queue assignment, fraud/slop pass, plagiarism
+reverse search, per-post view milestones auto-updating in-thread.
