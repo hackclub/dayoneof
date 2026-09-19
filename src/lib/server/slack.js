@@ -62,6 +62,11 @@ export async function usersInfo(userId) {
 	return user;
 }
 
+/** Identifies the bot itself — used to tell "the bot joined a channel" apart from a human. */
+export async function authTest() {
+	return call('auth.test', {});
+}
+
 /**
  * @param {string} channel
  * @param {string[]} users

@@ -219,6 +219,24 @@ async function handleAppMention(event) {
 	}
 }
 
+// TESTER: fires when the bot itself is invited to a channel, independent of link-posting
+// logic — a fast way to prove Slack is actually delivering events to this endpoint at all.
+// Remove this (and the `member_joined_channel` subscription in Slack's app config) once
+// you've confirmed the events pipeline works.
+/** @type {string | undefined} */
+let botUserId;
+
+/** @param {SlackEvent} event */
+async function handleMemberJoined(event) {
+	if (!botUserId) {
+		const auth = await slack.authTest();
+		botUserId = auth.user_id;
+	}
+	if (event.user !== botUserId) return;
+	console.log('[SLACKEVENT] bot was invited to', event.channel, '— posting test message');
+	await slack.postMessage(event.channel, "👋 I'm in! If you're seeing this, event delivery works.");
+}
+
 /** @param {SlackEvent} [event] */
 async function handleEvent(event) {
 	// [SLACKEVENT] logs below show every inbound event and why it was (or wasn't) handled —
@@ -230,6 +248,7 @@ async function handleEvent(event) {
 	console.log('[SLACKEVENT]', event.type, 'channel=' + event.channel, 'subtype=' + event.subtype, 'bot_id=' + event.bot_id);
 
 	if (event.type === 'app_mention') return handleAppMention(event);
+	if (event.type === 'member_joined_channel') return handleMemberJoined(event);
 
 	if (event.type === 'message') {
 		if (event.channel !== config.submissionChannelId) {
