@@ -9,6 +9,7 @@ import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
 import { isHcaVerified } from '$lib/server/verification.js';
+import { syncParticipantTotalViews } from '$lib/server/jobs.js';
 import {
 	utcDateString,
 	isDuplicatePost,
@@ -94,7 +95,7 @@ async function handleSubmission(event) {
 
 	if (isDuplicatePost(days, today)) {
 		await slack.addReaction(event.channel, event.ts, 'repeat');
-		await airtable.create(TABLES.submissions, {
+		const duplicateSubmission = await airtable.create(TABLES.submissions, {
 			[F.submissions.slackId]: event.user,
 			[F.submissions.url]: link.url,
 			[F.submissions.platform]: link.platform,
@@ -113,6 +114,15 @@ async function handleSubmission(event) {
 			stats = await fetchPostByPlatformId(link.platform, link.videoId);
 		} catch (err) {
 			console.error('unified-socials stats lookup failed for duplicate post', err);
+		}
+		if (stats) {
+			// Even though a duplicate doesn't count toward the streak, it's still a real video —
+			// its views belong in the site/leaderboard totals like any other submission.
+			await airtable.update(TABLES.submissions, duplicateSubmission.id, {
+				[F.submissions.views]: stats.views,
+				[F.submissions.unifiedId]: String(stats.id)
+			});
+			await syncParticipantTotalViews(event.user);
 		}
 		await slack.postMessage(event.channel, messages.duplicatePost(event.user, streak, freezes, stats), event.ts);
 		return;
@@ -162,13 +172,18 @@ async function handleSubmission(event) {
 	await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 	const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
 
-	// Recorded so the reconcile job can edit this exact message with fresh stats later (see
-	// jobs.js's refreshViews) instead of spamming a new reply into the thread every night.
+	// replyMessageTs/streakAtPost/freezesAtPost let the reconcile job edit this exact message
+	// with fresh stats later (see jobs.js's refreshViews) instead of spamming a new reply into
+	// the thread every night. views/unifiedId are saved here too whenever stats came back
+	// non-null — otherwise the thread reply shows real numbers while Airtable (and everything
+	// that reads from it: the site, the Slack leaderboard) stayed at whatever it was before.
 	await airtable.update(TABLES.submissions, submission.id, {
 		[F.submissions.replyMessageTs]: reply.ts,
 		[F.submissions.streakAtPost]: streak,
-		[F.submissions.freezesAtPost]: freezes
+		[F.submissions.freezesAtPost]: freezes,
+		...(stats ? { [F.submissions.views]: stats.views, [F.submissions.unifiedId]: String(stats.id) } : {})
 	});
+	if (stats) await syncParticipantTotalViews(event.user);
 
 	const milestone = nextMilestone(streak, participant.fields[F.participants.lastMilestone]);
 	if (milestone) {

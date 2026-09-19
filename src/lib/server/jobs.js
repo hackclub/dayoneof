@@ -13,6 +13,22 @@ function yesterday() {
 	return d.toISOString().slice(0, 10);
 }
 
+// Recomputes one participant's total_views from their stored submissions.views — called right
+// after a submission's views get written (submit time or reconcile) so the site and the Slack
+// leaderboard never lag behind what a thread reply already shows. Summing from Airtable rather
+// than incrementing keeps this correct no matter how many places write views.
+/** @param {string} slackId */
+export async function syncParticipantTotalViews(slackId) {
+	const submissions = await airtable.list(TABLES.submissions, {
+		filterByFormula: `{${F.submissions.slackId}} = "${slackId}"`
+	});
+	const total = submissions.reduce((sum, s) => sum + (s.fields[F.submissions.views] ?? 0), 0);
+	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
+		[F.participants.totalViews]: total
+	});
+	return total;
+}
+
 export async function runReconcile() {
 	const date = yesterday();
 	const participants = await airtable.list(TABLES.participants, {
@@ -89,9 +105,10 @@ async function refreshViews() {
 		if (!post) continue;
 		viewsChecked++;
 
+		// likes isn't stored — it's cheap to re-fetch live (admin's "check stats", the Slack
+		// reply text below) and keeping it out of Airtable is one less field to keep in sync.
 		await airtable.update(TABLES.submissions, submission.id, {
 			[F.submissions.views]: post.views,
-			[F.submissions.likes]: post.likes,
 			[F.submissions.unifiedId]: String(post.id)
 		});
 
