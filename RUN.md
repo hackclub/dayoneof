@@ -67,11 +67,15 @@ You'll fill in `.env` as you go through the sections below.
 | `permalink` | URL |
 | `review_count` | Number, integer |
 | `views` | Number, integer |
-| `likes` | Number, integer |
 | `unified_id` | Single line text |
 | `reply_message_ts` | Single line text — the `ts` of *our* confirmation reply (not the poster's original message). Lets the reconcile job edit that message in place with fresh stats instead of posting a new one every night. |
 | `streak_at_post` | Number, integer — the streak this post advanced to, captured once at submit time so an edited reply stays historically accurate even after the participant's live streak has moved on. |
 | `freezes_at_post` | Number, integer — same idea, for freezes remaining. |
+
+`likes` is deliberately **not** a column — it's cheap to re-fetch live from unified-socials
+whenever it's actually shown (a Slack reply, admin's "Check stats"), so persisting it was one
+more field to keep in sync for no real benefit. If you added a `likes` column following an
+earlier version of this doc, it's now unused and safe to delete.
 
 **`reviews`**
 
@@ -190,6 +194,16 @@ failure surfaces as "unified-socials fetch failed: 401", not silently as "no mat
 integration only matters for `/api/cron/reconcile`'s views pass and `/admin`'s "Check unified-
 socials stats" tool (section 9) — safe to leave `UNIFIED_SOCIALS_TOKEN` blank while testing the
 rest of the bot.
+
+Views get written to `submissions.views` (and `participants.total_views` via
+`syncParticipantTotalViews`) in two places, kept deliberately in sync: at submit time in
+`handleSubmission` (if the video happens to already be tracked when posted) and nightly in
+`reconcile`'s `refreshViews`. Both call the same sync helper, so the site (`/gallery`,
+`/leaderboard`, `/user/<slackId>`) and the Slack leaderboard message always read the same numbers
+a thread reply already showed — if you see a thread with real stats but the site/leaderboard
+still at 0, that's a bug, not expected staleness. `vercel.json`'s cron order matters here too:
+`reconcile` (00:00 UTC) runs *before* `leaderboard` (00:15 UTC) specifically so the nightly
+Slack leaderboard post reflects that night's refreshed views, not the previous day's.
 
 `MIN_REVIEW_LENGTH` — leave at the default `40` unless you want a different review-length bar.
 
