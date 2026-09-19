@@ -10,6 +10,18 @@ function requireAdmin(locals) {
 	}
 }
 
+/**
+ * @param {string} job
+ * @param {() => Promise<Record<string, unknown>>} run
+ */
+async function runJob(job, run) {
+	try {
+		return { ranJob: job, result: await run() };
+	} catch (err) {
+		return { ranJob: job, error: err instanceof Error ? err.message : String(err) };
+	}
+}
+
 export async function load({ locals }) {
 	if (!locals.session || !isAdmin(locals.session.slackId)) {
 		redirect(302, '/');
@@ -37,32 +49,15 @@ export async function load({ locals }) {
 export const actions = {
 	runReconcile: async ({ locals }) => {
 		requireAdmin(locals);
-		return { ranJob: 'reconcile', result: await runReconcile() };
+		return runJob('reconcile', runReconcile);
 	},
 	runLeaderboard: async ({ locals }) => {
 		requireAdmin(locals);
-		return { ranJob: 'leaderboard', result: await runLeaderboard() };
+		return runJob('leaderboard', runLeaderboard);
 	},
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
-		return { ranJob: 'remind', result: await runRemind() };
-	},
-	adjustParticipant: async ({ request, locals }) => {
-		requireAdmin(locals);
-		const data = await request.formData();
-		const id = String(data.get('id'));
-
-		/** @type {Record<string, any>} */
-		const fields = {};
-		const currentStreak = data.get('currentStreak');
-		const streakFreezes = data.get('streakFreezes');
-		const status = data.get('status');
-		if (currentStreak !== null && currentStreak !== '') fields[F.participants.currentStreak] = Number(currentStreak);
-		if (streakFreezes !== null && streakFreezes !== '') fields[F.participants.streakFreezes] = Number(streakFreezes);
-		if (status) fields[F.participants.status] = String(status);
-
-		await airtable.update(TABLES.participants, id, fields);
-		return { adjusted: id };
+		return runJob('remind', runRemind);
 	},
 	forceVerify: async ({ request, locals }) => {
 		requireAdmin(locals);
