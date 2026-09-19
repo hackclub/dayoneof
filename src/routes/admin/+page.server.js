@@ -72,8 +72,6 @@ export const actions = {
 	},
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
-		// DMs literally everyone, ignoring hour/posted-today/already-reminded — the real hourly
-		// cron always calls runRemind() with no options.
 		return runJob('remind', () => runRemind({ force: true }));
 	},
 	forceVerify: async ({ request, locals }) => {
@@ -85,8 +83,6 @@ export const actions = {
 		});
 		return { verified: id };
 	},
-	// Replaces the old Slack `debug stats` command — paste any submitted video's URL to see its
-	// live unified-socials lookup result without waiting for the nightly reconcile pass.
 	checkStats: async ({ request, locals }) => {
 		requireAdmin(locals);
 		const data = await request.formData();
@@ -100,8 +96,6 @@ export const actions = {
 			return { statsError: err instanceof Error ? err.message : String(err) };
 		}
 	},
-	// Deletes every row in every table — for wiping test data, nothing else. Confirmed
-	// client-side (see +page.svelte) since there's no undo.
 	nukeAllData: async ({ locals }) => {
 		requireAdmin(locals);
 		let deleted = 0;

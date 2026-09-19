@@ -19,15 +19,11 @@ export async function GET({ url, cookies }) {
 	const tokens = await exchangeCode({ code, redirectUri });
 	const identity = await fetchMe(tokens.access_token);
 
-	// HCA account == Slack account, so slack_id comes straight back from /api/v1/me —
-	// no separate Slack lookup-by-email needed.
 	const slackId = identity.slack_id;
 	if (!slackId) {
 		error(400, 'Your Hack Club Auth account has no linked Slack account.');
 	}
 
-	// tz isn't in the HCA identity — best-effort backfill from Slack, same as
-	// getParticipant's profile enrichment: never let this block the sign-in itself.
 	let tz;
 	try {
 		const slackUser = await slack.usersInfo(slackId);

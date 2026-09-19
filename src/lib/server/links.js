@@ -1,16 +1,10 @@
-// Slack wraps every URL in message text as <url> or <url|label> before it reaches the Events
-// API — even a link the user just pasted as plain text, not authored with markdown. Left
-// unstripped, a greedy \S+ match swallows the wrapping straight into the stored URL (and for
-// long URLs, the label half is Slack's own "…"-truncated display text, encoded).
+// Slack wraps every URL in message text as <url> or <url|label>, even a plain pasted link — must
+// be unwrapped before matching or the wrapping ends up stored as part of the URL.
 const SLACK_LINK = /<(https?:\/\/[^|>\s]+)(?:\|[^>]*)?>/gi;
-
-// Stops at whitespace and at Slack's own delimiter chars, so even an unwrapped straggler can't
-// bleed into a neighboring `<...>` link.
 const URL_REGEX = /https?:\/\/[^\s<>|]+/gi;
 
-// Each pattern both recognizes a platform's link and rebuilds a canonical URL from the captured
-// pieces — never the originally-pasted URL — so stray query params, tracking junk, mobile
-// subdomains, and Slack's own wrapping never end up stored.
+// Each pattern rebuilds a canonical URL from the captured id rather than storing what was
+// pasted, so query params, tracking junk, and mobile subdomains never end up saved.
 const PATTERNS = [
 	{
 		platform: 'youtube',

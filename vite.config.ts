@@ -4,8 +4,6 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	server: {
-		// ngrok's free tier hands out a new random subdomain each run — allow the whole
-		// domain rather than updating this every time. See RUN.md section 5.
 		allowedHosts: ['.ngrok-free.app']
 	},
 	plugins: [
@@ -15,10 +13,6 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-
-			// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
-			// If your environment is not supported, or you settled on a specific environment, switch out the adapter.
-			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
 			adapter: adapter()
 		})
 	]

@@ -1,6 +1,3 @@
-// Hack Club Auth (auth.hackclub.com) - OIDC. Shape copied from hackclub/jamegam's
-// src/lib/server/hca.js (2026-09-19) per IMPLEMENTATION.md's "copy jamegam verbatim" — jamegam
-// is the one confirmed-working reference for this integration.
 import { config, requireEnv } from './config.js';
 
 /** @param {{ redirectUri: string, state: string }} params */
@@ -17,7 +14,6 @@ export function authorizeUrl({ redirectUri, state }) {
 
 /** @param {{ code: string, redirectUri: string }} params */
 export async function exchangeCode({ code, redirectUri }) {
-	// prints below are tagged [EXTCALL] — grep for that tag to strip them before shipping
 	console.log('[EXTCALL] hca POST /oauth/token');
 	const res = await fetch(`${config.hcaIssuer}/oauth/token`, {
 		method: 'POST',
@@ -34,9 +30,7 @@ export async function exchangeCode({ code, redirectUri }) {
 	return res.json(); // { access_token, id_token, ... }
 }
 
-// Every field the app's scopes grant: primary_email, first_name, last_name, slack_id,
-// verification_status. An HCA account is a Hack Club Slack account, so slack_id is reliably
-// present — no need to look the user up in Slack by email separately.
+// An HCA account is a Hack Club Slack account, so slack_id is reliably present here.
 /** @param {string} accessToken */
 export async function fetchMe(accessToken) {
 	console.log('[EXTCALL] hca GET /api/v1/me');
