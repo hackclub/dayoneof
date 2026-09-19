@@ -275,7 +275,9 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
   videos), `/gallery` (every submission, sortable by newest or highest views), and
   `/user/<slackId>` (one person's post history) read straight from Airtable — check they render
   once you have a few `participants`/`submissions` rows. Names throughout link to the matching
-  `/user/<slackId>` page.
+  `/user/<slackId>` page. The landing page, `/user/<slackId>`, and `/admin` all show a videos-
+  posted count and how many of those are currently tracked by unified-socials (i.e. have a
+  `unified_id` — set once `refreshViews` gets a match, not necessarily meaning `views` > 0).
 - Cron routes are still plain authenticated GETs and work standalone (the `/admin` panel in
   section 9 is another way to trigger the same jobs):
 
