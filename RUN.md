@@ -36,6 +36,7 @@ You'll fill in `.env` as you go through the sections below.
 | `streak_freezes` | Number, integer |
 | `days_elapsed` | Number, integer |
 | `current_streak` | Number, integer |
+| `verification_status` | Single line text — HCA's `verification_status` claim (`needs_submission`, `pending`, `verified_eligible`, `verified_but_over_18`, `rejected`, `not_found`). Only rows where this starts with `verified` count posts toward a streak — see section 8. |
 | `last_milestone` | Number, integer |
 | `reminder_hour` | Number, integer |
 | `last_reminder_day` | Single line text |
@@ -183,6 +184,11 @@ refresh. This integration only matters for `/api/cron/reconcile`'s views pass �
 
 `MIN_REVIEW_LENGTH` — leave at the default `40` unless you want a different review-length bar.
 
+`ADMIN_SLACK_IDS` — comma-separated Slack user IDs (the `U...` kind, not usernames) allowed to
+use `/admin` on the site and the `@your-bot debug ...` commands in Slack (section 9). Leave
+blank and both are simply inaccessible — nobody is an admin by default. Find your own Slack ID
+via your profile → "Copy member ID".
+
 ## 5. Start the app and expose it
 
 ```
@@ -240,12 +246,22 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
   message/link logic broken." If this doesn't fire, don't bother testing links yet — go back
   through section 2 and 6 (Socket Mode, scopes, event subscriptions all need to match, and
   public vs. private channel changes which ones).
+- **Sign in first**: visit `<PUBLIC_SITE_URL>/api/auth/login` (needs section 3 configured for
+  real) and complete HCA sign-in. **Posts only count if the poster has signed in AND HCA reports
+  them verified** — an unsigned-in Slack user posting a link gets a 🔒 reaction and an ephemeral
+  telling them to sign in; a signed-in-but-unverified one gets 🔒 and a different ephemeral about
+  pending verification. Neither writes a `days` row or advances a streak. If HCA hasn't actually
+  verified your test account, use the admin panel's "Force verify" button (section 9) to unblock
+  testing without waiting on real HCA verification.
 - Post a YouTube/TikTok/Instagram link in the submissions channel → bot should react ✅ and
   reply in-thread with your streak.
 - Post a non-link message → bot reacts ❓ and sends you an ephemeral explanation.
 - Reply in the thread (as a different user, 40+ characters) → bot reacts 👀 and logs a review.
 - `@your-bot status` / `@your-bot remind 9` / `@your-bot reviews` in the channel.
-- Cron routes are plain authenticated GETs, trigger them manually:
+- `/leaderboard` and `/gallery` read straight from Airtable — check they render once you have a
+  few `participants`/`submissions` rows.
+- Cron routes are still plain authenticated GETs and work standalone (the `/admin` panel and
+  `debug` Slack commands in section 9 are two more ways to trigger the same jobs):
 
   ```
   curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/reconcile
@@ -253,18 +269,37 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
   curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/remind
   ```
 
-- Sign-in: visit `<PUBLIC_SITE_URL>/api/auth/login` (needs step 3 configured for real).
-- `/leaderboard` and `/gallery` read straight from Airtable — check they render once you have a
-  few `participants`/`submissions` rows.
+## 9. Admin panel and debug commands
 
-## 9. Checks
+`ADMIN_SLACK_IDS` (section 4) gates both of these — set it before trying either.
+
+**`/admin`** on the site: participant table with inline correction forms (adjust streak/freezes/
+status, or force-verify someone whose real HCA verification hasn't come through yet), plus
+buttons to run the three cron jobs on demand. Not gated behind Socket Mode/ngrok — works over the
+same `PUBLIC_SITE_URL` as everything else once you're signed in as an admin.
+
+**`@your-bot debug ...`** in Slack (admin-only, checked at the top of the `debug` command in
+`src/routes/api/slack/events/+server.js`):
+- `debug reconcile` / `debug leaderboard` / `debug remind` — runs that job immediately instead
+  of waiting for its cron schedule, replies with a summary.
+- `debug stats` — reply to it as a threaded reply under an existing submission and it looks that
+  video up in unified-socials live and posts its current view count in-thread, without waiting
+  for the nightly reconcile pass.
+
+This whole block, plus the `member_joined_channel` welcome tester from section 8, is wrapped in
+`=== DEBUG COMMANDS ===` / `=== END DEBUG COMMANDS ===` comments in the events route
+specifically so they're easy to cut before a real launch — grep for `DEBUG` and `TESTER` in that
+file when you're ready to remove them. The admin panel itself is not meant to be removed; it's
+gated by `ADMIN_SLACK_IDS` instead.
+
+## 10. Checks
 
 ```
 npm run check   # svelte-check, must be 0 errors
-npm test        # streak.js unit tests
+npm test        # streak.js / verification.js unit tests
 ```
 
-## 10. Deploying (Vercel)
+## 11. Deploying (Vercel)
 
 ```
 vercel link
