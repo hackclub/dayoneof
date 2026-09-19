@@ -20,10 +20,7 @@
 		<a href="/api/auth/login">Sign in with Hack Club</a>
 	{/if}
 
-	<p>
-		{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted so far ·
-		{data.videosTracked} tracked by unified-socials
-	</p>
+	<p>{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted so far</p>
 
 	<nav>
 		<a href="/leaderboard">Leaderboard</a>

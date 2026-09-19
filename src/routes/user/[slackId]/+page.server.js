@@ -21,7 +21,6 @@ export async function load({ params }) {
 		streakFreezes: participant.fields[F.participants.streakFreezes] ?? 0,
 		totalViews: participant.fields[F.participants.totalViews] ?? 0,
 		videosPosted: submissions.length,
-		videosTracked: submissions.filter((s) => s.fields[F.submissions.unifiedId]).length,
 		submissions: submissions.map((s) => ({
 			url: s.fields[F.submissions.url],
 			platform: s.fields[F.submissions.platform],
