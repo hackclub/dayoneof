@@ -163,12 +163,9 @@ async function handleSubmission(event) {
 		console.error('unified-socials stats lookup failed at submission time', err);
 	}
 
-	await slack.addReaction(event.channel, event.ts, 'white_check_mark');
-	const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
-
-	// Lets reconcile edit this same message with fresh stats later instead of posting a new one.
+	// Written before attempting to react/reply so a Slack API failure below (rate limit, etc.)
+	// can never leave the streak recorded but views/site data missing.
 	await airtable.update(TABLES.submissions, submission.id, {
-		[F.submissions.replyMessageTs]: reply.ts,
 		[F.submissions.streakAtPost]: streak,
 		[F.submissions.freezesAtPost]: freezes,
 		...(stats
@@ -176,6 +173,15 @@ async function handleSubmission(event) {
 			: {})
 	});
 	if (stats) await syncParticipantTotalViews(event.user);
+
+	try {
+		await slack.addReaction(event.channel, event.ts, 'white_check_mark');
+		const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
+		// Lets reconcile edit this same message with fresh stats later instead of posting a new one.
+		await airtable.update(TABLES.submissions, submission.id, { [F.submissions.replyMessageTs]: reply.ts });
+	} catch (err) {
+		console.error('react/reply to submission failed', event.channel, event.ts, err);
+	}
 
 	const milestone = nextMilestone(streak, participant.fields[F.participants.lastMilestone]);
 	if (milestone) {
@@ -327,7 +333,7 @@ export async function POST({ request }) {
 	try {
 		await handleEvent(body.event);
 	} catch (err) {
-		console.error('slack event handling failed', err);
+		console.error('slack event handling failed', body.event?.channel, body.event?.ts, err);
 	}
 
 	return json({ ok: true });
