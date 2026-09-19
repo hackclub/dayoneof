@@ -58,12 +58,21 @@ async function getDays(slackId) {
 async function getOrCreateParticipant(slackId) {
 	const existing = await airtable.find(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`);
 	if (existing) return existing;
-	const user = await slack.usersInfo(slackId);
+
+	// users.info can fail (e.g. user_not_found across Enterprise Grid teams) — that's profile
+	// enrichment, not something that should block recording the submission itself.
+	let user;
+	try {
+		user = await slack.usersInfo(slackId);
+	} catch (err) {
+		console.error('users.info failed, creating participant without profile info', err);
+	}
+
 	return airtable.create(TABLES.participants, {
 		[F.participants.slackId]: slackId,
-		[F.participants.name]: user.real_name,
-		[F.participants.email]: user.profile?.email,
-		[F.participants.tz]: user.tz,
+		[F.participants.name]: user?.real_name,
+		[F.participants.email]: user?.profile?.email,
+		[F.participants.tz]: user?.tz,
 		[F.participants.status]: 'active',
 		[F.participants.streakFreezes]: 0,
 		[F.participants.daysCompleted]: 0
