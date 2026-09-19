@@ -95,21 +95,29 @@ AIRTABLE_BASE_ID=app...
 
 1. [api.slack.com/apps](https://api.slack.com/apps) → Create New App → From scratch → name it,
    pick your workspace.
-2. **OAuth & Permissions** → Scopes → Bot Token Scopes, add:
-   `channels:history`, `chat:write`, `im:write`, `reactions:write`, `app_mentions:read`,
-   `users:read`, `users:read.email`, `channels:manage` (needed for `conversations.invite`).
-3. Still on OAuth & Permissions, click **Install to Workspace**, approve. Copy the
+2. **Socket Mode** (left sidebar) → make sure **Enable Socket Mode** is OFF. This app uses the
+   HTTP Events API (a Request URL), not Socket Mode — if Socket Mode is on, Slack delivers
+   events over a websocket instead, your Request URL will still show "Verified" (verification is
+   a one-time HTTP challenge, unrelated to Socket Mode), but no real events will ever arrive at
+   `/api/slack/events`. This is the single easiest thing to get wrong here.
+3. **OAuth & Permissions** → Scopes → Bot Token Scopes, add:
+   `chat:write`, `im:write`, `reactions:write`, `app_mentions:read`, `users:read`,
+   `users:read.email`, plus, depending on whether your submissions channel is public or private:
+   - public channel: `channels:history`, `channels:manage` (the latter for `conversations.invite`)
+   - private channel: `groups:history`, `groups:write` (for `conversations.invite` into a
+     private channel — `channels:manage` does not cover this)
+4. Still on OAuth & Permissions, click **Install to Workspace**, approve. Copy the
    **Bot User OAuth Token** (`xoxb-...`).
-4. **Basic Information** → App Credentials → copy the **Signing Secret**.
+5. **Basic Information** → App Credentials → copy the **Signing Secret**.
 
 ```
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 ```
 
-5. In Slack, create (or pick) a channel for submissions and one for announcements — can be the
+6. In Slack, create (or pick) a channel for submissions and one for announcements — can be the
    same channel while testing. Invite the bot: `/invite @your-bot-name`.
-6. Get each channel's ID: right-click the channel → View channel details → the ID at the
+7. Get each channel's ID: right-click the channel → View channel details → the ID at the
    bottom (starts with `C`).
 
 ```
@@ -117,9 +125,13 @@ SLACK_SUBMISSION_CHANNEL_ID=C...
 SLACK_ANNOUNCE_CHANNEL_ID=C...
 ```
 
-7. **Don't turn on Event Subscriptions yet** — Slack verifies the Request URL immediately when
+8. **Don't turn on Event Subscriptions yet** — Slack verifies the Request URL immediately when
    you save it, and that requires the dev server to already be running and reachable. Come back
-   to this after section 6 below.
+   to this after section 6 below. When you do, subscribe to `app_mention` and either
+   `message.channels` (public submissions channel) or `message.groups` (private) — matching
+   whichever scope pair you picked in step 3. Getting the public/private pair mismatched (e.g.
+   subscribing to `message.channels` for a private channel) verifies fine and silently delivers
+   nothing, same as Socket Mode being on.
 
 ## 3. HCA (Hack Club Auth)
 
@@ -195,13 +207,21 @@ Restart `npm run dev` so the new env var is picked up.
 
 Now that the dev server is reachable at `PUBLIC_SITE_URL`:
 
-1. Slack app config → **Event Subscriptions** → toggle on.
-2. Request URL: `<PUBLIC_SITE_URL>/api/slack/events`. Slack immediately POSTs a
-   `url_verification` challenge — `src/routes/api/slack/events/+server.js` handles it, so this
-   should go green as "Verified" within a couple seconds.
-3. Subscribe to bot events: `message.channels`, `app_mention`.
-4. Save changes, then reinstall the app to the workspace if it asks (scope/event changes
-   require reinstalling).
+1. Double-check **Socket Mode** is still off (step 2 in section 2) — easy to have flipped it on
+   by accident while clicking around, and it makes everything below look correct while silently
+   delivering nothing.
+2. Slack app config → **Event Subscriptions** → toggle on.
+3. Request URL: use the FULL path, `<PUBLIC_SITE_URL>/api/slack/events` — not just the bare
+   ngrok URL. Slack immediately POSTs a `url_verification` challenge —
+   `src/routes/api/slack/events/+server.js` handles it, so this should go green as "Verified"
+   within a couple seconds.
+4. Subscribe to bot events: `app_mention`, `member_joined_channel` (see section 8's tester),
+   and `message.channels` or `message.groups` matching your submissions channel's
+   public/private-ness (section 2, step 3).
+5. Scroll down and click **Save Changes** on the Event Subscriptions page itself — adding an
+   event to the list isn't enough on its own.
+6. Reinstall the app to the workspace (OAuth & Permissions page will prompt for this — required
+   whenever scopes or subscribed events change).
 
 ## 7. Watching external calls
 
@@ -212,6 +232,14 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
 
 ## 8. Try it
 
+- **Start here**: kick the bot from the submissions channel and re-invite it
+  (`/invite @your-bot-name`). If event delivery is wired up correctly end-to-end, it should
+  immediately post "👋 I'm in! If you're seeing this, event delivery works." — this is a
+  `member_joined_channel` handler in `src/routes/api/slack/events/+server.js` kept specifically
+  as a fast way to isolate "is anything reaching the server at all" from "is this specific
+  message/link logic broken." If this doesn't fire, don't bother testing links yet — go back
+  through section 2 and 6 (Socket Mode, scopes, event subscriptions all need to match, and
+  public vs. private channel changes which ones).
 - Post a YouTube/TikTok/Instagram link in the submissions channel → bot should react ✅ and
   reply in-thread with your streak.
 - Post a non-link message → bot reacts ❓ and sends you an ephemeral explanation.
