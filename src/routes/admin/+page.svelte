@@ -1,5 +1,12 @@
 <script lang="ts">
 	let { data, form } = $props();
+
+	function confirmNuke(event: SubmitEvent) {
+		const ok = confirm(
+			'This permanently deletes every row in every Airtable table (participants, days, submissions, reviews). There is no undo. Are you sure?'
+		);
+		if (!ok) event.preventDefault();
+	}
 </script>
 
 <svelte:head>
@@ -10,8 +17,7 @@
 	<h1>Admin</h1>
 	<p>
 		Participant fields (streak, freezes, status, etc.) are correctable directly in Airtable —
-		this page doesn't duplicate that. It's for the things Airtable can't do: running jobs on
-		demand and force-verifying someone whose real HCA verification hasn't come through yet.
+		this page doesn't duplicate that. Everything for debugging lives here now, not in Slack.
 	</p>
 
 	<section>
@@ -20,11 +26,12 @@
 			<li>
 				<strong>reconcile</strong> — for anyone active/frozen who didn't post yesterday: spends
 				a freeze (or breaks their streak if they have none left), then refreshes view counts
-				from unified-socials for every submission. Runs nightly at 00:05 UTC.
+				from unified-socials for every submission (and edits each submission's original reply
+				in place with the fresh numbers). Runs nightly at 00:05 UTC.
 			</li>
 			<li>
-				<strong>leaderboard</strong> — posts the streak and views boards to the announce
-				channel. Runs nightly at 00:00 UTC.
+				<strong>leaderboard</strong> — posts the streak, views, and top-videos boards to the
+				announce channel. Runs nightly at 00:00 UTC.
 			</li>
 			<li>
 				<strong>remind</strong> — the real hourly cron DMs anyone whose reminder hour matches
@@ -52,6 +59,27 @@
 		{/if}
 		{#if form?.verified}
 			<p>Force-verified participant {form.verified}.</p>
+		{/if}
+	</section>
+
+	<section>
+		<h2>Check unified-socials stats</h2>
+		<p>Paste a submitted video's URL to see its live view/like count right now.</p>
+		<form method="POST" action="?/checkStats">
+			<input type="text" name="url" placeholder="https://..." size="40" />
+			<button type="submit">Check stats</button>
+		</form>
+		{#if form?.statsError}
+			<p><strong>Failed:</strong> {form.statsError}</p>
+		{:else if form?.statsChecked}
+			<p>
+				{form.statsChecked} —
+				{#if form.stats}
+					{form.stats.views} views · {form.stats.likes} likes
+				{:else}
+					no unified-socials match yet
+				{/if}
+			</p>
 		{/if}
 	</section>
 
@@ -94,5 +122,16 @@
 				{/each}
 			</tbody>
 		</table>
+	</section>
+
+	<section>
+		<h2>Danger zone</h2>
+		<p>Deletes every row in every Airtable table. For wiping test data only — no undo.</p>
+		{#if form?.nuked}
+			<p>Deleted {form.deleted} rows.</p>
+		{/if}
+		<form method="POST" action="?/nukeAllData" onsubmit={confirmNuke}>
+			<button type="submit">⚠️ Nuke all data</button>
+		</form>
 	</section>
 </main>

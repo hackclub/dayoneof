@@ -2,6 +2,8 @@ import { error, redirect } from '@sveltejs/kit';
 import { isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
+import { fetchPostByPlatformId } from '$lib/server/unified.js';
+import { extractLink } from '$lib/server/links.js';
 
 /** @param {import('./$types').RequestEvent['locals']} locals */
 function requireAdmin(locals) {
@@ -70,5 +72,34 @@ export const actions = {
 			[F.participants.verificationStatus]: 'verified_eligible'
 		});
 		return { verified: id };
+	},
+	// Replaces the old Slack `debug stats` command — paste any submitted video's URL to see its
+	// live unified-socials lookup result without waiting for the nightly reconcile pass.
+	checkStats: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const data = await request.formData();
+		const url = String(data.get('url') ?? '');
+		const link = extractLink(url);
+		if (!link) return { statsError: "that doesn't look like a YouTube/TikTok/Instagram link" };
+		try {
+			const post = await fetchPostByPlatformId(link.platform, link.videoId);
+			return { statsChecked: url, stats: post };
+		} catch (err) {
+			return { statsError: err instanceof Error ? err.message : String(err) };
+		}
+	},
+	// Deletes every row in every table — for wiping test data, nothing else. Confirmed
+	// client-side (see +page.svelte) since there's no undo.
+	nukeAllData: async ({ locals }) => {
+		requireAdmin(locals);
+		let deleted = 0;
+		for (const table of Object.values(TABLES)) {
+			const records = await airtable.list(table);
+			if (records.length > 0) {
+				await airtable.remove(table, records.map((r) => r.id));
+				deleted += records.length;
+			}
+		}
+		return { nuked: true, deleted };
 	}
 };

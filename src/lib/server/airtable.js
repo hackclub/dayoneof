@@ -96,6 +96,20 @@ export async function update(table, recordId, fields) {
 }
 
 /**
+ * Deletes records in batches of 10 — Airtable's max per DELETE request.
+ * @param {string} table
+ * @param {string[]} recordIds
+ */
+export async function remove(table, recordIds) {
+	for (let i = 0; i < recordIds.length; i += 10) {
+		const batch = recordIds.slice(i, i + 10);
+		const params = new URLSearchParams();
+		batch.forEach((id) => params.append('records[]', id));
+		await request(`${baseUrl(table)}?${params}`, { method: 'DELETE', headers: headers() });
+	}
+}
+
+/**
  * @param {string} table
  * @param {string} filterByFormula
  * @param {Record<string, any>} fields
