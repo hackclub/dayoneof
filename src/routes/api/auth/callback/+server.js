@@ -1,6 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
-import { exchangeCode, getUserInfo } from '$lib/server/hca.js';
+import { exchangeCode, fetchMe } from '$lib/server/hca.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { setSessionCookie } from '$lib/server/session.js';
@@ -16,25 +16,29 @@ export async function GET({ url, cookies }) {
 	}
 
 	const redirectUri = `${config.siteUrl}/api/auth/callback`;
-	const tokens = await exchangeCode(code, redirectUri);
-	const profile = await getUserInfo(tokens.access_token);
+	const tokens = await exchangeCode({ code, redirectUri });
+	const identity = await fetchMe(tokens.access_token);
 
-	const slackUser = await slack.usersLookupByEmail(profile.email);
+	// HCA account == Slack account, so slack_id comes straight back from /api/v1/me —
+	// no separate Slack lookup-by-email needed.
+	const slackId = identity.slack_id;
+	if (!slackId) {
+		error(400, 'Your Hack Club Auth account has no linked Slack account.');
+	}
 
-	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackUser.id}"`, {
-		[F.participants.slackId]: slackUser.id,
-		[F.participants.name]: profile.name,
-		[F.participants.email]: profile.email,
-		[F.participants.tz]: slackUser.tz
+	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
+		[F.participants.slackId]: slackId,
+		[F.participants.name]: [identity.first_name, identity.last_name].filter(Boolean).join(' '),
+		[F.participants.email]: String(identity.primary_email ?? '').toLowerCase()
 	});
 
 	try {
 		const submissionChannelId = requireEnv('SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId);
-		await slack.inviteToChannel(submissionChannelId, [slackUser.id]);
+		await slack.inviteToChannel(submissionChannelId, [slackId]);
 	} catch (err) {
 		console.error('channel invite failed', err);
 	}
 
-	setSessionCookie(cookies, slackUser.id);
+	setSessionCookie(cookies, slackId);
 	redirect(302, '/');
 }

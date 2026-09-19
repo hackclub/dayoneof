@@ -7,5 +7,5 @@ export function GET({ cookies }) {
 	const state = randomBytes(16).toString('hex');
 	cookies.set('hca_state', state, { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: 600 });
 	const redirectUri = `${config.siteUrl}/api/auth/callback`;
-	redirect(302, authorizeUrl(state, redirectUri));
+	redirect(302, authorizeUrl({ redirectUri, state }));
 }
