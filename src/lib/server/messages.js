@@ -1,23 +1,31 @@
 import { config } from './config.js';
 
 export const messages = {
-	unsupportedLink() {
-		return "That doesn't look like a YouTube, TikTok, or Instagram link. Post a link to today's video to keep your streak going.";
+	/** @param {string} slackId */
+	unsupportedLink(slackId) {
+		return `<@${slackId}> that doesn't look like a YouTube, TikTok, or Instagram link. Post a link to today's video to keep your streak going.`;
 	},
-	notSignedIn() {
-		return `You need to sign in with Hack Club Auth before your posts count. Sign in at ${config.siteUrl}/api/auth/login, then post your link again.`;
+	/** @param {string} slackId */
+	notSignedIn(slackId) {
+		return `<@${slackId}> you need to sign in with Hack Club Auth before your posts count. Sign in at ${config.siteUrl}/api/auth/login, then post your link again.`;
 	},
-	/** @param {string | undefined} status */
-	notVerified(status) {
-		return `Your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}) — posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
+	/**
+	 * @param {string} slackId
+	 * @param {string | undefined} status
+	 */
+	notVerified(slackId, status) {
+		return `<@${slackId}> your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}) — posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
 	},
 	/**
 	 * @param {number} streak
 	 * @param {number} freezesRemaining
+	 * @param {{ views: number, likes: number } | null} [stats]
 	 */
-	streakUpdate(streak, freezesRemaining) {
+	streakUpdate(streak, freezesRemaining, stats) {
 		const day = streak === 1 ? 'day' : 'days';
-		return `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.`;
+		const base = `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.`;
+		if (!stats) return `${base}\nStats: not tracked yet — check back later.`;
+		return `${base}\nStats: ${stats.views} views · ${stats.likes} likes`;
 	},
 	/**
 	 * @param {string} slackId

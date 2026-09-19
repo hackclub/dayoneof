@@ -70,19 +70,23 @@ async function handleSubmission(event) {
 	const link = extractLink(event.text);
 	if (!link) {
 		await slack.addReaction(event.channel, event.ts, 'question');
-		await slack.postEphemeral(event.channel, event.user, messages.unsupportedLink());
+		await slack.postMessage(event.channel, messages.unsupportedLink(event.user), event.ts);
 		return;
 	}
 
 	const participant = await getParticipant(event.user);
 	if (!participant) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
-		await slack.postEphemeral(event.channel, event.user, messages.notSignedIn());
+		await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
 		return;
 	}
 	if (!isHcaVerified(participant.fields[F.participants.verificationStatus])) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
-		await slack.postEphemeral(event.channel, event.user, messages.notVerified(participant.fields[F.participants.verificationStatus]));
+		await slack.postMessage(
+			event.channel,
+			messages.notVerified(event.user, participant.fields[F.participants.verificationStatus]),
+			event.ts
+		);
 		return;
 	}
 
@@ -136,8 +140,18 @@ async function handleSubmission(event) {
 		[F.participants.status]: 'active'
 	});
 
+	// Best-effort: the video was likely just posted, so unified-socials probably hasn't picked
+	// it up yet — that's fine, messages.streakUpdate says so when stats is null rather than
+	// blocking the reply on it.
+	let stats = null;
+	try {
+		stats = await fetchPostByPlatformId(link.platform, link.videoId);
+	} catch (err) {
+		console.error('unified-socials stats lookup failed at submission time', err);
+	}
+
 	await slack.addReaction(event.channel, event.ts, 'white_check_mark');
-	await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes), event.ts);
+	await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
 
 	const milestone = nextMilestone(streak, participant.fields[F.participants.lastMilestone]);
 	if (milestone) {
@@ -234,21 +248,15 @@ async function handleAppMention(event) {
 			return;
 		}
 
-		if (arg === 'reconcile') {
-			const result = await runReconcile();
-			await slack.postMessage(event.channel, `[debug] reconcile: ${JSON.stringify(result)}`, event.ts);
-			return;
-		}
-
-		if (arg === 'leaderboard') {
-			const result = await runLeaderboard();
-			await slack.postMessage(event.channel, `[debug] leaderboard posted: ${JSON.stringify(result)}`, event.ts);
-			return;
-		}
-
-		if (arg === 'remind') {
-			const result = await runRemind();
-			await slack.postMessage(event.channel, `[debug] remind: ${JSON.stringify(result)}`, event.ts);
+		if (arg === 'reconcile' || arg === 'leaderboard' || arg === 'remind') {
+			const run = { reconcile: runReconcile, leaderboard: runLeaderboard, remind: runRemind }[arg];
+			try {
+				const result = await run();
+				await slack.postMessage(event.channel, `[debug] ${arg}: ${JSON.stringify(result)}`, event.ts);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				await slack.postMessage(event.channel, `[debug] ${arg} failed: ${message}`, event.ts);
+			}
 			return;
 		}
 

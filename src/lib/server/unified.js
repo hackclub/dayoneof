@@ -41,7 +41,7 @@ function headers() {
 /**
  * @param {string} platform
  * @param {string} platformPostId
- * @returns {Promise<{ id: number, views: number } | null>}
+ * @returns {Promise<{ id: number, views: number, likes: number } | null>}
  */
 export async function fetchPostByPlatformId(platform, platformPostId) {
 	// prints below are tagged [EXTCALL] — grep for that tag to strip them before shipping
@@ -53,5 +53,5 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 	const rows = Array.isArray(data) ? data : (data.posts ?? data.results ?? []);
 	const post = rows[0];
 	if (!post) return null;
-	return { id: post.id, views: post.views ?? 0 };
+	return { id: post.id, views: post.views ?? 0, likes: post.likes ?? 0 };
 }
