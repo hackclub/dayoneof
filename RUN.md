@@ -119,22 +119,21 @@ SLACK_ANNOUNCE_CHANNEL_ID=C...
 
 7. **Don't turn on Event Subscriptions yet** — Slack verifies the Request URL immediately when
    you save it, and that requires the dev server to already be running and reachable. Come back
-   to this after step 4 below.
+   to this after section 6 below.
 
-## 3. HCA (Hack Club Auth) — unverified, confirm before relying on it
+## 3. HCA (Hack Club Auth)
 
-`hca.js` was written against a guessed OIDC shape
-(`auth.hackclub.com/oauth/{authorize,token,userinfo}`) because `IMPLEMENTATION.md` says to copy
-jamegam's HCA integration verbatim but that file wasn't available to reference here. Before
-testing sign-in:
+`hca.js` matches `hackclub/jamegam`'s `src/lib/server/hca.js` — issuer `auth.hackclub.com`,
+`POST /oauth/token` (JSON body), `GET /api/v1/me` for identity. `/api/v1/me` returns `slack_id`
+directly (an HCA account is a Hack Club Slack account), so the callback route doesn't need a
+separate Slack lookup-by-email.
 
 1. Register an OAuth application with Hack Club Auth (ask in Hack Club's Slack if you don't
-   already have a client — the flow/URLs here need confirming against whatever HCA actually
-   exposes today).
-2. Set its redirect URI to `<PUBLIC_SITE_URL>/api/auth/callback` (see step 4 for what that URL
+   already have a client). Make sure the `openid email name slack_id verification_status` scopes
+   are enabled on the app registration — the callback route needs `slack_id` and
+   `primary_email`/`first_name`/`last_name` back from `/api/v1/me`.
+2. Set its redirect URI to `<PUBLIC_SITE_URL>/api/auth/callback` (see section 5 for what that URL
    is during local dev).
-3. If HCA's real endpoints differ from the guessed ones, update `AUTHORIZE_URL` / `TOKEN_URL` /
-   `USERINFO_URL` at the top of `src/lib/server/hca.js`.
 
 ```
 HCA_CLIENT_ID=...
@@ -155,11 +154,20 @@ CRON_SECRET=$(openssl rand -hex 32)
 
 `UNIFIED_SOCIALS_TOKEN` — mint a personal token from the unified-socials-db web app's MCP/API
 page. `UNIFIED_SOCIALS_API_URL` defaults to a placeholder in `config.js`
-(`https://unified-socials.hackclub.com/api/v1`) — the real base URL and the exact write shape
-`unified.js` expects (`POST /posts`, `GET /posts?ids=...`) aren't documented anywhere this build
-had access to, so confirm both against the actual service before relying on the views pipeline.
-This integration only matters for the nightly views refresh inside `/api/cron/reconcile` — safe
-to leave blank while testing the bot itself.
+(`https://unified-socials.hackclub.com/api/v1`).
+
+**Writing** to unified-socials is commented out in `src/lib/server/unified.js` — there's no
+confirmed write endpoint for "register this submission" anywhere this build had access to (the
+MCP server backing this data is explicitly read-only SQL), so `submitPost` is dead code left in
+place for reference rather than a guessed integration that might silently do the wrong thing.
+
+**Reading** views is done by looking a post up by `(platform, video_id)` — those two column
+names (`platform`, `platform_post_id`) are confirmed against the real `api.posts` schema via the
+unified-socials-db MCP server's `list_columns`. What's *not* confirmed is the JSON API's actual
+route/query-param shape (`GET /posts?platform=...&platform_post_id=...` is a guess at a
+PostgREST-style filter) — check that against real API docs before trusting the nightly views
+refresh. This integration only matters for `/api/cron/reconcile`'s views pass — safe to leave
+`UNIFIED_SOCIALS_TOKEN` blank while testing the bot itself.
 
 `MIN_REVIEW_LENGTH` — leave at the default `40` unless you want a different review-length bar.
 
@@ -195,7 +203,14 @@ Now that the dev server is reachable at `PUBLIC_SITE_URL`:
 4. Save changes, then reinstall the app to the workspace if it asks (scope/event changes
    require reinstalling).
 
-## 7. Try it
+## 7. Watching external calls
+
+Every outgoing call to Airtable, Slack, HCA, and unified-socials prints a line tagged
+`[EXTCALL]` to the terminal running `npm run dev` (method + URL, or method + params for Slack).
+Useful for seeing exactly what's being sent while testing. They're grep-tagged on purpose —
+`grep -rn '\[EXTCALL\]' src` finds every one of them when you're ready to strip them out.
+
+## 8. Try it
 
 - Post a YouTube/TikTok/Instagram link in the submissions channel → bot should react ✅ and
   reply in-thread with your streak.
@@ -214,14 +229,14 @@ Now that the dev server is reachable at `PUBLIC_SITE_URL`:
 - `/leaderboard` and `/gallery` read straight from Airtable — check they render once you have a
   few `participants`/`submissions` rows.
 
-## 8. Checks
+## 9. Checks
 
 ```
 npm run check   # svelte-check, must be 0 errors
 npm test        # streak.js unit tests
 ```
 
-## 9. Deploying (Vercel)
+## 10. Deploying (Vercel)
 
 ```
 vercel link
