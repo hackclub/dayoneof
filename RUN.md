@@ -187,15 +187,16 @@ video you know is tracked still comes back "not tracked yet", check: the video's
 `video_id` were captured correctly on the `submissions` row at post time (`src/lib/server/
 links.js`'s URL parsing), and that `UNIFIED_SOCIALS_TOKEN` is a valid personal token — an auth
 failure surfaces as "unified-socials fetch failed: 401", not silently as "no match". This
-integration only matters for `/api/cron/reconcile`'s views pass and the `debug stats` command —
-safe to leave `UNIFIED_SOCIALS_TOKEN` blank while testing the rest of the bot.
+integration only matters for `/api/cron/reconcile`'s views pass and `/admin`'s "Check unified-
+socials stats" tool (section 9) — safe to leave `UNIFIED_SOCIALS_TOKEN` blank while testing the
+rest of the bot.
 
 `MIN_REVIEW_LENGTH` — leave at the default `40` unless you want a different review-length bar.
 
 `ADMIN_SLACK_IDS` — comma-separated Slack user IDs (the `U...` kind, not usernames) allowed to
-use `/admin` on the site and the `@your-bot debug ...` commands in Slack (section 9). Leave
-blank and both are simply inaccessible — nobody is an admin by default. Find your own Slack ID
-via your profile → "Copy member ID".
+use `/admin` on the site (section 9 — this is where all debugging tools live; there's no Slack
+`debug` command anymore). Leave blank and `/admin` is simply inaccessible — nobody is an admin by
+default. Find your own Slack ID via your profile → "Copy member ID".
 
 ## 5. Start the app and expose it
 
@@ -270,12 +271,13 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
 - Post a non-link message → bot reacts ❓ and replies in-thread explaining why.
 - Reply in the thread (as a different user, 40+ characters) → bot reacts 👀 and logs a review.
 - `@your-bot status` / `@your-bot remind 9` / `@your-bot reviews` in the channel.
-- `/leaderboard`, `/videos` (top individual videos by views), `/gallery`, and `/user/<slackId>`
-  (one person's post history) read straight from Airtable — check they render once you have a
-  few `participants`/`submissions` rows. Names on `/leaderboard` and `/videos` link to the
-  matching `/user/<slackId>` page.
-- Cron routes are still plain authenticated GETs and work standalone (the `/admin` panel and
-  `debug` Slack commands in section 9 are two more ways to trigger the same jobs):
+- `/leaderboard` (three boards: longest streaks, most total views, highest-viewed individual
+  videos), `/gallery` (every submission, sortable by newest or highest views), and
+  `/user/<slackId>` (one person's post history) read straight from Airtable — check they render
+  once you have a few `participants`/`submissions` rows. Names throughout link to the matching
+  `/user/<slackId>` page.
+- Cron routes are still plain authenticated GETs and work standalone (the `/admin` panel in
+  section 9 is another way to trigger the same jobs):
 
   ```
   curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/reconcile
@@ -283,33 +285,28 @@ Useful for seeing exactly what's being sent while testing. They're grep-tagged o
   curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/remind
   ```
 
-## 9. Admin panel and debug commands
+## 9. Admin panel
 
-`ADMIN_SLACK_IDS` (section 4) gates both of these — set it before trying either.
+`ADMIN_SLACK_IDS` (section 4) gates this — set it before trying it. Everything for debugging
+lives here now; there is no Slack `debug` command (removed — it duplicated this page). The
+`member_joined_channel` welcome tester from section 8 is unrelated and still lives in the events
+route, since it tests something `/admin` can't (whether Slack is delivering events over HTTP at
+all).
 
-**`/admin`** on the site: read-only participant table (edit streak/freezes/status directly in
-Airtable instead — this page deliberately doesn't duplicate that), a "Force verify" button per
-unverified participant, and buttons to run the three cron jobs on demand. Not gated behind
-Socket Mode/ngrok — works over the same `PUBLIC_SITE_URL` as everything else once you're signed
-in as an admin. The "Run remind" button is a pure test blast — DMs everyone regardless of
-reminder hour, whether they've posted, or whether they were already reminded, and doesn't mark
-anyone as reminded (so it can't suppress a real reminder later that day); the real hourly cron
-always respects all of that.
-
-**`@your-bot debug ...`** in Slack (admin-only, checked at the top of the `debug` command in
-`src/routes/api/slack/events/+server.js`):
-- `debug reconcile` / `debug leaderboard` / `debug remind` — runs that job immediately instead
-  of waiting for its cron schedule, replies with a summary. (`debug remind` here still respects
-  reminder hour/posted-today/already-reminded — only the admin panel's button bypasses those.)
-- `debug stats` — reply to it as a threaded reply under an existing submission and it looks that
-  video up in unified-socials live and posts its current view count in-thread, without waiting
-  for the nightly reconcile pass.
-
-This whole block, plus the `member_joined_channel` welcome tester from section 8, is wrapped in
-`=== DEBUG COMMANDS ===` / `=== END DEBUG COMMANDS ===` comments in the events route
-specifically so they're easy to cut before a real launch — grep for `DEBUG` and `TESTER` in that
-file when you're ready to remove them. The admin panel itself is not meant to be removed; it's
-gated by `ADMIN_SLACK_IDS` instead.
+**`/admin`** on the site has:
+- A read-only participant table — edit streak/freezes/status directly in Airtable instead, this
+  page deliberately doesn't duplicate that — plus a "Force verify" button per unverified
+  participant.
+- Buttons to run the three cron jobs on demand. "Run remind" is a pure test blast: DMs everyone
+  regardless of reminder hour, whether they've posted, or whether they were already reminded, and
+  doesn't mark anyone as reminded (so it can't suppress a real reminder later that day); the real
+  hourly cron always respects all of that.
+- "Check unified-socials stats" — paste any submitted video's URL to see its live view/like count
+  right now, without waiting for the nightly reconcile pass (this replaces the old Slack
+  `debug stats` command).
+- A "Danger zone" with a **Nuke all data** button — deletes every row in every Airtable table
+  (`participants`, `days`, `submissions`, `reviews`). Browser-confirmed before it submits, no
+  server-side undo. For wiping test data between runs only.
 
 ## 10. Checks
 
