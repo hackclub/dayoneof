@@ -17,7 +17,7 @@
 			<li>
 				<strong><a href="/user/{item.slackId}">{item.name}</a></strong> · {item.platform} ·
 				<a href={item.url} target="_blank" rel="noopener">watch</a>
-				· {item.views} views · {item.likes} likes
+				· {item.views} views
 			</li>
 		{/each}
 	</ul>

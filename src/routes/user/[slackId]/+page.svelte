@@ -18,7 +18,7 @@
 		{#each data.submissions as s}
 			<li>
 				<a href={s.url} target="_blank" rel="noopener">{s.platform}</a>
-				· {s.views} views · {s.likes} likes
+				· {s.views} views
 				{#if !s.countedTowardStreak}(didn't count){/if}
 			</li>
 		{/each}

@@ -26,7 +26,6 @@ export async function load({ params }) {
 			platform: s.fields[F.submissions.platform],
 			postedAt: s.fields[F.submissions.postedAt],
 			views: s.fields[F.submissions.views] ?? 0,
-			likes: s.fields[F.submissions.likes] ?? 0,
 			countedTowardStreak: !!s.fields[F.submissions.countedTowardStreak]
 		}))
 	};

@@ -21,8 +21,7 @@ export async function load({ url }) {
 		url: s.fields[F.submissions.url],
 		platform: s.fields[F.submissions.platform],
 		postedAt: s.fields[F.submissions.postedAt],
-		views: s.fields[F.submissions.views] ?? 0,
-		likes: s.fields[F.submissions.likes] ?? 0
+		views: s.fields[F.submissions.views] ?? 0
 	}));
 
 	if (sort === 'views') items = [...items].sort((a, b) => b.views - a.views);
