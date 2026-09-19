@@ -32,7 +32,7 @@
 		<ol>
 			{#each data.byVideo as v}
 				<li>
-					<a href={v.url} target="_blank" rel="noopener">{v.platform}</a>
+					<a href={v.url} target="_blank" rel="noopener">{v.title}</a>
 					by <a href="/user/{v.slackId}">{v.name}</a> — {v.views} views
 				</li>
 			{/each}

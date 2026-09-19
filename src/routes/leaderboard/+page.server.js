@@ -33,7 +33,7 @@ export async function load() {
 			slackId: s.fields[F.submissions.slackId],
 			name: nameBySlackId.get(s.fields[F.submissions.slackId]) ?? 'Unknown',
 			url: s.fields[F.submissions.url],
-			platform: s.fields[F.submissions.platform],
+			title: s.fields[F.submissions.title] || s.fields[F.submissions.platform],
 			views: s.fields[F.submissions.views] ?? 0
 		}))
 		.sort((a, b) => b.views - a.views)

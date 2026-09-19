@@ -3,8 +3,6 @@ import { json } from '@sveltejs/kit';
 import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-// unified-socials write is disabled — see src/lib/server/unified.js. The read path is used to
-// enrich the submission confirmation reply below.
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
@@ -57,9 +55,8 @@ async function getDays(slackId) {
 	return records.map((r) => ({ date: r.fields[F.days.date], status: r.fields[F.days.status] }));
 }
 
-// Participants are only ever created by the HCA sign-in flow (src/routes/api/auth/callback) —
-// the bot no longer auto-creates one on first post, since a post only counts once someone has
-// signed in and HCA has verified them. See handleSubmission's sign-in/verification gate below.
+// Participants only exist once they've signed in via HCA (src/routes/api/auth/callback) — never
+// auto-created here.
 /** @param {string} slackId */
 async function getParticipant(slackId) {
 	return airtable.find(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`);
@@ -116,10 +113,9 @@ async function handleSubmission(event) {
 			console.error('unified-socials stats lookup failed for duplicate post', err);
 		}
 		if (stats) {
-			// Even though a duplicate doesn't count toward the streak, it's still a real video —
-			// its views belong in the site/leaderboard totals like any other submission.
 			await airtable.update(TABLES.submissions, duplicateSubmission.id, {
 				[F.submissions.views]: stats.views,
+				[F.submissions.title]: stats.title,
 				[F.submissions.unifiedId]: String(stats.id)
 			});
 			await syncParticipantTotalViews(event.user);
@@ -159,9 +155,7 @@ async function handleSubmission(event) {
 		[F.participants.status]: 'active'
 	});
 
-	// Best-effort: the video was likely just posted, so unified-socials probably hasn't picked
-	// it up yet — that's fine, messages.streakUpdate says so when stats is null rather than
-	// blocking the reply on it.
+	// Best-effort — the video was likely just posted and may not be tracked yet.
 	let stats = null;
 	try {
 		stats = await fetchPostByPlatformId(link.platform, link.videoId);
@@ -172,16 +166,14 @@ async function handleSubmission(event) {
 	await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 	const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
 
-	// replyMessageTs/streakAtPost/freezesAtPost let the reconcile job edit this exact message
-	// with fresh stats later (see jobs.js's refreshViews) instead of spamming a new reply into
-	// the thread every night. views/unifiedId are saved here too whenever stats came back
-	// non-null — otherwise the thread reply shows real numbers while Airtable (and everything
-	// that reads from it: the site, the Slack leaderboard) stayed at whatever it was before.
+	// Lets reconcile edit this same message with fresh stats later instead of posting a new one.
 	await airtable.update(TABLES.submissions, submission.id, {
 		[F.submissions.replyMessageTs]: reply.ts,
 		[F.submissions.streakAtPost]: streak,
 		[F.submissions.freezesAtPost]: freezes,
-		...(stats ? { [F.submissions.views]: stats.views, [F.submissions.unifiedId]: String(stats.id) } : {})
+		...(stats
+			? { [F.submissions.views]: stats.views, [F.submissions.title]: stats.title, [F.submissions.unifiedId]: String(stats.id) }
+			: {})
 	});
 	if (stats) await syncParticipantTotalViews(event.user);
 
@@ -195,9 +187,7 @@ async function handleSubmission(event) {
 		});
 	}
 
-	// unified-socials handoff is disabled — no confirmed write endpoint exists (see
-	// src/lib/server/unified.js). Views get matched up nightly by (platform, video_id) in the
-	// reconcile cron instead, which doesn't need a submit-time id at all.
+	// unified-socials write is disabled — no confirmed endpoint exists, see unified.js.
 	// try {
 	// 	const unifiedId = await unified.submitPost({ url: link.url, platform: link.platform, slackId: event.user });
 	// 	await airtable.update(TABLES.submissions, submission.id, { [F.submissions.unifiedId]: unifiedId });
@@ -272,10 +262,8 @@ async function handleAppMention(event) {
 	}
 }
 
-// TESTER: fires when the bot itself is invited to a channel, independent of link-posting
-// logic — a fast way to prove Slack is actually delivering events to this endpoint at all.
-// Remove this (and the `member_joined_channel` subscription in Slack's app config) once
-// you've confirmed the events pipeline works.
+// Posts a test message when the bot is invited to a channel — confirms Slack is delivering
+// events at all. Remove along with the member_joined_channel subscription once confirmed.
 /** @type {string | undefined} */
 let botUserId;
 
@@ -292,8 +280,6 @@ async function handleMemberJoined(event) {
 
 /** @param {SlackEvent} [event] */
 async function handleEvent(event) {
-	// [SLACKEVENT] logs below show every inbound event and why it was (or wasn't) handled —
-	// grep for that tag to strip them once the bot is behaving as expected.
 	if (!event) {
 		console.log('[SLACKEVENT] no event on payload, ignoring');
 		return;

@@ -1,7 +1,5 @@
 import { env } from '$env/dynamic/private';
-// PUBLIC_SITE_URL starts with the "PUBLIC_" prefix, so $env/dynamic/private silently excludes
-// it (it only ever contained undefined) — has to come from the public env module instead, even
-// though this app only reads it server-side.
+// PUBLIC_SITE_URL needs the public env module — $env/dynamic/private excludes PUBLIC_-prefixed vars.
 import { env as publicEnv } from '$env/dynamic/public';
 
 export const config = {
@@ -85,6 +83,7 @@ export const F = {
 		permalink: 'permalink',
 		reviewCount: 'review_count',
 		views: 'views',
+		title: 'title',
 		unifiedId: 'unified_id',
 		replyMessageTs: 'reply_message_ts',
 		streakAtPost: 'streak_at_post',
@@ -101,8 +100,6 @@ export const F = {
 	}
 };
 
-// A `participants` row with no slack_id (e.g. a blank row added by hand in Airtable, or a stray
-// upsert) is not a person — every listing of the whole table should exclude it, otherwise it
-// shows up as "<@undefined>" / "undefined" wherever a name or mention gets rendered.
+// Excludes blank rows (e.g. added by hand in Airtable) from any full-table participant listing.
 export const PARTICIPANT_HAS_SLACK_ID = `NOT({${F.participants.slackId}} = "")`;
 

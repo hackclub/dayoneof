@@ -1,5 +1,4 @@
-// Shared job bodies behind /api/cron/* and the Slack `debug` commands (see
-// src/routes/api/slack/events/+server.js) — one implementation, two triggers.
+// Shared job bodies behind /api/cron/* — one implementation per job, reused by the admin panel.
 import { config, requireEnv, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
@@ -13,10 +12,8 @@ function yesterday() {
 	return d.toISOString().slice(0, 10);
 }
 
-// Recomputes one participant's total_views from their stored submissions.views — called right
-// after a submission's views get written (submit time or reconcile) so the site and the Slack
-// leaderboard never lag behind what a thread reply already shows. Summing from Airtable rather
-// than incrementing keeps this correct no matter how many places write views.
+// Sums a participant's stored submissions.views fresh from Airtable, rather than incrementing,
+// so it stays correct regardless of which fetches succeed on any given run.
 /** @param {string} slackId */
 export async function syncParticipantTotalViews(slackId) {
 	const submissions = await airtable.list(TABLES.submissions, {
@@ -37,8 +34,7 @@ export async function runReconcile() {
 	const days = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} = "${date}"` });
 	const postedBySlackId = new Set(days.map((d) => d.fields[F.days.slackId]));
 
-	// Someone whose first-ever activity is today has no days row before yesterday — without
-	// this check they'd be treated as having missed a day that predates their own sign-up.
+	// A participant with no days row before yesterday just signed up today — nothing to reconcile.
 	const priorDays = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} < "${date}"` });
 	const hasHistoryBeforeYesterday = new Set(priorDays.map((d) => d.fields[F.days.slackId]));
 
@@ -79,8 +75,6 @@ export async function runReconcile() {
 	return { processed: participants.length, frozen, broken, ...views };
 }
 
-// Looks each submission up by (platform, video_id) — see the caveats in
-// src/lib/server/unified.js about how confirmed this read path actually is.
 async function refreshViews() {
 	const submissions = await airtable.list(TABLES.submissions, {
 		filterByFormula: `NOT({${F.submissions.videoId}} = "")`
@@ -88,11 +82,6 @@ async function refreshViews() {
 	if (submissions.length === 0) return { viewsChecked: 0 };
 
 	let viewsChecked = 0;
-	// Every slackId with at least one video_id-bearing submission — not just the ones whose
-	// re-fetch succeeds this run. A transient fetch failure for one video used to drop that
-	// video's already-known views out of the participant's total entirely (only slackIds with a
-	// *successful* fetch this pass got summed) — recomputing from stored data for everyone here
-	// avoids that regardless of which fetches happen to succeed on any given run.
 	const slackIds = new Set();
 
 	for (const submission of submissions) {
@@ -111,16 +100,13 @@ async function refreshViews() {
 		if (!post) continue;
 		viewsChecked++;
 
-		// likes isn't stored — it's cheap to re-fetch live (admin's "check stats", the Slack
-		// reply text below) and keeping it out of Airtable is one less field to keep in sync.
 		await airtable.update(TABLES.submissions, submission.id, {
 			[F.submissions.views]: post.views,
+			[F.submissions.title]: post.title,
 			[F.submissions.unifiedId]: String(post.id)
 		});
 
-		// Edit the original confirmation reply in place with fresh stats, rather than posting a
-		// new message into the thread every run. streak_at_post/freezes_at_post were captured
-		// once at submit time so the rest of the message stays historically accurate.
+		// Edits the original confirmation reply in place instead of spamming a new one nightly.
 		const replyMessageTs = submission.fields[F.submissions.replyMessageTs];
 		if (replyMessageTs) {
 			try {
@@ -177,10 +163,10 @@ export async function runLeaderboard() {
 	const videoLines = byVideo
 		.map((s, i) => {
 			const url = s.fields[F.submissions.url];
-			const platform = s.fields[F.submissions.platform];
+			const label = s.fields[F.submissions.title] || s.fields[F.submissions.platform];
 			const slackId = s.fields[F.submissions.slackId];
 			const views = s.fields[F.submissions.views] ?? 0;
-			return `${i + 1}. <${url}|${platform}> by <@${slackId}> — ${views} views`;
+			return `${i + 1}. <${url}|${label}> by <@${slackId}> — ${views} views`;
 		})
 		.join('\n');
 
@@ -198,12 +184,10 @@ function localHour(/** @type {string | undefined} */ tz) {
 	);
 }
 
-/**
- * @param {{ force?: boolean }} [options] `force` DMs literally everyone with a slack_id —
- * ignoring reminder hour, whether they posted today, and whether they were already reminded
- * today — and never writes `last_reminder_day` (so it has zero effect on the real reminder
- * system). For admin testing only; the real hourly cron always calls `runRemind()` with no args.
- */
+// force reminds everyone with a slack_id regardless of hour/posted-today/already-reminded, and
+// never writes last_reminder_day — for the admin panel's test button. The real hourly cron
+// always calls this with no args.
+/** @param {{ force?: boolean }} [options] */
 export async function runRemind({ force = false } = {}) {
 	const today = new Date().toISOString().slice(0, 10);
 	const participants = await airtable.list(TABLES.participants, {
