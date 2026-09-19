@@ -166,21 +166,25 @@ CRON_SECRET=$(openssl rand -hex 32)
 (On Windows without `openssl`, use `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.)
 
 `UNIFIED_SOCIALS_TOKEN` — mint a personal token from the unified-socials-db web app's MCP/API
-page. `UNIFIED_SOCIALS_API_URL` defaults to a placeholder in `config.js`
-(`https://unified-socials.hackclub.com/api/v1`).
+page. `UNIFIED_SOCIALS_API_URL` defaults to `https://unified-socials-db.hackclub.com/api/v1`
+(note the `-db` — an earlier version of this app defaulted to the host without it, which
+silently 404'd every lookup and made everything look "not tracked yet" regardless of whether the
+video was actually tracked).
 
 **Writing** to unified-socials is commented out in `src/lib/server/unified.js` — there's no
 confirmed write endpoint for "register this submission" anywhere this build had access to (the
 MCP server backing this data is explicitly read-only SQL), so `submitPost` is dead code left in
 place for reference rather than a guessed integration that might silently do the wrong thing.
 
-**Reading** views is done by looking a post up by `(platform, video_id)` — those two column
-names (`platform`, `platform_post_id`) are confirmed against the real `api.posts` schema via the
-unified-socials-db MCP server's `list_columns`. What's *not* confirmed is the JSON API's actual
-route/query-param shape (`GET /posts?platform=...&platform_post_id=...` is a guess at a
-PostgREST-style filter) — check that against real API docs before trusting the nightly views
-refresh. This integration only matters for `/api/cron/reconcile`'s views pass — safe to leave
-`UNIFIED_SOCIALS_TOKEN` blank while testing the bot itself.
+**Reading** views is done by looking a post up by `(platform, video_id)` via
+`GET /api/v1/posts?platform=...&platform_post_id=...` — confirmed against unified-socials-db's
+own published API docs (`GET /api/v1/<relation>` takes column names as equality filters). If a
+video you know is tracked still comes back "not tracked yet", check: the video's `platform`/
+`video_id` were captured correctly on the `submissions` row at post time (`src/lib/server/
+links.js`'s URL parsing), and that `UNIFIED_SOCIALS_TOKEN` is a valid personal token — an auth
+failure surfaces as "unified-socials fetch failed: 401", not silently as "no match". This
+integration only matters for `/api/cron/reconcile`'s views pass and the `debug stats` command —
+safe to leave `UNIFIED_SOCIALS_TOKEN` blank while testing the rest of the bot.
 
 `MIN_REVIEW_LENGTH` — leave at the default `40` unless you want a different review-length bar.
 

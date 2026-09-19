@@ -27,17 +27,17 @@ function headers() {
 // }
 
 // --- Reading. -------------------------------------------------------------------------------
-// Looks a post up by (platform, platform_post_id) — confirmed via the unified-socials-db MCP
-// server's `list_columns api.posts` (2026-09-19): platform_post_id is "the public, URL-carried
-// id of the post ... Unique with platform", and `views` is the current best-source view count.
-// Both submissions.platform and submissions.video_id are already captured at submit time
-// (src/lib/server/links.js), so no id returned from a submit call is needed to look this up.
+// Confirmed against unified-socials-db's own published API docs (pasted by the user
+// 2026-09-19): `GET /api/v1/<relation>` returns rows, filtered by column names passed as
+// equality query params, e.g. `GET /api/v1/posts?platform=youtube&platform_post_id=abc123`.
+// Base URL is `https://unified-socials-db.hackclub.com/api/v1` (config.js's default — note the
+// `-db` in the hostname; an earlier guess had it without, which silently pointed at a
+// nonexistent host and made every lookup look like "not tracked yet"). `platform` /
+// `platform_post_id` / `views` / `likes` are real columns on `api.posts`, confirmed via the
+// unified-socials-db MCP server's `list_columns`.
 //
-// What is NOT independently confirmed: the exact JSON API route and query-param names below.
-// The MCP server's own instructions only say "the same views are available ... at /api/v1" —
-// they don't document the REST shape. `${apiUrl}/posts?platform=...&platform_post_id=...` is a
-// guess at a PostgREST-style filter convention. Confirm against real API docs before trusting
-// this in production; until then, treat every value this returns as unverified.
+// Still not shown in the docs snippet: the exact JSON envelope (bare array vs. `{ rows: [...] }`
+// etc.) — the parsing below tries the common shapes.
 /**
  * @param {string} platform
  * @param {string} platformPostId
@@ -50,7 +50,7 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 	const res = await fetch(`${config.unifiedSocialsApiUrl}/posts?${params}`, { headers: headers() });
 	if (!res.ok) throw new Error(`unified-socials fetch failed: ${res.status}`);
 	const data = await res.json();
-	const rows = Array.isArray(data) ? data : (data.posts ?? data.results ?? []);
+	const rows = Array.isArray(data) ? data : (data.rows ?? data.posts ?? data.results ?? []);
 	const post = rows[0];
 	if (!post) return null;
 	return { id: post.id, views: post.views ?? 0, likes: post.likes ?? 0 };
