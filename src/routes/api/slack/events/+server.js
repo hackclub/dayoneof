@@ -1,15 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { json } from '@sveltejs/kit';
-import { config, requireEnv, isAdmin, TABLES, F } from '$lib/server/config.js';
+import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-// unified-socials write is disabled — see src/lib/server/unified.js. The read path is used by
-// the `debug stats` command below.
+// unified-socials write is disabled — see src/lib/server/unified.js. The read path is used to
+// enrich the submission confirmation reply below.
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
 import { isHcaVerified } from '$lib/server/verification.js';
-import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
 import {
 	utcDateString,
 	isDuplicatePost,
@@ -256,65 +255,6 @@ async function handleAppMention(event) {
 		await slack.postMessage(event.channel, `You've left ${reviews.length} reviews.`, event.ts);
 		return;
 	}
-
-	// === DEBUG COMMANDS — admin-only (config.js's ADMIN_SLACK_IDS). Delete this whole `if`
-	// block (and the imports it's the only user of: isAdmin, fetchPostByPlatformId, runReconcile,
-	// runLeaderboard, runRemind) before shipping to prod. ===================================
-	if (command === 'debug') {
-		if (!isAdmin(event.user)) {
-			await slack.postEphemeral(event.channel, event.user, "You're not allowed to run debug commands.");
-			return;
-		}
-
-		if (arg === 'reconcile' || arg === 'leaderboard' || arg === 'remind') {
-			const run = { reconcile: runReconcile, leaderboard: runLeaderboard, remind: runRemind }[arg];
-			try {
-				const result = await run();
-				await slack.postMessage(event.channel, `[debug] ${arg}: ${JSON.stringify(result)}`, event.ts);
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				await slack.postMessage(event.channel, `[debug] ${arg} failed: ${message}`, event.ts);
-			}
-			return;
-		}
-
-		if (arg === 'stats') {
-			// Reply in-thread with a submission's live unified-socials stats, without waiting
-			// for the nightly reconcile job. Use as a threaded reply under the submission.
-			if (!event.thread_ts) {
-				await slack.postMessage(event.channel, '[debug] reply to a submission thread to use `debug stats`', event.ts);
-				return;
-			}
-			const submission = await airtable.find(
-				TABLES.submissions,
-				`{${F.submissions.messageTs}} = "${event.thread_ts}"`
-			);
-			if (!submission) {
-				await slack.postMessage(event.channel, '[debug] no submission found for this thread', event.ts);
-				return;
-			}
-			try {
-				const post = await fetchPostByPlatformId(
-					submission.fields[F.submissions.platform],
-					submission.fields[F.submissions.videoId]
-				);
-				await slack.postMessage(
-					event.channel,
-					post
-						? `[debug] unified-socials: views=${post.views} id=${post.id}`
-						: '[debug] no unified-socials match for this video yet',
-					event.ts
-				);
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				await slack.postMessage(event.channel, `[debug] unified-socials lookup failed: ${message}`, event.ts);
-			}
-			return;
-		}
-
-		await slack.postMessage(event.channel, '[debug] usage: `debug reconcile|leaderboard|remind|stats`', event.ts);
-	}
-	// === END DEBUG COMMANDS ===================================================================
 }
 
 // TESTER: fires when the bot itself is invited to a channel, independent of link-posting
