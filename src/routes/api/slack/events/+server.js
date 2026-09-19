@@ -106,6 +106,16 @@ async function handleSubmission(event) {
 			[F.submissions.channelId]: event.channel,
 			[F.submissions.messageTs]: event.ts
 		});
+
+		const streak = computeStreak(days);
+		const freezes = participant.fields[F.participants.streakFreezes] ?? 0;
+		let stats = null;
+		try {
+			stats = await fetchPostByPlatformId(link.platform, link.videoId);
+		} catch (err) {
+			console.error('unified-socials stats lookup failed for duplicate post', err);
+		}
+		await slack.postMessage(event.channel, messages.duplicatePost(event.user, streak, freezes, stats), event.ts);
 		return;
 	}
 
@@ -151,7 +161,15 @@ async function handleSubmission(event) {
 	}
 
 	await slack.addReaction(event.channel, event.ts, 'white_check_mark');
-	await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
+	const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
+
+	// Recorded so the reconcile job can edit this exact message with fresh stats later (see
+	// jobs.js's refreshViews) instead of spamming a new reply into the thread every night.
+	await airtable.update(TABLES.submissions, submission.id, {
+		[F.submissions.replyMessageTs]: reply.ts,
+		[F.submissions.streakAtPost]: streak,
+		[F.submissions.freezesAtPost]: freezes
+	});
 
 	const milestone = nextMilestone(streak, participant.fields[F.participants.lastMilestone]);
 	if (milestone) {

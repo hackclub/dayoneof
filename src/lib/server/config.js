@@ -85,7 +85,11 @@ export const F = {
 		permalink: 'permalink',
 		reviewCount: 'review_count',
 		views: 'views',
-		unifiedId: 'unified_id'
+		likes: 'likes',
+		unifiedId: 'unified_id',
+		replyMessageTs: 'reply_message_ts',
+		streakAtPost: 'streak_at_post',
+		freezesAtPost: 'freezes_at_post'
 	},
 	reviews: {
 		reviewId: 'review_id',

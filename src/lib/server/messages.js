@@ -29,6 +29,16 @@ export const messages = {
 	},
 	/**
 	 * @param {string} slackId
+	 * @param {number} streak
+	 * @param {number} freezesRemaining
+	 * @param {{ views: number, likes: number } | null} [stats]
+	 */
+	duplicatePost(slackId, streak, freezesRemaining, stats) {
+		const statsLine = stats ? `Stats: ${stats.views} views · ${stats.likes} likes` : 'Stats: not tracked yet — check back later.';
+		return `<@${slackId}> you've already posted today — this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine}`;
+	},
+	/**
+	 * @param {string} slackId
 	 * @param {number} milestone
 	 */
 	milestoneAnnounce(slackId, milestone) {

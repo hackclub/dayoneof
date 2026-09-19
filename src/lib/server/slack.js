@@ -31,6 +31,15 @@ export function postMessage(channel, text, thread_ts) {
 
 /**
  * @param {string} channel
+ * @param {string} ts
+ * @param {string} text
+ */
+export function updateMessage(channel, ts, text) {
+	return call('chat.update', { channel, ts, text });
+}
+
+/**
+ * @param {string} channel
  * @param {string} user
  * @param {string} text
  */
