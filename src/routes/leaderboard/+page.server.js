@@ -1,8 +1,10 @@
-import { TABLES, F } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 
 export async function load() {
-	const participants = await airtable.list(TABLES.participants);
+	const participants = await airtable.list(TABLES.participants, {
+		filterByFormula: PARTICIPANT_HAS_SLACK_ID
+	});
 
 	const byStreak = [...participants]
 		.sort((a, b) => (b.fields[F.participants.currentStreak] ?? 0) - (a.fields[F.participants.currentStreak] ?? 0))

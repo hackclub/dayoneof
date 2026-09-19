@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { isAdmin, TABLES, F } from '$lib/server/config.js';
+import { isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
 
@@ -28,6 +28,7 @@ export async function load({ locals }) {
 	}
 
 	const participants = await airtable.list(TABLES.participants, {
+		filterByFormula: PARTICIPANT_HAS_SLACK_ID,
 		sort: [{ field: F.participants.currentStreak, direction: 'desc' }]
 	});
 
@@ -57,7 +58,9 @@ export const actions = {
 	},
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
-		return runJob('remind', runRemind);
+		// Ignores everyone's set reminder hour so testing doesn't require waiting for the clock
+		// to match — the real hourly cron always calls runRemind() with no options.
+		return runJob('remind', () => runRemind({ ignoreHour: true }));
 	},
 	forceVerify: async ({ request, locals }) => {
 		requireAdmin(locals);

@@ -27,10 +27,12 @@
 				channel. Runs nightly at 00:00 UTC.
 			</li>
 			<li>
-				<strong>remind</strong> — DMs anyone whose reminder hour matches right now (their
-				local time) and who hasn't posted today. <code>sent: 0</code> just means nobody's
-				reminder hour matches the current hour, or everyone due has already posted — not
-				necessarily a bug. Runs hourly.
+				<strong>remind</strong> — the real hourly cron DMs anyone whose reminder hour matches
+				right now (their local time) and who hasn't posted today. The button below ignores
+				reminder hour entirely and DMs everyone who hasn't posted today (for testing) — it
+				still won't double-DM someone already reminded today or who already posted.
+				<code>sent: 0</code> just means everyone eligible has already posted or been
+				reminded, not necessarily a bug.
 			</li>
 		</ul>
 

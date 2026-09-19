@@ -19,7 +19,7 @@ export const config = {
 	sessionSecret: env.SESSION_SECRET,
 	cronSecret: env.CRON_SECRET,
 	unifiedSocialsToken: env.UNIFIED_SOCIALS_TOKEN,
-	unifiedSocialsApiUrl: env.UNIFIED_SOCIALS_API_URL ?? 'https://unified-socials.hackclub.com/api/v1',
+	unifiedSocialsApiUrl: env.UNIFIED_SOCIALS_API_URL ?? 'https://unified-socials-db.hackclub.com/api/v1',
 	minReviewLength: Number(env.MIN_REVIEW_LENGTH ?? 40),
 	adminSlackIds: (env.ADMIN_SLACK_IDS ?? '')
 		.split(',')
@@ -97,4 +97,9 @@ export const F = {
 		text: 'text'
 	}
 };
+
+// A `participants` row with no slack_id (e.g. a blank row added by hand in Airtable, or a stray
+// upsert) is not a person — every listing of the whole table should exclude it, otherwise it
+// shows up as "<@undefined>" / "undefined" wherever a name or mention gets rendered.
+export const PARTICIPANT_HAS_SLACK_ID = `NOT({${F.participants.slackId}} = "")`;
 

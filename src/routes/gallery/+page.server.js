@@ -1,4 +1,4 @@
-import { TABLES, F } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 
 export async function load() {
@@ -6,7 +6,7 @@ export async function load() {
 		airtable.list(TABLES.submissions, {
 			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
 		}),
-		airtable.list(TABLES.participants)
+		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID })
 	]);
 
 	const nameBySlackId = new Map(

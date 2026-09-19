@@ -1,6 +1,6 @@
 // Shared job bodies behind /api/cron/* and the Slack `debug` commands (see
 // src/routes/api/slack/events/+server.js) — one implementation, two triggers.
-import { config, requireEnv, TABLES, F } from './config.js';
+import { config, requireEnv, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import * as unified from './unified.js';
@@ -16,7 +16,7 @@ function yesterday() {
 export async function runReconcile() {
 	const date = yesterday();
 	const participants = await airtable.list(TABLES.participants, {
-		filterByFormula: `OR({${F.participants.status}} = "active", {${F.participants.status}} = "frozen")`
+		filterByFormula: `AND(${PARTICIPANT_HAS_SLACK_ID}, OR({${F.participants.status}} = "active", {${F.participants.status}} = "frozen"))`
 	});
 	const days = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} = "${date}"` });
 	const postedBySlackId = new Set(days.map((d) => d.fields[F.days.slackId]));
@@ -108,7 +108,9 @@ async function refreshViews() {
 }
 
 export async function runLeaderboard() {
-	const participants = await airtable.list(TABLES.participants);
+	const participants = await airtable.list(TABLES.participants, {
+		filterByFormula: PARTICIPANT_HAS_SLACK_ID
+	});
 
 	const byStreak = [...participants]
 		.sort((a, b) => {
@@ -144,10 +146,17 @@ function localHour(/** @type {string | undefined} */ tz) {
 	);
 }
 
-export async function runRemind() {
+/**
+ * @param {{ ignoreHour?: boolean }} [options] `ignoreHour` reminds everyone eligible right now
+ * regardless of their set reminder hour (or whether they set one at all) — for admin testing,
+ * never used by the real hourly cron.
+ */
+export async function runRemind({ ignoreHour = false } = {}) {
 	const today = new Date().toISOString().slice(0, 10);
 	const participants = await airtable.list(TABLES.participants, {
-		filterByFormula: `NOT({${F.participants.reminderHour}} = "")`
+		filterByFormula: ignoreHour
+			? PARTICIPANT_HAS_SLACK_ID
+			: `AND(${PARTICIPANT_HAS_SLACK_ID}, NOT({${F.participants.reminderHour}} = ""))`
 	});
 	const daysToday = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} = "${today}"` });
 	const postedToday = new Set(daysToday.map((d) => d.fields[F.days.slackId]));
@@ -157,7 +166,7 @@ export async function runRemind() {
 		const slackId = participant.fields[F.participants.slackId];
 		if (postedToday.has(slackId)) continue;
 		if (participant.fields[F.participants.lastReminderDay] === today) continue;
-		if (localHour(participant.fields[F.participants.tz]) !== participant.fields[F.participants.reminderHour]) continue;
+		if (!ignoreHour && localHour(participant.fields[F.participants.tz]) !== participant.fields[F.participants.reminderHour]) continue;
 
 		await slack.dm(slackId, messages.reminder());
 		await airtable.update(TABLES.participants, participant.id, {
