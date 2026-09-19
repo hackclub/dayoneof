@@ -91,8 +91,26 @@ async function refreshViews() {
 
 		await airtable.update(TABLES.submissions, submission.id, {
 			[F.submissions.views]: post.views,
+			[F.submissions.likes]: post.likes,
 			[F.submissions.unifiedId]: String(post.id)
 		});
+
+		// Edit the original confirmation reply in place with fresh stats, rather than posting a
+		// new message into the thread every run. streak_at_post/freezes_at_post were captured
+		// once at submit time so the rest of the message stays historically accurate.
+		const replyMessageTs = submission.fields[F.submissions.replyMessageTs];
+		if (replyMessageTs) {
+			try {
+				const text = messages.streakUpdate(
+					submission.fields[F.submissions.streakAtPost] ?? 0,
+					submission.fields[F.submissions.freezesAtPost] ?? 0,
+					{ views: post.views, likes: post.likes }
+				);
+				await slack.updateMessage(submission.fields[F.submissions.channelId], replyMessageTs, text);
+			} catch (err) {
+				console.error('failed to update submission reply with fresh stats', err);
+			}
+		}
 
 		const slackId = submission.fields[F.submissions.slackId];
 		totalsBySlackId.set(slackId, (totalsBySlackId.get(slackId) ?? 0) + post.views);
@@ -147,14 +165,15 @@ function localHour(/** @type {string | undefined} */ tz) {
 }
 
 /**
- * @param {{ ignoreHour?: boolean }} [options] `ignoreHour` reminds everyone eligible right now
- * regardless of their set reminder hour (or whether they set one at all) — for admin testing,
- * never used by the real hourly cron.
+ * @param {{ force?: boolean }} [options] `force` DMs literally everyone with a slack_id —
+ * ignoring reminder hour, whether they posted today, and whether they were already reminded
+ * today — and never writes `last_reminder_day` (so it has zero effect on the real reminder
+ * system). For admin testing only; the real hourly cron always calls `runRemind()` with no args.
  */
-export async function runRemind({ ignoreHour = false } = {}) {
+export async function runRemind({ force = false } = {}) {
 	const today = new Date().toISOString().slice(0, 10);
 	const participants = await airtable.list(TABLES.participants, {
-		filterByFormula: ignoreHour
+		filterByFormula: force
 			? PARTICIPANT_HAS_SLACK_ID
 			: `AND(${PARTICIPANT_HAS_SLACK_ID}, NOT({${F.participants.reminderHour}} = ""))`
 	});
@@ -164,14 +183,16 @@ export async function runRemind({ ignoreHour = false } = {}) {
 	let sent = 0;
 	for (const participant of participants) {
 		const slackId = participant.fields[F.participants.slackId];
-		if (postedToday.has(slackId)) continue;
-		if (participant.fields[F.participants.lastReminderDay] === today) continue;
-		if (!ignoreHour && localHour(participant.fields[F.participants.tz]) !== participant.fields[F.participants.reminderHour]) continue;
+		if (!force && postedToday.has(slackId)) continue;
+		if (!force && participant.fields[F.participants.lastReminderDay] === today) continue;
+		if (!force && localHour(participant.fields[F.participants.tz]) !== participant.fields[F.participants.reminderHour]) continue;
 
 		await slack.dm(slackId, messages.reminder());
-		await airtable.update(TABLES.participants, participant.id, {
-			[F.participants.lastReminderDay]: today
-		});
+		if (!force) {
+			await airtable.update(TABLES.participants, participant.id, {
+				[F.participants.lastReminderDay]: today
+			});
+		}
 		sent++;
 	}
 

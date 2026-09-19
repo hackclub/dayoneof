@@ -28,11 +28,10 @@
 			</li>
 			<li>
 				<strong>remind</strong> — the real hourly cron DMs anyone whose reminder hour matches
-				right now (their local time) and who hasn't posted today. The button below ignores
-				reminder hour entirely and DMs everyone who hasn't posted today (for testing) — it
-				still won't double-DM someone already reminded today or who already posted.
-				<code>sent: 0</code> just means everyone eligible has already posted or been
-				reminded, not necessarily a bug.
+				right now (their local time) and who hasn't posted today. The button below is a pure
+				test blast: DMs <em>everyone</em>, ignoring reminder hour, whether they've posted
+				today, and whether they were already reminded — and doesn't mark anyone as reminded,
+				so it can't suppress a real reminder later today.
 			</li>
 		</ul>
 
@@ -75,7 +74,7 @@
 			<tbody>
 				{#each data.participants as p}
 					<tr>
-						<td>{p.name}</td>
+						<td><a href="/user/{p.slackId}">{p.name}</a></td>
 						<td>{p.slackId}</td>
 						<td>{p.status}</td>
 						<td>{p.verificationStatus || '—'}</td>

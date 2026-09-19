@@ -58,9 +58,9 @@ export const actions = {
 	},
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
-		// Ignores everyone's set reminder hour so testing doesn't require waiting for the clock
-		// to match — the real hourly cron always calls runRemind() with no options.
-		return runJob('remind', () => runRemind({ ignoreHour: true }));
+		// DMs literally everyone, ignoring hour/posted-today/already-reminded — the real hourly
+		// cron always calls runRemind() with no options.
+		return runJob('remind', () => runRemind({ force: true }));
 	},
 	forceVerify: async ({ request, locals }) => {
 		requireAdmin(locals);
