@@ -195,6 +195,16 @@ integration only matters for `/api/cron/reconcile`'s views pass and `/admin`'s "
 socials stats" tool (section 9) — safe to leave `UNIFIED_SOCIALS_TOKEN` blank while testing the
 rest of the bot.
 
+`links.js` unwraps Slack's own `<url>` / `<url|label>` link wrapping before matching — Slack adds
+this to *every* URL in message text over the Events API, not just markdown-authored links, so a
+naive `\S+` match used to swallow it straight into the stored URL (visible as garbage like
+`...kaE|youtube.com/watch?v=…>` on the leaderboard). It also always rebuilds a canonical URL from
+the captured platform + id rather than storing whatever the user pasted, so query params, mobile
+subdomains, and `youtu.be`/`shorts` links all normalize to one form per platform. If a specific
+tracked video still doesn't show a view count after this fix, that's most likely unified-socials
+genuinely not having indexed it yet (or a real `platform_post_id` mismatch) rather than a parsing
+bug — use `/admin`'s "Check stats" tool to confirm live.
+
 Views get written to `submissions.views` (and `participants.total_views` via
 `syncParticipantTotalViews`) in two places, kept deliberately in sync: at submit time in
 `handleSubmission` (if the video happens to already be tracked when posted) and nightly in
