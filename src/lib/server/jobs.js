@@ -87,13 +87,19 @@ async function refreshViews() {
 	});
 	if (submissions.length === 0) return { viewsChecked: 0 };
 
-	const totalsBySlackId = new Map();
 	let viewsChecked = 0;
+	// Every slackId with at least one video_id-bearing submission — not just the ones whose
+	// re-fetch succeeds this run. A transient fetch failure for one video used to drop that
+	// video's already-known views out of the participant's total entirely (only slackIds with a
+	// *successful* fetch this pass got summed) — recomputing from stored data for everyone here
+	// avoids that regardless of which fetches happen to succeed on any given run.
+	const slackIds = new Set();
 
 	for (const submission of submissions) {
 		const platform = submission.fields[F.submissions.platform];
 		const videoId = submission.fields[F.submissions.videoId];
 		if (!platform || !videoId) continue;
+		slackIds.add(submission.fields[F.submissions.slackId]);
 
 		let post;
 		try {
@@ -128,15 +134,10 @@ async function refreshViews() {
 				console.error('failed to update submission reply with fresh stats', err);
 			}
 		}
-
-		const slackId = submission.fields[F.submissions.slackId];
-		totalsBySlackId.set(slackId, (totalsBySlackId.get(slackId) ?? 0) + post.views);
 	}
 
-	for (const [slackId, total] of totalsBySlackId) {
-		await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
-			[F.participants.totalViews]: total
-		});
+	for (const slackId of slackIds) {
+		await syncParticipantTotalViews(slackId);
 	}
 
 	return { viewsChecked };
