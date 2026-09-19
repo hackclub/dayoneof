@@ -23,5 +23,8 @@
 	<nav>
 		<a href="/leaderboard">Leaderboard</a>
 		<a href="/gallery">Gallery</a>
+		{#if data.isAdmin}
+			<a href="/admin">Admin</a>
+		{/if}
 	</nav>
 </main>
