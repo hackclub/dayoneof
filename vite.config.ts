@@ -3,6 +3,11 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+	server: {
+		// ngrok's free tier hands out a new random subdomain each run — allow the whole
+		// domain rather than updating this every time. See RUN.md section 5.
+		allowedHosts: ['.ngrok-free.app']
+	},
 	plugins: [
 		sveltekit({
 			compilerOptions: {
