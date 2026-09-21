@@ -7,7 +7,7 @@
 //
 // Needs a token with schema.bases:write on top of the data scopes the app itself uses.
 
-import { TABLES, F, DAY_STATUSES, PARTICIPANT_STATUSES } from '../src/lib/server/schema.js';
+import { tablesFor, F, DAY_STATUSES, PARTICIPANT_STATUSES } from '../src/lib/server/schema.js';
 
 const META = 'https://api.airtable.com/v0/meta/bases';
 
@@ -26,7 +26,10 @@ const select = (names) => ({
 });
 
 // First field of each table is its primary field.
-const SCHEMA = [
+/** @param {'dev' | 'prod'} appEnv */
+function schemaFor(appEnv) {
+	const TABLES = tablesFor(appEnv);
+	return [
 	{
 		name: TABLES.participants,
 		fields: [
@@ -89,7 +92,8 @@ const SCHEMA = [
 			{ name: F.reviews.text, ...longText }
 		]
 	}
-];
+	];
+}
 
 /**
  * Mirrors config.js: NAME_DEV / NAME_PROD wins, unsuffixed name is the shared fallback.
@@ -124,11 +128,11 @@ async function main() {
 
 	const token = envVar('AIRTABLE_TOKEN', appEnv);
 	const baseId = envVar('AIRTABLE_BASE_ID', appEnv);
-	console.log(`setting up ${appEnv} base ${baseId}`);
+	console.log(`setting up ${appEnv} tables in base ${baseId}`);
 
 	const { tables: existing } = await api(token, `${META}/${baseId}/tables`);
 
-	for (const table of SCHEMA) {
+	for (const table of schemaFor(appEnv)) {
 		const found = existing.find(/** @param {{ name: string }} t */ (t) => t.name === table.name);
 		if (!found) {
 			await api(token, `${META}/${baseId}/tables`, {
@@ -156,16 +160,27 @@ async function main() {
 		);
 	}
 
-	console.log(`done — put this base id in AIRTABLE_BASE_ID_${appEnv.toUpperCase()}`);
+	console.log('done');
 }
 
 main().catch((err) => {
-	console.error(err.message);
-	if (String(err.message).includes('PRIMARY_FIELD')) {
+	const message = String(err.message);
+	console.error(message);
+	if (message.includes('INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND')) {
+		console.error(
+			'\nhint: Airtable returns this for both "no access" and "not found", so check all three at\n' +
+				'https://airtable.com/create/tokens — the token needs the schema.bases:read AND\n' +
+				'schema.bases:write scopes (read is separate; write does not imply it), plus this base\n' +
+				'listed under its access, and the base id has to match.'
+		);
+	}
+	if (message.includes('PRIMARY_FIELD')) {
 		console.error(
 			'hint: if Airtable rejects an autoNumber primary field, create that table by hand with ' +
 				'submission_id / review_id as an Autonumber primary field, then re-run to add the rest.'
 		);
 	}
-	process.exit(1);
+	// Not process.exit(): exiting from inside a rejection handler while fetch's handles are still
+	// closing trips a libuv assertion on Windows.
+	process.exitCode = 1;
 });

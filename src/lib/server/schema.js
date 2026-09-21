@@ -1,11 +1,20 @@
 // Table and field names only — no $env imports, so plain-node scripts can import this too.
 
-export const TABLES = {
-	participants: 'participants',
-	days: 'days',
-	submissions: 'submissions',
-	reviews: 'reviews'
-};
+/**
+ * Both environments share one Airtable base — dev gets its own copy of each table under a `_dev`
+ * suffix. Prod keeps the bare names, so the tables that already exist never have to be renamed,
+ * and `_dev` matches the snake_case the field names already use.
+ * @param {'dev' | 'prod'} appEnv
+ */
+export function tablesFor(appEnv) {
+	const s = appEnv === 'prod' ? '' : '_dev';
+	return {
+		participants: `participants${s}`,
+		days: `days${s}`,
+		submissions: `submissions${s}`,
+		reviews: `reviews${s}`
+	};
+}
 
 export const F = {
 	participants: {

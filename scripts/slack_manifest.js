@@ -76,5 +76,5 @@ try {
 	main();
 } catch (err) {
 	console.error(err instanceof Error ? err.message : String(err));
-	process.exit(1);
+	process.exitCode = 1;
 }

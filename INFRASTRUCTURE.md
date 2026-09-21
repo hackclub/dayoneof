@@ -52,9 +52,16 @@ src/routes/
 
 ## Dev vs prod
 
-There are two of everything external — two Airtable bases, two Slack apps, two site URLs — and
-one `APP_ENV` var picks which set the app loads. Nothing else changes with it: same code, same
-routes, same behaviour, just different credentials.
+There are two of most things external — two Slack apps, two site URLs, two sets of Airtable
+tables — and one `APP_ENV` var picks which set the app loads. Nothing else changes with it: same
+code, same routes, same behaviour, just different data and credentials.
+
+Airtable is the exception to the "two of everything" shape: both environments share **one base**,
+and dev works against a `_dev` copy of each table (`participants_dev`, `days_dev`,
+`submissions_dev`, `reviews_dev`). Prod keeps the bare names. `schema.js`'s `tablesFor(appEnv)`
+applies the suffix and `config.js` exports the resolved map as `TABLES`, so every call site keeps
+writing `TABLES.submissions` and lands in the right place automatically. One base means one base
+id, one token grant, and one Airtable tab to look at when something's wrong.
 
 Every var in `.env` may be suffixed `_DEV` or `_PROD`. `config.js` looks for `NAME_<APP_ENV>`
 first and falls back to the bare `NAME`, so anything genuinely shared is written once without a
@@ -63,9 +70,9 @@ suffix while the things that differ are written twice:
 ```
 APP_ENV=dev
 
-AIRTABLE_TOKEN=pat...              # shared — one token with access to both bases
-AIRTABLE_BASE_ID_DEV=appTest...
-AIRTABLE_BASE_ID_PROD=appReal...
+AIRTABLE_BASE_ID=app...            # shared — one base, `_dev` tables inside it
+SLACK_BOT_TOKEN_DEV=xoxb-...
+SLACK_BOT_TOKEN_PROD=xoxb-...
 ```
 
 `APP_ENV` defaults to `dev` when unset, so a machine that's missing it never reaches for
@@ -79,13 +86,16 @@ local `.env` can fire prod's reconcile and post a leaderboard to the real announ
 dev copy lives in a file on a laptop and gets pasted into terminals; the prod copy shouldn't.
 
 What's genuinely shared is the narrow set where dev and prod want the identical value and leaking
-the dev copy costs nothing extra: `AIRTABLE_TOKEN` (one token scoped to both bases),
-`UNIFIED_SOCIALS_TOKEN` (read-only), `ADMIN_SLACK_IDS`, `MIN_REVIEW_LENGTH`.
+the dev copy costs nothing extra: `AIRTABLE_TOKEN`/`AIRTABLE_BASE_ID` (one base, see above),
+`HCA_CLIENT_ID`/`HCA_CLIENT_SECRET` (one HCA app, see below), `UNIFIED_SOCIALS_TOKEN`
+(read-only), `ADMIN_SLACK_IDS`, `MIN_REVIEW_LENGTH`.
 
 ## Data model (Airtable)
 
-Four tables. Field names live once in `schema.js`'s `F` map — rename there too if you rename a
-column in Airtable. `npm run setup:airtable -- dev` builds them all in an empty base.
+Four tables, times two environments — the names below are prod's; dev's carry a `_dev` suffix
+(see "Dev vs prod"). Field names are identical in both and live once in `schema.js`'s `F` map —
+rename there too if you rename a column in Airtable. `npm run setup:airtable -- <env>` builds
+whichever set is missing.
 
 ### `participants` — one row per person, keyed on `slack_id`
 
@@ -272,27 +282,39 @@ cp .env.example .env
 
 ### 1. Airtable
 
-Create two empty bases — one for testing, one for production — and a **personal access token**
-([airtable.com/create/tokens](https://airtable.com/create/tokens)) with access to both. Scopes:
-`data.records:read`, `data.records:write`, and `schema.bases:write` for the setup script below.
-Grab each **base ID** (Help → API documentation, starts with `app...`).
+Create one base and a **personal access token**
+([airtable.com/create/tokens](https://airtable.com/create/tokens)). Two things to get right, and
+Airtable reports the same `INVALID_PERMISSIONS_OR_MODEL_NOT_FOUND` 403 when either is wrong:
+
+- **Scopes**: `data.records:read`, `data.records:write` for the app, plus
+  `schema.bases:read` *and* `schema.bases:write` for the setup script. Read is a separate scope —
+  granting write does not imply it, and the script lists tables before creating any.
+- **Access**: the base itself has to be listed under the token's access, not just the scopes.
+
+Grab the **base ID** (Help → API documentation, starts with `app...`).
 
 ```
 AIRTABLE_TOKEN=pat...
-AIRTABLE_BASE_ID_DEV=app...
-AIRTABLE_BASE_ID_PROD=app...
+AIRTABLE_BASE_ID=app...
 ```
 
-Then let the script build the tables instead of clicking them in:
+Then let the script build the tables instead of clicking them in — once per environment, into
+that same base:
 
 ```
-npm run setup:airtable -- dev
-npm run setup:airtable -- prod
+npm run setup:airtable -- prod    # participants, days, submissions, reviews
+npm run setup:airtable -- dev     # participants_dev, days_dev, submissions_dev, reviews_dev
 ```
 
-It creates the four tables with the field types documented above, and is safe to re-run — it only
-adds what's missing, so it doubles as a way to top up a base after a schema change. (Needs Node
-20.6+ for `--env-file`.)
+Each run creates its four tables with the field types documented above, and is safe to re-run —
+it only adds what's missing, so it doubles as a way to top up after a schema change. Running both
+gives you eight tables side by side in one base. (Needs Node 20.6+ for `--env-file`.)
+
+**Run both setup scripts from your own machine, including for prod.** Neither is part of the
+app: `setup_airtable.js` is an HTTP client for `api.airtable.com` and `slack_manifest.js` just
+prints JSON to stdout. They provision the *external* services, so where the app happens to be
+running is irrelevant — you don't need a shell in the container, and nothing about the schema
+ships in the image. Both runs read the same `AIRTABLE_BASE_ID` from your local `.env`.
 
 ### 2. Start the app and expose it
 
@@ -358,15 +380,24 @@ When the ngrok URL changes, update `PUBLIC_SITE_URL_DEV` and re-paste the new Re
 ### 4. HCA (Hack Club Auth)
 
 Register an OAuth application with Hack Club Auth (ask in Hack Club's Slack). Enable the
-`openid email name slack_id verification_status` scopes. Set its redirect URI to
-`<PUBLIC_SITE_URL>/api/auth/callback`. Since dev and prod have different URLs, that's two
-registrations — unless HCA lets you list both redirect URIs on one app, in which case a single
-unsuffixed `HCA_CLIENT_ID`/`HCA_CLIENT_SECRET` covers both.
+`openid email name slack_id verification_status` scopes.
+
+One app covers both environments, so these stay unsuffixed:
 
 ```
-HCA_CLIENT_ID_DEV=...
-HCA_CLIENT_SECRET_DEV=...
+HCA_CLIENT_ID=...
+HCA_CLIENT_SECRET=...
 ```
+
+The one thing that is still per-environment is the **redirect URI**, because it's derived from
+`PUBLIC_SITE_URL`. Register both on the same app:
+
+```
+https://<ngrok host>/api/auth/callback
+https://<the real domain>/api/auth/callback
+```
+
+The ngrok one changes every time the tunnel restarts, so expect to re-register it.
 
 Skippable if you only want to test the Slack bot and cron jobs — sign-in is only used by
 `/api/auth/*` and the landing page.
