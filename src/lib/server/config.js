@@ -2,24 +2,51 @@ import { env } from '$env/dynamic/private';
 // PUBLIC_SITE_URL needs the public env module — $env/dynamic/private excludes PUBLIC_-prefixed vars.
 import { env as publicEnv } from '$env/dynamic/public';
 
+export { TABLES, F, DAY_STATUSES, PARTICIPANT_STATUSES, PARTICIPANT_HAS_SLACK_ID } from './schema.js';
+
+/** @type {'dev' | 'prod'} */
+export const appEnv = env.APP_ENV?.trim().toLowerCase() === 'prod' ? 'prod' : 'dev';
+
+/**
+ * Every var may be suffixed `_DEV`/`_PROD` so the test and production Airtable base, Slack app and
+ * site URL can sit side by side in one file; the unsuffixed name is the shared fallback for the
+ * ones that don't differ between the two. Defaults to dev, so a missing APP_ENV never picks prod.
+ * @param {Record<string, string | undefined>} source
+ * @param {string} name
+ * @returns {string | undefined}
+ */
+function envVar(source, name) {
+	return source[`${name}_${appEnv.toUpperCase()}`] || source[name];
+}
+
+/** @param {string} name */
+const priv = (name) => envVar(env, name);
+
+/** @param {string} name */
+const pub = (name) => envVar(publicEnv, name);
+
 export const config = {
-	siteUrl: publicEnv.PUBLIC_SITE_URL,
-	airtableToken: env.AIRTABLE_TOKEN,
-	airtableBaseId: env.AIRTABLE_BASE_ID,
-	slackBotToken: env.SLACK_BOT_TOKEN,
-	slackSigningSecret: env.SLACK_SIGNING_SECRET,
-	submissionChannelId: env.SLACK_SUBMISSION_CHANNEL_ID,
-	announceChannelId: env.SLACK_ANNOUNCE_CHANNEL_ID,
-	hcaIssuer: (env.HCA_ISSUER || 'https://auth.hackclub.com').replace(/\/$/, ''),
-	hcaClientId: env.HCA_CLIENT_ID,
-	hcaClientSecret: env.HCA_CLIENT_SECRET,
-	hcaScope: env.HCA_SCOPE || 'openid email name slack_id verification_status',
-	sessionSecret: env.SESSION_SECRET,
-	cronSecret: env.CRON_SECRET,
-	unifiedSocialsToken: env.UNIFIED_SOCIALS_TOKEN,
-	unifiedSocialsApiUrl: env.UNIFIED_SOCIALS_API_URL ?? 'https://unified-socials-db.hackclub.com/api/v1',
-	minReviewLength: Number(env.MIN_REVIEW_LENGTH ?? 40),
-	adminSlackIds: (env.ADMIN_SLACK_IDS ?? '')
+	appEnv,
+	// Trailing slash stripped — every use appends a rooted path, and `.dev//api/auth/callback`
+	// doesn't match the redirect URI registered with HCA.
+	siteUrl: pub('PUBLIC_SITE_URL')?.replace(/\/$/, ''),
+	airtableToken: priv('AIRTABLE_TOKEN'),
+	airtableBaseId: priv('AIRTABLE_BASE_ID'),
+	slackBotToken: priv('SLACK_BOT_TOKEN'),
+	slackSigningSecret: priv('SLACK_SIGNING_SECRET'),
+	submissionChannelId: priv('SLACK_SUBMISSION_CHANNEL_ID'),
+	announceChannelId: priv('SLACK_ANNOUNCE_CHANNEL_ID'),
+	hcaIssuer: (priv('HCA_ISSUER') || 'https://auth.hackclub.com').replace(/\/$/, ''),
+	hcaClientId: priv('HCA_CLIENT_ID'),
+	hcaClientSecret: priv('HCA_CLIENT_SECRET'),
+	hcaScope: priv('HCA_SCOPE') || 'openid email name slack_id verification_status',
+	sessionSecret: priv('SESSION_SECRET'),
+	cronSecret: priv('CRON_SECRET'),
+	unifiedSocialsToken: priv('UNIFIED_SOCIALS_TOKEN'),
+	unifiedSocialsApiUrl:
+		priv('UNIFIED_SOCIALS_API_URL') ?? 'https://unified-socials-db.hackclub.com/api/v1',
+	minReviewLength: Number(priv('MIN_REVIEW_LENGTH') ?? 40),
+	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')
 		.map((id) => id.trim())
 		.filter(Boolean)
@@ -36,70 +63,6 @@ export function isAdmin(slackId) {
  * @returns {string}
  */
 export function requireEnv(name, value) {
-	if (!value) throw new Error(`missing required env var: ${name}`);
+	if (!value) throw new Error(`missing required env var: ${name} (APP_ENV=${appEnv})`);
 	return value;
 }
-
-export const TABLES = {
-	participants: 'participants',
-	days: 'days',
-	submissions: 'submissions',
-	reviews: 'reviews'
-};
-
-export const F = {
-	participants: {
-		slackId: 'slack_id',
-		name: 'name',
-		email: 'email',
-		tz: 'tz',
-		status: 'status',
-		daysCompleted: 'days_completed',
-		streakFreezes: 'streak_freezes',
-		daysElapsed: 'days_elapsed',
-		currentStreak: 'current_streak',
-		verificationStatus: 'verification_status',
-		lastMilestone: 'last_milestone',
-		reminderHour: 'reminder_hour',
-		lastReminderDay: 'last_reminder_day',
-		totalViews: 'total_views'
-	},
-	days: {
-		slackId: 'slack_id',
-		date: 'date',
-		status: 'status'
-	},
-	submissions: {
-		submissionId: 'submission_id',
-		slackId: 'slack_id',
-		url: 'url',
-		platform: 'platform',
-		videoId: 'video_id',
-		postedAt: 'posted_at',
-		day: 'day',
-		countedTowardStreak: 'counted_toward_streak',
-		channelId: 'channel_id',
-		messageTs: 'message_ts',
-		permalink: 'permalink',
-		reviewCount: 'review_count',
-		views: 'views',
-		title: 'title',
-		unifiedId: 'unified_id',
-		replyMessageTs: 'reply_message_ts',
-		streakAtPost: 'streak_at_post',
-		freezesAtPost: 'freezes_at_post'
-	},
-	reviews: {
-		reviewId: 'review_id',
-		submissionId: 'submission_id',
-		reviewerId: 'reviewer_id',
-		reviewedAt: 'reviewed_at',
-		messageTs: 'message_ts',
-		length: 'length',
-		text: 'text'
-	}
-};
-
-// Excludes blank rows (e.g. added by hand in Airtable) from any full-table participant listing.
-export const PARTICIPANT_HAS_SLACK_ID = `NOT({${F.participants.slackId}} = "")`;
-

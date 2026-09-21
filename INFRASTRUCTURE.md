@@ -1,7 +1,7 @@
 # Infrastructure
 
 How dayoneof is built and how to run it. One app, one process: a SvelteKit site with the Slack
-bot living inside it as a route, deployed on Vercel, backed by Airtable.
+bot living inside it as a route, deployed as a container on Orchard, backed by Airtable.
 
 ## Stack
 
@@ -10,7 +10,8 @@ bot living inside it as a route, deployed on Vercel, backed by Airtable.
   `@param`/`@returns` annotations. `npm run check` must stay at 0 errors.
 - **Airtable** is the entire database — four tables, no SQL, plain `fetch` against Airtable's
   REST API (`src/lib/server/airtable.js`), no SDK.
-- **Vercel** hosts the site and runs the cron jobs (`vercel.json`) via `@sveltejs/adapter-vercel`.
+- **Orchard** hosts the site as a container (`@sveltejs/adapter-node`, started with `node build`)
+  and runs the three cron routes as scheduled jobs.
 - **Slack** is the primary interface for participants — a bot listens on `/api/slack/events` for
   submissions, DMs, and commands.
 - **Hack Club Auth (HCA)** gates who can count a submission — sign-in via OIDC.
@@ -20,8 +21,13 @@ bot living inside it as a route, deployed on Vercel, backed by Airtable.
 ## Layout
 
 ```
+scripts/                 one-off setup helpers, plain node (not part of the app)
+  setup_airtable.js       creates the four tables in a base via Airtable's metadata API
+  slack_manifest.js       prints an importable Slack app manifest
+
 src/lib/server/          server-only modules (SvelteKit refuses to ship these to the browser)
-  config.js               env vars, Airtable table/field name map (F), isAdmin, requireEnv
+  config.js               env resolution (APP_ENV dev/prod), isAdmin, requireEnv
+  schema.js               Airtable table/field name map (F) — no $env, so scripts can import it
   airtable.js             REST client: find/list/create/update/remove/upsert
   slack.js                Slack Web API wrappers: postMessage/updateMessage/dm/reactions/etc
   hca.js                  Hack Club Auth OIDC (authorize/token/userinfo)
@@ -44,10 +50,42 @@ src/routes/
   api/auth/{login,callback,logout}/          HCA sign-in
 ```
 
+## Dev vs prod
+
+There are two of everything external — two Airtable bases, two Slack apps, two site URLs — and
+one `APP_ENV` var picks which set the app loads. Nothing else changes with it: same code, same
+routes, same behaviour, just different credentials.
+
+Every var in `.env` may be suffixed `_DEV` or `_PROD`. `config.js` looks for `NAME_<APP_ENV>`
+first and falls back to the bare `NAME`, so anything genuinely shared is written once without a
+suffix while the things that differ are written twice:
+
+```
+APP_ENV=dev
+
+AIRTABLE_TOKEN=pat...              # shared — one token with access to both bases
+AIRTABLE_BASE_ID_DEV=appTest...
+AIRTABLE_BASE_ID_PROD=appReal...
+```
+
+`APP_ENV` defaults to `dev` when unset, so a machine that's missing it never reaches for
+production. Both setup scripts take the same `dev`/`prod` argument and resolve vars the same way.
+
+`SESSION_SECRET` and `CRON_SECRET` belong in the per-environment column even though nothing about
+them is environment-specific, because sharing them hands dev a key to prod: the same
+`SESSION_SECRET` means a session cookie signed on your laptop authenticates against the
+production site — including `/admin` — and the same `CRON_SECRET` means the value sitting in your
+local `.env` can fire prod's reconcile and post a leaderboard to the real announce channel. The
+dev copy lives in a file on a laptop and gets pasted into terminals; the prod copy shouldn't.
+
+What's genuinely shared is the narrow set where dev and prod want the identical value and leaking
+the dev copy costs nothing extra: `AIRTABLE_TOKEN` (one token scoped to both bases),
+`UNIFIED_SOCIALS_TOKEN` (read-only), `ADMIN_SLACK_IDS`, `MIN_REVIEW_LENGTH`.
+
 ## Data model (Airtable)
 
-Four tables. Field names live once in `config.js`'s `F` map — rename there too if you rename a
-column in Airtable.
+Four tables. Field names live once in `schema.js`'s `F` map — rename there too if you rename a
+column in Airtable. `npm run setup:airtable -- dev` builds them all in an empty base.
 
 ### `participants` — one row per person, keyed on `slack_id`
 
@@ -134,9 +172,9 @@ DM the participant, write `last_milestone` so it doesn't repeat.
 
 ## Cron jobs
 
-`vercel.json` schedules three `GET /api/cron/<name>` routes, each gated on
-`Authorization: Bearer $CRON_SECRET`. Each route is a thin wrapper around a shared function in
-`jobs.js` (also callable from the admin panel).
+Three `GET /api/cron/<name>` routes, each gated on `Authorization: Bearer $CRON_SECRET`. Each
+route is a thin wrapper around a shared function in `jobs.js` (also callable from the admin
+panel). Orchard jobs call them on the schedules below — see "Cron on Orchard".
 
 | job | schedule | what it does |
 | --- | --- | --- |
@@ -234,81 +272,32 @@ cp .env.example .env
 
 ### 1. Airtable
 
-Create a base with the four tables and fields documented above. Get the **base ID** (Help → API
-documentation, starts with `app...`) and a **personal access token**
-([airtable.com/create/tokens](https://airtable.com/create/tokens), scopes
-`data.records:read` + `data.records:write`, access to your base).
+Create two empty bases — one for testing, one for production — and a **personal access token**
+([airtable.com/create/tokens](https://airtable.com/create/tokens)) with access to both. Scopes:
+`data.records:read`, `data.records:write`, and `schema.bases:write` for the setup script below.
+Grab each **base ID** (Help → API documentation, starts with `app...`).
 
 ```
 AIRTABLE_TOKEN=pat...
-AIRTABLE_BASE_ID=app...
+AIRTABLE_BASE_ID_DEV=app...
+AIRTABLE_BASE_ID_PROD=app...
 ```
 
-### 2. Slack app
-
-1. [api.slack.com/apps](https://api.slack.com/apps) → Create New App → From scratch.
-2. **Socket Mode** → make sure it's **off**. This app uses the HTTP Events API. With Socket Mode
-   on, the Request URL still verifies fine (that's a one-time HTTP challenge, unrelated to Socket
-   Mode) but Slack delivers zero real events over HTTP afterward — the single easiest thing to
-   get wrong here.
-3. **OAuth & Permissions** → Bot Token Scopes: `chat:write`, `im:write`, `reactions:write`,
-   `app_mentions:read`, `users:read`, `users:read.email`, plus, depending on whether the
-   submissions channel is public or private:
-   - public: `channels:history`, `channels:manage` (for `conversations.invite`)
-   - private: `groups:history`, `groups:write` (`channels:manage` does not cover private invites)
-4. **Install to Workspace**, copy the **Bot User OAuth Token** (`xoxb-...`).
-5. **Basic Information** → copy the **Signing Secret**.
+Then let the script build the tables instead of clicking them in:
 
 ```
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=...
+npm run setup:airtable -- dev
+npm run setup:airtable -- prod
 ```
 
-6. Create (or pick) a channel for submissions and one for announcements — can be the same
-   channel while testing. Invite the bot: `/invite @your-bot-name`. Get each channel's ID
-   (right-click → View channel details).
+It creates the four tables with the field types documented above, and is safe to re-run — it only
+adds what's missing, so it doubles as a way to top up a base after a schema change. (Needs Node
+20.6+ for `--env-file`.)
 
-```
-SLACK_SUBMISSION_CHANNEL_ID=C...
-SLACK_ANNOUNCE_CHANNEL_ID=C...
-```
+### 2. Start the app and expose it
 
-7. **Don't turn on Event Subscriptions yet** — it verifies the Request URL immediately, which
-   needs the dev server already running and reachable. Come back after step 5 below.
-
-### 3. HCA (Hack Club Auth)
-
-Register an OAuth application with Hack Club Auth (ask in Hack Club's Slack). Enable the
-`openid email name slack_id verification_status` scopes. Set its redirect URI to
-`<PUBLIC_SITE_URL>/api/auth/callback` (step 4 below covers what that URL is locally).
-
-```
-HCA_CLIENT_ID=...
-HCA_CLIENT_SECRET=...
-```
-
-Skippable if you only want to test the Slack bot and cron jobs — sign-in is only used by
-`/api/auth/*` and the landing page.
-
-### 4. Remaining secrets
-
-```
-SESSION_SECRET=$(openssl rand -hex 32)
-CRON_SECRET=$(openssl rand -hex 32)
-```
-
-(Windows without `openssl`: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.)
-
-`UNIFIED_SOCIALS_TOKEN` — mint a personal token from the unified-socials-db web app's MCP/API
-page. Safe to leave blank while testing the rest of the bot — it's only used by reconcile's
-views pass and admin's "Check stats".
-
-`ADMIN_SLACK_IDS` — comma-separated Slack user IDs (the `U...` kind) allowed to use `/admin`.
-Blank means nobody is an admin.
-
-`MIN_REVIEW_LENGTH` — default `40` is fine.
-
-### 5. Start the app and expose it
+The Slack app is created from a manifest that declares its Request URL, and Slack verifies that
+URL during the import — so the site has to be reachable *before* step 3, not after.
 
 ```
 npm run dev
@@ -323,24 +312,90 @@ ngrok http 5173
 Copy the forwarding URL into `.env`, then restart `npm run dev`:
 
 ```
-PUBLIC_SITE_URL=https://xxxx.ngrok-free.app
+PUBLIC_SITE_URL_DEV=https://xxxx.ngrok-free.app
 ```
 
-### 6. Finish the Slack Events subscription
+### 3. Slack app
 
-1. Double check Socket Mode is still off.
-2. **Event Subscriptions** → on. Request URL: the **full path**,
-   `<PUBLIC_SITE_URL>/api/slack/events` — not just the bare ngrok URL. Should go green
-   ("Verified") within a couple seconds.
-3. Subscribe to bot events: `app_mention`, `member_joined_channel`, and `message.channels` or
-   `message.groups` matching your submissions channel's public/private-ness.
-4. **Save Changes** on the Event Subscriptions page itself.
-5. Reinstall the app to the workspace if prompted.
+One app per environment, each pointed at its own URL. Print a manifest:
 
-### 7. Try it
+```
+npm run setup:slack -- dev      # or: prod
+```
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App → From an app manifest**,
+   pick the workspace, paste the JSON.
+2. The manifest already sets the bot scopes, the three subscribed events, the Request URL
+   (`<PUBLIC_SITE_URL>/api/slack/events`) and — importantly — **Socket Mode off**. This app uses
+   the HTTP Events API; with Socket Mode on the Request URL still verifies fine (that's a one-time
+   HTTP challenge, unrelated to Socket Mode) but Slack then delivers zero real events over HTTP.
+   That's the single easiest thing to get wrong here.
+3. **Install to Workspace**, copy the **Bot User OAuth Token** (`xoxb-...`).
+4. **Basic Information** → copy the **Signing Secret**.
+
+```
+SLACK_BOT_TOKEN_DEV=xoxb-...
+SLACK_SIGNING_SECRET_DEV=...
+```
+
+5. Create (or pick) a channel for submissions and one for announcements — can be the same
+   channel while testing. Invite the bot: `/invite @your-bot-name`. Get each channel's ID
+   (right-click → View channel details).
+
+```
+SLACK_SUBMISSION_CHANNEL_ID_DEV=C...
+SLACK_ANNOUNCE_CHANNEL_ID_DEV=C...
+```
+
+The manifest asks for both the public (`channels:history`, `channels:manage`) and private
+(`groups:history`, `groups:write`) channel scopes, so either kind of submissions channel works
+without editing it. Trim the pair you don't need if you'd rather ask for less —
+`channels:manage` does not cover invites to private channels, and vice versa.
+
+When the ngrok URL changes, update `PUBLIC_SITE_URL_DEV` and re-paste the new Request URL under
+**Event Subscriptions** (re-running `setup:slack` prints it).
+
+### 4. HCA (Hack Club Auth)
+
+Register an OAuth application with Hack Club Auth (ask in Hack Club's Slack). Enable the
+`openid email name slack_id verification_status` scopes. Set its redirect URI to
+`<PUBLIC_SITE_URL>/api/auth/callback`. Since dev and prod have different URLs, that's two
+registrations — unless HCA lets you list both redirect URIs on one app, in which case a single
+unsuffixed `HCA_CLIENT_ID`/`HCA_CLIENT_SECRET` covers both.
+
+```
+HCA_CLIENT_ID_DEV=...
+HCA_CLIENT_SECRET_DEV=...
+```
+
+Skippable if you only want to test the Slack bot and cron jobs — sign-in is only used by
+`/api/auth/*` and the landing page.
+
+### 5. Remaining secrets
+
+Generate `SESSION_SECRET` and `CRON_SECRET` twice — once for dev, once for prod. See "Dev vs
+prod" above for why they don't get shared.
+
+```
+SESSION_SECRET_DEV=$(openssl rand -hex 32)
+CRON_SECRET_DEV=$(openssl rand -hex 32)
+```
+
+(Windows without `openssl`: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.)
+
+`UNIFIED_SOCIALS_TOKEN` — mint a personal token from the unified-socials-db web app's MCP/API
+page. Safe to leave blank while testing the rest of the bot — it's only used by reconcile's
+views pass and admin's "Check stats".
+
+`ADMIN_SLACK_IDS` — comma-separated Slack user IDs (the `U...` kind) allowed to use `/admin`.
+Blank means nobody is an admin.
+
+`MIN_REVIEW_LENGTH` — default `40` is fine.
+
+### 6. Try it
 
 - Kick the bot from the submissions channel and re-invite it. It should immediately post
-  "👋 I'm in!" — if not, don't bother testing links yet, recheck steps 2 and 6.
+  "👋 I'm in!" — if not, don't bother testing links yet, recheck steps 2 and 3.
 - Sign in at `<PUBLIC_SITE_URL>/api/auth/login`. Use admin's "Force verify" to unblock testing
   without waiting on real HCA verification.
 - Post a link → ✅ + threaded reply. Post it again → 🔁 + threaded reply. Post a non-link → ❓.
@@ -355,25 +410,80 @@ PUBLIC_SITE_URL=https://xxxx.ngrok-free.app
   curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_SITE_URL/api/cron/remind
   ```
 
-### 8. Checks
+### 7. Checks
 
 ```
 npm run check
 npm test
 ```
 
-### 9. Deploying (Vercel)
+### 8. Deploying (Orchard)
+
+Prod runs as a container on [Orchard](https://orchard.hackclub.com) — project `zrl@dayoneof`,
+environment `Production`, deployment `dayoneof`, built from `hackclub/dayoneof` on `main` with
+auto-deploy on.
+
+Repeat steps 1 and 3 with `prod` to get the production base and Slack app. Then set the
+deployment's environment variables in Orchard — **unsuffixed**, plus `APP_ENV=prod`:
 
 ```
-vercel link
-vercel env add AIRTABLE_TOKEN
-# ...repeat for every var in .env.example, production + preview as needed
-vercel --prod
+APP_ENV=prod
+PUBLIC_SITE_URL=https://<the real domain>
+ORIGIN=https://<the real domain>
+AIRTABLE_TOKEN=pat...
+AIRTABLE_BASE_ID=app...
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+SLACK_SUBMISSION_CHANNEL_ID=C...
+SLACK_ANNOUNCE_CHANNEL_ID=C...
+HCA_CLIENT_ID=...
+HCA_CLIENT_SECRET=...
+SESSION_SECRET=...
+CRON_SECRET=...
+UNIFIED_SOCIALS_TOKEN=...
+ADMIN_SLACK_IDS=U...,U...
 ```
 
-Set `PUBLIC_SITE_URL` to the real Vercel URL, and point Slack's Event Subscriptions Request URL
-and HCA's redirect URI at it instead of the ngrok URL. `vercel.json` already declares the cron
-schedules — Vercel authenticates its own cron calls with the `CRON_SECRET` env var automatically.
+The `_DEV`/`_PROD` suffixes are a local-`.env` convenience, not something the container needs: the
+deployment only ever holds one environment's worth of values, so the unsuffixed names are the
+clean spelling there and the fallback in `config.js` picks them up unchanged. `APP_ENV=prod` is
+then mostly a declaration of intent — it's what makes a stray `*_DEV` var lose and keeps
+`requireEnv`'s error messages honest about which environment failed.
+
+Mark the credentials **secret** in Orchard (`AIRTABLE_TOKEN`, `SLACK_BOT_TOKEN`,
+`SLACK_SIGNING_SECRET`, `HCA_CLIENT_SECRET`, `SESSION_SECRET`, `CRON_SECRET`,
+`UNIFIED_SOCIALS_TOKEN`). Secret vars route through a Kubernetes Secret and are write-only —
+otherwise every project member can read them straight off the deployment.
+
+`ORIGIN` is an `adapter-node` requirement, not one of ours: behind the ingress proxy the server
+can't infer its own public origin, and every `POST` form action — the whole admin panel — fails
+its CSRF origin check without it. Same value as `PUBLIC_SITE_URL`.
+
+Three things the container needs that Vercel provided implicitly:
+
+- **A node server build.** `@sveltejs/adapter-node` writes `build/index.js`, which is what
+  Orchard's `node build` start command expects. (`adapter-vercel` emitted `.vercel/output`
+  instead, so the pod crash-looped on `Cannot find module '/app/build'`.)
+- **A public ingress.** The auto-generated domain ships with Orchard access protection on, which
+  puts a login in front of every request — including Slack's event POSTs and HCA's OAuth
+  redirect, neither of which can authenticate. Protection has to be off.
+- **Its own scheduler.** See below.
+
+### 9. Cron on Orchard
+
+There's no `vercel.json` any more — Vercel's scheduler isn't running these. Orchard's equivalent
+is a **job**: a cron-scheduled pipeline in the project's namespace. Three jobs, one per route,
+each an `app`-type step that runs inside the deployment's own image and environment, so
+`$CRON_SECRET` is already in scope and the call never leaves the cluster:
+
+| job | cron (UTC) | step |
+| --- | --- | --- |
+| `reconcile` | `0 0 * * *` | `GET /api/cron/reconcile` |
+| `leaderboard` | `15 0 * * *` | `GET /api/cron/leaderboard` |
+| `remind` | `0 * * * *` | `GET /api/cron/remind` |
+
+Hitting `http://dayoneof.ysws-zrl-dayoneof.svc.cluster.local:3000` rather than the public host
+also sidesteps ingress protection entirely, whatever it's set to.
 
 ## Not yet built
 
