@@ -26,8 +26,7 @@ import {
  *   user: string,
  *   text: string,
  *   ts: string,
- *   thread_ts?: string,
- *   permalink?: string
+ *   thread_ts?: string
  * }} SlackEvent
  */
 
@@ -50,7 +49,7 @@ function verifySignature(rawBody, timestamp, signature) {
 /** @param {string} slackId */
 async function getDays(slackId) {
 	const records = await airtable.list(TABLES.days, {
-		filterByFormula: `{${F.days.slackId}} = "${slackId}"`
+		filterByFormula: airtable.eq(F.days.slackId, slackId)
 	});
 	return records.map((r) => ({ date: r.fields[F.days.date], status: r.fields[F.days.status] }));
 }
@@ -59,7 +58,7 @@ async function getDays(slackId) {
 // auto-created here.
 /** @param {string} slackId */
 async function getParticipant(slackId) {
-	return airtable.find(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`);
+	return airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, slackId));
 }
 
 /** @param {SlackEvent} event */
@@ -139,8 +138,7 @@ async function handleSubmission(event) {
 		[F.submissions.day]: today,
 		[F.submissions.countedTowardStreak]: true,
 		[F.submissions.channelId]: event.channel,
-		[F.submissions.messageTs]: event.ts,
-		[F.submissions.permalink]: event.permalink
+		[F.submissions.messageTs]: event.ts
 	});
 
 	const updatedDays = [...days, { date: today, status: 'posted' }];
@@ -192,14 +190,6 @@ async function handleSubmission(event) {
 			[F.participants.lastMilestone]: milestone
 		});
 	}
-
-	// unified-socials write is disabled — no confirmed endpoint exists, see unified.js.
-	// try {
-	// 	const unifiedId = await unified.submitPost({ url: link.url, platform: link.platform, slackId: event.user });
-	// 	await airtable.update(TABLES.submissions, submission.id, { [F.submissions.unifiedId]: unifiedId });
-	// } catch (err) {
-	// 	console.error('unified-socials handoff failed', err);
-	// }
 }
 
 /** @param {SlackEvent} event */
@@ -208,7 +198,7 @@ async function handleThreadReply(event) {
 
 	const submission = await airtable.find(
 		TABLES.submissions,
-		`{${F.submissions.messageTs}} = "${event.thread_ts}"`
+		airtable.eq(F.submissions.messageTs, event.thread_ts ?? '')
 	);
 	if (!submission || submission.fields[F.submissions.slackId] === event.user) return;
 
@@ -233,10 +223,7 @@ async function handleAppMention(event) {
 	const [command, arg] = text.split(/\s+/);
 
 	if (command === 'status') {
-		const participant = await airtable.find(
-			TABLES.participants,
-			`{${F.participants.slackId}} = "${event.user}"`
-		);
+		const participant = await getParticipant(event.user);
 		const days = await getDays(event.user);
 		const streak = computeStreak(days);
 		const freezes = participant?.fields[F.participants.streakFreezes] ?? 0;
@@ -251,8 +238,12 @@ async function handleAppMention(event) {
 			await slack.postMessage(event.channel, messages.remindUsage(), event.ts);
 			return;
 		}
-		await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${event.user}"`, {
-			[F.participants.slackId]: event.user,
+		const participant = await getParticipant(event.user);
+		if (!participant) {
+			await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
+			return;
+		}
+		await airtable.update(TABLES.participants, participant.id, {
 			[F.participants.reminderHour]: hour
 		});
 		await slack.postMessage(event.channel, messages.remindSet(hour), event.ts);
@@ -261,18 +252,18 @@ async function handleAppMention(event) {
 
 	if (command === 'reviews') {
 		const reviews = await airtable.list(TABLES.reviews, {
-			filterByFormula: `{${F.reviews.reviewerId}} = "${event.user}"`
+			filterByFormula: airtable.eq(F.reviews.reviewerId, event.user)
 		});
 		await slack.postMessage(event.channel, `You've left ${reviews.length} reviews.`, event.ts);
 		return;
 	}
 }
 
-// Posts a test message when the bot is invited to a channel — confirms Slack is delivering
-// events at all. Remove along with the member_joined_channel subscription once confirmed.
+// Cached across requests — the bot's own id never changes for a given token.
 /** @type {string | undefined} */
 let botUserId;
 
+// Greets the channel when the bot itself is invited; every other member joining is ignored.
 /** @param {SlackEvent} event */
 async function handleMemberJoined(event) {
 	if (!botUserId) {
@@ -280,32 +271,35 @@ async function handleMemberJoined(event) {
 		botUserId = auth.user_id;
 	}
 	if (event.user !== botUserId) return;
-	console.log('[SLACKEVENT] bot was invited to', event.channel, '— posting test message');
-	await slack.postMessage(event.channel, "👋 I'm in! If you're seeing this, event delivery works.");
+	await slack.postMessage(event.channel, 'dayoneof bot is here!');
 }
 
 /** @param {SlackEvent} [event] */
 async function handleEvent(event) {
-	if (!event) {
-		console.log('[SLACKEVENT] no event on payload, ignoring');
-		return;
-	}
-	console.log('[SLACKEVENT]', event.type, 'channel=' + event.channel, 'subtype=' + event.subtype, 'bot_id=' + event.bot_id);
+	if (!event) return;
 
 	if (event.type === 'app_mention') return handleAppMention(event);
 	if (event.type === 'member_joined_channel') return handleMemberJoined(event);
 
 	if (event.type === 'message') {
-		if (event.channel !== config.submissionChannelId) {
-			console.log('[SLACKEVENT] skipped: channel does not match SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId);
-			return;
-		}
-		if (event.subtype || event.bot_id) {
-			console.log('[SLACKEVENT] skipped: has subtype/bot_id (likely a bot/edit/join message)');
-			return;
-		}
+		if (event.channel !== config.submissionChannelId) return;
+		// Edits, joins and the bot's own replies all arrive here as message events.
+		if (event.subtype || event.bot_id) return;
 		if (event.thread_ts && event.thread_ts !== event.ts) return handleThreadReply(event);
 		return handleSubmission(event);
+	}
+}
+
+// Last resort when a handler threw: without this the poster sees no reaction and no reply and
+// has no way to tell a broken submission from an ignored one. Swallows its own failure, since
+// Slack is usually what's already broken by the time we get here.
+/** @param {SlackEvent} [event] */
+async function replyWithFailure(event) {
+	if (!event?.channel || !event.user) return;
+	try {
+		await slack.postMessage(event.channel, messages.submissionFailed(event.user), event.ts);
+	} catch (err) {
+		console.error('failed to report failure back to slack', event.channel, event.ts, err);
 	}
 }
 
@@ -315,12 +309,10 @@ export async function POST({ request }) {
 	const timestamp = request.headers.get('x-slack-request-timestamp');
 
 	if (!verifySignature(rawBody, timestamp, signature)) {
-		console.log('[SLACKEVENT] signature verification failed — check SLACK_SIGNING_SECRET');
 		return json({ error: 'invalid signature' }, { status: 401 });
 	}
 
 	const body = JSON.parse(rawBody);
-	console.log('[SLACKEVENT] received', body.type);
 
 	if (body.type === 'url_verification') {
 		return json({ challenge: body.challenge });
@@ -334,6 +326,7 @@ export async function POST({ request }) {
 		await handleEvent(body.event);
 	} catch (err) {
 		console.error('slack event handling failed', body.event?.channel, body.event?.ts, err);
+		await replyWithFailure(body.event);
 	}
 
 	return json({ ok: true });

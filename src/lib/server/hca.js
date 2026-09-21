@@ -15,7 +15,6 @@ export function authorizeUrl({ redirectUri, state, loginHint }) {
 
 /** @param {{ code: string, redirectUri: string }} params */
 export async function exchangeCode({ code, redirectUri }) {
-	console.log('[EXTCALL] hca POST /oauth/token');
 	const res = await fetch(`${config.hcaIssuer}/oauth/token`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -34,7 +33,6 @@ export async function exchangeCode({ code, redirectUri }) {
 // An HCA account is a Hack Club Slack account, so slack_id is reliably present here.
 /** @param {string} accessToken */
 export async function fetchMe(accessToken) {
-	console.log('[EXTCALL] hca GET /api/v1/me');
 	const res = await fetch(`${config.hcaIssuer}/api/v1/me`, {
 		headers: { Authorization: `Bearer ${accessToken}` }
 	});

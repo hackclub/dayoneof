@@ -7,33 +7,21 @@ function headers() {
 	};
 }
 
-// Writing is disabled — no confirmed write endpoint exists (unified-socials-db is read-only SQL
-// over api.posts). Left as reference; do not enable without explicit approval.
-//
-// export async function submitPost({ url, platform, slackId }) {
-// 	const res = await fetch(`${config.unifiedSocialsApiUrl}/posts`, {
-// 		method: 'POST',
-// 		headers: headers(),
-// 		body: JSON.stringify({ url, platform, source: 'dayoneof', author_slack_id: slackId })
-// 	});
-// 	if (!res.ok) throw new Error(`unified-socials submit failed: ${res.status}`);
-// 	const data = await res.json();
-// 	return data.id;
-// }
-
-// GET /api/v1/<relation> filters rows by column names as equality query params.
+// Read-only: unified-socials-db exposes SQL views over api.posts and has no write endpoint.
+// GET /api/v1/<relation> filters rows by column names as equality query params and answers
+// `{ rows, count, limit, offset }` — an untracked post is 200 with `rows: []`, not a 404.
+// (platform, platform_post_id) is unique on api.posts, so there is at most one row.
+// views/likes are null until some source reports them; title is the full caption, '' if none.
 /**
  * @param {string} platform
  * @param {string} platformPostId
  * @returns {Promise<{ id: number, views: number, likes: number, title: string } | null>}
  */
 export async function fetchPostByPlatformId(platform, platformPostId) {
-	console.log('[EXTCALL] unified-socials GET /posts', platform, platformPostId);
 	const params = new URLSearchParams({ platform, platform_post_id: platformPostId });
 	const res = await fetch(`${config.unifiedSocialsApiUrl}/posts?${params}`, { headers: headers() });
 	if (!res.ok) throw new Error(`unified-socials fetch failed: ${res.status}`);
-	const data = await res.json();
-	const rows = Array.isArray(data) ? data : (data.rows ?? data.posts ?? data.results ?? []);
+	const { rows } = await res.json();
 	const post = rows[0];
 	if (!post) return null;
 	return {

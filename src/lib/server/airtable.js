@@ -8,6 +8,16 @@ function baseUrl(table) {
 	return `https://api.airtable.com/v0/${config.airtableBaseId}/${encodeURIComponent(table)}`;
 }
 
+/**
+ * Builds an equality filterByFormula. Airtable has no bind parameters, so the value is escaped
+ * here — otherwise a quote in a URL path segment or Slack message rewrites the formula.
+ * @param {string} field
+ * @param {string | number} value
+ */
+export function eq(field, value) {
+	return `{${field}} = "${String(value).replace(/[\\"]/g, '\\$&')}"`;
+}
+
 function headers() {
 	return {
 		Authorization: `Bearer ${config.airtableToken}`,
@@ -20,8 +30,6 @@ function headers() {
  * @param {RequestInit} init
  */
 async function request(url, init) {
-	// prints below are tagged [EXTCALL] — grep for that tag to strip them before shipping
-	console.log('[EXTCALL] airtable', init?.method ?? 'GET', url);
 	const res = await fetch(url, init);
 	if (!res.ok) {
 		const body = await res.text();

@@ -30,68 +30,66 @@ const select = (names) => ({
 function schemaFor(appEnv) {
 	const TABLES = tablesFor(appEnv);
 	return [
-	{
-		name: TABLES.participants,
-		fields: [
-			{ name: F.participants.slackId, ...text },
-			{ name: F.participants.name, ...text },
-			{ name: F.participants.email, type: 'email' },
-			{ name: F.participants.tz, ...text },
-			{ name: F.participants.status, ...select(PARTICIPANT_STATUSES) },
-			{ name: F.participants.verificationStatus, ...text },
-			{ name: F.participants.daysCompleted, ...int },
-			{ name: F.participants.streakFreezes, ...int },
-			{ name: F.participants.daysElapsed, ...int },
-			{ name: F.participants.currentStreak, ...int },
-			{ name: F.participants.lastMilestone, ...int },
-			{ name: F.participants.reminderHour, ...int },
-			{ name: F.participants.lastReminderDay, ...text },
-			{ name: F.participants.totalViews, ...int }
-		]
-	},
-	{
-		name: TABLES.days,
-		fields: [
-			{ name: F.days.slackId, ...text },
-			{ name: F.days.date, ...text },
-			{ name: F.days.status, ...select(DAY_STATUSES) }
-		]
-	},
-	{
-		name: TABLES.submissions,
-		fields: [
-			{ name: F.submissions.submissionId, type: 'autoNumber' },
-			{ name: F.submissions.slackId, ...text },
-			{ name: F.submissions.url, ...text },
-			{ name: F.submissions.platform, ...text },
-			{ name: F.submissions.videoId, ...text },
-			{ name: F.submissions.postedAt, ...when },
-			{ name: F.submissions.day, ...text },
-			{ name: F.submissions.countedTowardStreak, ...check },
-			{ name: F.submissions.channelId, ...text },
-			{ name: F.submissions.messageTs, ...text },
-			{ name: F.submissions.permalink, ...text },
-			{ name: F.submissions.reviewCount, ...int },
-			{ name: F.submissions.views, ...int },
-			{ name: F.submissions.title, ...text },
-			{ name: F.submissions.unifiedId, ...text },
-			{ name: F.submissions.replyMessageTs, ...text },
-			{ name: F.submissions.streakAtPost, ...int },
-			{ name: F.submissions.freezesAtPost, ...int }
-		]
-	},
-	{
-		name: TABLES.reviews,
-		fields: [
-			{ name: F.reviews.reviewId, type: 'autoNumber' },
-			{ name: F.reviews.submissionId, ...text },
-			{ name: F.reviews.reviewerId, ...text },
-			{ name: F.reviews.reviewedAt, ...when },
-			{ name: F.reviews.messageTs, ...text },
-			{ name: F.reviews.length, ...int },
-			{ name: F.reviews.text, ...longText }
-		]
-	}
+		{
+			name: TABLES.participants,
+			fields: [
+				{ name: F.participants.slackId, ...text },
+				{ name: F.participants.name, ...text },
+				{ name: F.participants.email, type: 'email' },
+				{ name: F.participants.tz, ...text },
+				{ name: F.participants.status, ...select(PARTICIPANT_STATUSES) },
+				{ name: F.participants.verificationStatus, ...text },
+				{ name: F.participants.daysCompleted, ...int },
+				{ name: F.participants.streakFreezes, ...int },
+				{ name: F.participants.currentStreak, ...int },
+				{ name: F.participants.lastMilestone, ...int },
+				{ name: F.participants.reminderHour, ...int },
+				{ name: F.participants.lastReminderDay, ...text },
+				{ name: F.participants.totalViews, ...int }
+			]
+		},
+		{
+			name: TABLES.days,
+			fields: [
+				{ name: F.days.slackId, ...text },
+				{ name: F.days.date, ...text },
+				{ name: F.days.status, ...select(DAY_STATUSES) }
+			]
+		},
+		{
+			name: TABLES.submissions,
+			fields: [
+				{ name: F.submissions.submissionId, type: 'autoNumber' },
+				{ name: F.submissions.slackId, ...text },
+				{ name: F.submissions.url, ...text },
+				{ name: F.submissions.platform, ...text },
+				{ name: F.submissions.videoId, ...text },
+				{ name: F.submissions.postedAt, ...when },
+				{ name: F.submissions.day, ...text },
+				{ name: F.submissions.countedTowardStreak, ...check },
+				{ name: F.submissions.channelId, ...text },
+				{ name: F.submissions.messageTs, ...text },
+				{ name: F.submissions.reviewCount, ...int },
+				{ name: F.submissions.views, ...int },
+				{ name: F.submissions.title, ...text },
+				{ name: F.submissions.unifiedId, ...text },
+				{ name: F.submissions.replyMessageTs, ...text },
+				{ name: F.submissions.streakAtPost, ...int },
+				{ name: F.submissions.freezesAtPost, ...int }
+			]
+		},
+		{
+			name: TABLES.reviews,
+			fields: [
+				{ name: F.reviews.reviewId, type: 'autoNumber' },
+				{ name: F.reviews.submissionId, ...text },
+				{ name: F.reviews.reviewerId, ...text },
+				{ name: F.reviews.reviewedAt, ...when },
+				{ name: F.reviews.messageTs, ...text },
+				{ name: F.reviews.length, ...int },
+				{ name: F.reviews.text, ...longText }
+			]
+		}
 	];
 }
 

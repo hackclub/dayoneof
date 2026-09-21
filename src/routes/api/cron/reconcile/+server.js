@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { config } from '$lib/server/config.js';
+import { isCronAuthorized } from '$lib/server/cron.js';
 import { runReconcile } from '$lib/server/jobs.js';
 
 export async function GET({ request }) {
-	if (request.headers.get('authorization') !== `Bearer ${config.cronSecret}`) {
+	if (!isCronAuthorized(request)) {
 		return json({ error: 'unauthorized' }, { status: 401 });
 	}
 

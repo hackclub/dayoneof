@@ -5,8 +5,6 @@ import { config } from './config.js';
  * @param {Record<string, unknown>} params
  */
 async function call(method, params) {
-	// prints below are tagged [EXTCALL] — grep for that tag to strip them before shipping
-	console.log('[EXTCALL] slack', method, params);
 	const res = await fetch(`https://slack.com/api/${method}`, {
 		method: 'POST',
 		headers: {

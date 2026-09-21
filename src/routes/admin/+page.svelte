@@ -3,7 +3,7 @@
 
 	function confirmNuke(event: SubmitEvent) {
 		const ok = confirm(
-			'This permanently deletes every row in every Airtable table (participants, days, submissions, reviews). There is no undo. Are you sure?'
+			'This permanently deletes every row in every dev Airtable table (participants, days, submissions, reviews). There is no undo. Are you sure?'
 		);
 		if (!ok) event.preventDefault();
 	}
@@ -114,7 +114,7 @@
 						<td>{p.videosPosted}</td>
 						<td>{p.totalViews}</td>
 						<td>
-							{#if !p.verificationStatus?.startsWith('verified')}
+							{#if !p.verified}
 								<form method="POST" action="?/forceVerify" style="display:inline">
 									<input type="hidden" name="id" value={p.id} />
 									<button type="submit">Force verify</button>
@@ -127,14 +127,16 @@
 		</table>
 	</section>
 
-	<section>
-		<h2>Danger zone</h2>
-		<p>Deletes every row in every Airtable table. For wiping test data only — no undo.</p>
-		{#if form?.nuked}
-			<p>Deleted {form.deleted} rows.</p>
-		{/if}
-		<form method="POST" action="?/nukeAllData" onsubmit={confirmNuke}>
-			<button type="submit">⚠️ Nuke all data</button>
-		</form>
-	</section>
+	{#if data.canNuke}
+		<section>
+			<h2>Danger zone</h2>
+			<p>Deletes every row in every Airtable table. Dev only — no undo.</p>
+			{#if form?.nuked}
+				<p>Deleted {form.deleted} rows.</p>
+			{/if}
+			<form method="POST" action="?/nukeAllData" onsubmit={confirmNuke}>
+				<button type="submit">⚠️ Nuke all data</button>
+			</form>
+		</section>
+	{/if}
 </main>

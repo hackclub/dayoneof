@@ -12,7 +12,7 @@ export async function GET({ url, cookies }) {
 	cookies.delete('hca_state', { path: '/' });
 
 	if (!code || !state || state !== expectedState) {
-		error(400, 'invalid oauth state');
+		error(400, 'That sign-in link expired or was already used. Head back and sign in again.');
 	}
 
 	const redirectUri = `${config.siteUrl}/api/auth/callback`;
@@ -21,7 +21,10 @@ export async function GET({ url, cookies }) {
 
 	const slackId = identity.slack_id;
 	if (!slackId) {
-		error(400, 'Your Hack Club Auth account has no linked Slack account.');
+		error(
+			400,
+			"Your Hack Club Auth account isn't linked to a Slack account yet, so we can't track your posts."
+		);
 	}
 
 	let tz;
@@ -34,7 +37,7 @@ export async function GET({ url, cookies }) {
 		console.error('users.info failed during sign-in, continuing without tz', err);
 	}
 
-	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
+	await airtable.upsert(TABLES.participants, airtable.eq(F.participants.slackId, slackId), {
 		[F.participants.slackId]: slackId,
 		[F.participants.name]:
 			slackName || [identity.first_name, identity.last_name].filter(Boolean).join(' '),

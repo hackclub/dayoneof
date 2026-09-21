@@ -20,12 +20,16 @@ function envVar(name, appEnv) {
 	return value;
 }
 
+// channels:read / groups:read are what member_joined_channel is gated on — the :history scopes
+// cover message.* but not membership events, and Slack rejects the manifest without them.
 const BOT_SCOPES = [
 	'app_mentions:read',
 	'channels:history',
 	'channels:manage',
+	'channels:read',
 	'chat:write',
 	'groups:history',
+	'groups:read',
 	'groups:write',
 	'im:write',
 	'reactions:write',

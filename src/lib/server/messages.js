@@ -16,6 +16,12 @@ export const messages = {
 	notVerified(slackId, status) {
 		return `<@${slackId}> your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}) — posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
 	},
+	// The post may or may not have been recorded when this fires, so it deliberately doesn't
+	// promise either way — reconcile is what actually settles the day.
+	/** @param {string} slackId */
+	submissionFailed(slackId) {
+		return `<@${slackId}> something went wrong on our end handling that post — it might not have counted. Try posting it again in a minute, and if it still doesn't work, ask for help in #dayoneof on Slack!`;
+	},
 	/**
 	 * @param {number} streak
 	 * @param {number} freezesRemaining

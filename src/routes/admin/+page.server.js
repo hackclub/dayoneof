@@ -1,14 +1,15 @@
 import { error, redirect } from '@sveltejs/kit';
-import { isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { appEnv, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
+import { isHcaVerified } from '$lib/server/verification.js';
 
 /** @param {import('./$types').RequestEvent['locals']} locals */
 function requireAdmin(locals) {
 	if (!locals.session || !isAdmin(locals.session.slackId)) {
-		error(403, 'not an admin');
+		error(403, "You're not an admin.");
 	}
 }
 
@@ -44,6 +45,7 @@ export async function load({ locals }) {
 	}
 
 	return {
+		canNuke: appEnv !== 'prod',
 		videosPosted: submissions.length,
 		videosTracked: submissions.filter((s) => s.fields[F.submissions.unifiedId]).length,
 		participants: participants.map((p) => ({
@@ -52,6 +54,7 @@ export async function load({ locals }) {
 			name: p.fields[F.participants.name],
 			status: p.fields[F.participants.status] ?? 'notStarted',
 			verificationStatus: p.fields[F.participants.verificationStatus] ?? '',
+			verified: isHcaVerified(p.fields[F.participants.verificationStatus]),
 			currentStreak: p.fields[F.participants.currentStreak] ?? 0,
 			streakFreezes: p.fields[F.participants.streakFreezes] ?? 0,
 			daysCompleted: p.fields[F.participants.daysCompleted] ?? 0,
@@ -98,6 +101,7 @@ export const actions = {
 	},
 	nukeAllData: async ({ locals }) => {
 		requireAdmin(locals);
+		if (appEnv === 'prod') error(403, 'nuking is disabled in prod');
 		let deleted = 0;
 		for (const table of Object.values(TABLES)) {
 			const records = await airtable.list(table);

@@ -109,7 +109,7 @@ them verified.
 | `name`, `email`, `tz` | text | `tz` best-effort backfilled from Slack at sign-in |
 | `status` | Single select | `notStarted` \| `active` \| `frozen` \| `broken` |
 | `verification_status` | Single line text | HCA's claim — `needs_submission`, `pending`, `verified_eligible`, `verified_but_over_18`, `rejected`, `not_found`. Only rows starting with `verified` count posts. |
-| `days_completed`, `streak_freezes`, `days_elapsed`, `current_streak` | Number | cache rewritten by the reconcile cron and by every submission |
+| `days_completed`, `streak_freezes`, `current_streak` | Number | cache rewritten by the reconcile cron and by every submission |
 | `last_milestone` | Number | highest milestone announced, so it fires once |
 | `reminder_hour` | Number | local hour for the daily DM; null = no reminder |
 | `last_reminder_day` | Single line text | guards against double-sending a reminder |
@@ -135,7 +135,7 @@ back from today while status != missed"; a freeze is a row, not a counter you ha
 | `posted_at` | Date, with time | |
 | `day` | Single line text | `YYYY-MM-DD`, same reasoning as `days.date` |
 | `counted_toward_streak` | Checkbox | false for a same-day repeat post |
-| `channel_id`, `message_ts`, `permalink` | text | the poster's original message |
+| `channel_id`, `message_ts` | text | the poster's original message |
 | `review_count` | Number | |
 | `views` | Number | kept in sync by `syncParticipantTotalViews` — see "Views sync" below |
 | `title` | Single line text | video title (YouTube) or first line of caption (TikTok/Instagram), from unified-socials |
@@ -169,13 +169,27 @@ body, echoes the `url_verification` challenge, acks retries, then routes on `eve
   explaining which platforms count.
 - **threaded reply by someone other than the poster, 40+ characters** — records a review, ✅ 👀.
 - **`app_mention`** — `status`, `remind <hour>`, `reviews`.
-- **`member_joined_channel`** — if it's the bot itself joining, posts a one-line confirmation.
-  This is a deliberate smoke test for "is Slack delivering events to this endpoint at all" and is
-  independent of everything else — useful when the bot looks totally inert, since it isolates
-  connectivity from application logic.
+- **`member_joined_channel`** — if it's the bot itself joining, posts a one-line greeting. It
+  doubles as a smoke test for "is Slack delivering events to this endpoint at all", since it is
+  independent of every other code path.
 
 Never 500s at Slack — errors are logged and swallowed, always returning 200, since a 500 just
-buys a retry of something already broken.
+buys a retry of something already broken. The poster still gets told: a handler that throws
+falls through to a plain-language in-thread reply, so a broken submission never looks the same
+as an ignored one.
+
+## Errors people see
+
+Every user-facing failure says what happened in plain language. `#dayoneof` is only offered when
+something actually broke on our side — an unsupported link or an unverified account is the
+system working, and pointing those at a help channel just sends noise there.
+
+On the web that is `src/routes/+error.svelte`, covering both `error(...)` throws (which keep
+their own message) and unexpected ones; the help line is gated on a 5xx. `handleError` in
+`hooks.server.js` logs the real error and hands the browser a generic line instead — Airtable
+failures carry the request URL, base id, and response body, and none of that should reach a
+visitor. In Slack the strings all live in `messages.js`, where only `submissionFailed` names the
+channel.
 
 Milestones (2/7/15/25 days) fire inside the submission handler: announce in the announce channel,
 DM the participant, write `last_milestone` so it doesn't repeat.
@@ -220,13 +234,18 @@ subdomains never end up stored either.
 ## unified-socials-db integration (`unified.js`)
 
 Read-only. `GET https://unified-socials-db.hackclub.com/api/v1/posts?platform=...&platform_post_id=...`
-looks a video up by its platform + id (confirmed against unified-socials-db's own published API
-docs — `GET /api/v1/<relation>` takes column names as equality query params). Returns views,
-likes, and title (first line only, truncated).
+looks a video up by its platform + id — `GET /api/v1/<relation>` takes column names as equality
+query params. Returns views, likes, and title (first line only, truncated).
 
-**Writing is disabled** — `submitPost` in `unified.js` is commented out. There's no confirmed
-write endpoint for "register this submission" anywhere this build had access to; the MCP server
-backing this data is explicitly read-only SQL. Do not enable without explicit approval.
+The response is `{ rows, count, limit, offset }`. A post unified-socials doesn't track yet is a
+200 with `rows: []`, not a 404, so a miss is indistinguishable from "not tracked" on purpose and
+the caller just gets `null`. `(platform, platform_post_id)` is unique on `api.posts`, so there is
+at most one row. `views` and `likes` are null until some source reports them (mapped to 0), and
+`platform_post_id` is the same id `links.js` extracts: a YouTube video id, an Instagram shortcode,
+a TikTok video id.
+
+**Writing is disabled** — there is no write endpoint; the service is read-only SQL views over
+`api.posts`. Do not add one without explicit approval.
 
 ## Sign-in and verification gate
 
@@ -252,14 +271,7 @@ here — there is no Slack `debug` command.
   `last_reminder_day`, so it can't interfere with the real hourly cron.
 - "Check unified-socials stats" — paste a video URL, see its live view/like/title lookup.
 - "Danger zone" — a browser-confirmed "Nuke all data" button that deletes every row in every
-  table. For wiping test data only.
-
-## Debug logging
-
-Every outbound call to Airtable, Slack, HCA, and unified-socials prints a line tagged
-`[EXTCALL]`. Every inbound Slack event prints a line tagged `[SLACKEVENT]`, including why it was
-or wasn't handled. Both are grep-tagged on purpose — `grep -rn '\[EXTCALL\]\|\[SLACKEVENT\]' src`
-finds every one when it's time to strip them.
+  table. Dev only: the action and the button are both gated on `APP_ENV != prod`.
 
 ---
 
@@ -369,10 +381,14 @@ SLACK_SUBMISSION_CHANNEL_ID_DEV=C...
 SLACK_ANNOUNCE_CHANNEL_ID_DEV=C...
 ```
 
-The manifest asks for both the public (`channels:history`, `channels:manage`) and private
-(`groups:history`, `groups:write`) channel scopes, so either kind of submissions channel works
-without editing it. Trim the pair you don't need if you'd rather ask for less —
-`channels:manage` does not cover invites to private channels, and vice versa.
+The manifest asks for both the public (`channels:history`, `channels:read`, `channels:manage`)
+and private (`groups:history`, `groups:read`, `groups:write`) channel scopes, so either kind of
+submissions channel works without editing it. Trim the trio you don't need if you'd rather ask
+for less — `channels:manage` does not cover invites to private channels, and vice versa.
+
+The `:read` scopes are easy to miss: `:history` covers `message.channels`/`message.groups`, but
+`member_joined_channel` is gated on `channels:read`/`groups:read` and Slack rejects the manifest
+outright if they're absent.
 
 When the ngrok URL changes, update `PUBLIC_SITE_URL_DEV` and re-paste the new Request URL under
 **Event Subscriptions** (re-running `setup:slack` prints it).
@@ -426,7 +442,7 @@ Blank means nobody is an admin.
 ### 6. Try it
 
 - Kick the bot from the submissions channel and re-invite it. It should immediately post
-  "👋 I'm in!" — if not, don't bother testing links yet, recheck steps 2 and 3.
+  "👋 dayoneof bot is here!" — if not, don't bother testing links yet, recheck steps 2 and 3.
 - Sign in at `<PUBLIC_SITE_URL>/api/auth/login`. Use admin's "Force verify" to unblock testing
   without waiting on real HCA verification.
 - Post a link → ✅ + threaded reply. Post it again → 🔁 + threaded reply. Post a non-link → ❓.

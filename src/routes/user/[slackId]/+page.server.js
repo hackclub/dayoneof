@@ -5,12 +5,12 @@ import * as airtable from '$lib/server/airtable.js';
 export async function load({ params }) {
 	const participant = await airtable.find(
 		TABLES.participants,
-		`{${F.participants.slackId}} = "${params.slackId}"`
+		airtable.eq(F.participants.slackId, params.slackId)
 	);
-	if (!participant) error(404, 'no participant with that Slack ID');
+	if (!participant) error(404, "Nobody's signed up with that Slack ID.");
 
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `{${F.submissions.slackId}} = "${params.slackId}"`,
+		filterByFormula: airtable.eq(F.submissions.slackId, params.slackId),
 		sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
 	});
 

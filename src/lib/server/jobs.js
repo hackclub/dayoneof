@@ -17,10 +17,10 @@ function yesterday() {
 /** @param {string} slackId */
 export async function syncParticipantTotalViews(slackId) {
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `{${F.submissions.slackId}} = "${slackId}"`
+		filterByFormula: airtable.eq(F.submissions.slackId, slackId)
 	});
 	const total = submissions.reduce((sum, s) => sum + (s.fields[F.submissions.views] ?? 0), 0);
-	await airtable.upsert(TABLES.participants, `{${F.participants.slackId}} = "${slackId}"`, {
+	await airtable.upsert(TABLES.participants, airtable.eq(F.participants.slackId, slackId), {
 		[F.participants.totalViews]: total
 	});
 	return total;
@@ -31,11 +31,15 @@ export async function runReconcile() {
 	const participants = await airtable.list(TABLES.participants, {
 		filterByFormula: `AND(${PARTICIPANT_HAS_SLACK_ID}, OR({${F.participants.status}} = "active", {${F.participants.status}} = "frozen"))`
 	});
-	const days = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} = "${date}"` });
+	const days = await airtable.list(TABLES.days, {
+		filterByFormula: airtable.eq(F.days.date, date)
+	});
 	const postedBySlackId = new Set(days.map((d) => d.fields[F.days.slackId]));
 
 	// A participant with no days row before yesterday just signed up today — nothing to reconcile.
-	const priorDays = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} < "${date}"` });
+	const priorDays = await airtable.list(TABLES.days, {
+		filterByFormula: `{${F.days.date}} < "${date}"`
+	});
 	const hasHistoryBeforeYesterday = new Set(priorDays.map((d) => d.fields[F.days.slackId]));
 
 	let frozen = 0;
@@ -178,7 +182,8 @@ export async function runLeaderboard() {
 	return { streakEntries: byStreak.length, viewEntries: byViews.length, videoEntries: byVideo.length };
 }
 
-function localHour(/** @type {string | undefined} */ tz) {
+/** @param {string | undefined} tz */
+function localHour(tz) {
 	return Number(
 		new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz ?? 'UTC' }).format(new Date())
 	);
@@ -195,7 +200,9 @@ export async function runRemind({ force = false } = {}) {
 			? PARTICIPANT_HAS_SLACK_ID
 			: `AND(${PARTICIPANT_HAS_SLACK_ID}, NOT({${F.participants.reminderHour}} = ""))`
 	});
-	const daysToday = await airtable.list(TABLES.days, { filterByFormula: `{${F.days.date}} = "${today}"` });
+	const daysToday = await airtable.list(TABLES.days, {
+		filterByFormula: airtable.eq(F.days.date, today)
+	});
 	const postedToday = new Set(daysToday.map((d) => d.fields[F.days.slackId]));
 
 	let sent = 0;
