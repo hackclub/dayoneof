@@ -1,7 +1,0 @@
-{
-	"crons": [
-		{ "path": "/api/cron/reconcile", "schedule": "0 0 * * *" },
-		{ "path": "/api/cron/leaderboard", "schedule": "15 0 * * *" },
-		{ "path": "/api/cron/remind", "schedule": "0 * * * *" }
-	]
-}

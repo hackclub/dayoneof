@@ -1,7 +1,7 @@
 import { config, requireEnv } from './config.js';
 
-/** @param {{ redirectUri: string, state: string }} params */
-export function authorizeUrl({ redirectUri, state }) {
+/** @param {{ redirectUri: string, state: string, loginHint?: string }} params */
+export function authorizeUrl({ redirectUri, state, loginHint }) {
 	const params = new URLSearchParams({
 		client_id: requireEnv('HCA_CLIENT_ID', config.hcaClientId),
 		redirect_uri: redirectUri,
@@ -9,6 +9,7 @@ export function authorizeUrl({ redirectUri, state }) {
 		scope: config.hcaScope,
 		state
 	});
+	if (loginHint) params.set('login_hint', loginHint);
 	return `${config.hcaIssuer}/oauth/authorize?${params}`;
 }
 
