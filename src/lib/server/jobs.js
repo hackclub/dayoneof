@@ -107,6 +107,7 @@ async function refreshViews() {
 		await airtable.update(TABLES.submissions, submission.id, {
 			[F.submissions.views]: post.views,
 			[F.submissions.title]: post.title,
+			[F.submissions.thumbnailUrl]: post.thumbnailUrl,
 			[F.submissions.unifiedId]: String(post.id)
 		});
 

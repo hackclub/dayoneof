@@ -1,17 +1,28 @@
 import { config } from './config.js';
 
+// Form-encoded, not JSON: Slack only accepts a JSON body on some write methods, and answers the
+// rest as if the body were empty — users.info with a JSON body returns user_not_found for a user
+// that plainly exists. Form encoding is accepted by every Web API method.
 /**
  * @param {string} method
  * @param {Record<string, unknown>} params
  */
 async function call(method, params) {
+	const body = new URLSearchParams();
+	for (const [key, value] of Object.entries(params)) {
+		// A skipped optional (an unthreaded message's thread_ts) would otherwise be sent as the
+		// literal string "undefined".
+		if (value === undefined || value === null) continue;
+		body.set(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
+	}
+
 	const res = await fetch(`https://slack.com/api/${method}`, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${config.slackBotToken}`,
-			'Content-Type': 'application/json; charset=utf-8'
+			'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
 		},
-		body: JSON.stringify(params)
+		body
 	});
 	const data = await res.json();
 	if (!data.ok) throw new Error(`slack ${method} failed: ${data.error}`);

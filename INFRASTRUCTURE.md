@@ -41,8 +41,7 @@ src/lib/server/          server-only modules (SvelteKit refuses to ship these to
 
 src/routes/
   +page.svelte                      landing page
-  leaderboard/                      three boards: streaks, total views, top videos
-  gallery/                          every submission, sortable by date or views
+  home/                             video grid plus the three boards: streaks, views, top videos
   user/[slackId]/                   one person's post history
   admin/                            admin-only dashboard (see below)
   api/slack/events/                 the bot
@@ -284,8 +283,11 @@ Do these roughly in order — later steps need IDs/secrets from earlier ones.
 - Node 20+
 - A Slack workspace you can install apps into
 - An Airtable account
-- [ngrok](https://ngrok.com/download) (or `cloudflared tunnel`) for local dev — Slack's Events
-  API and HCA's OAuth redirect both need a public HTTPS URL, `localhost` won't work.
+- [Tailscale](https://tailscale.com/download) for local dev — Slack's Events API and HCA's OAuth
+  redirect both need a public HTTPS URL, `localhost` won't work. Funnel is the one that matters
+  here: it's free, and the hostname is derived from your machine and tailnet names, so it stays
+  the same forever. A tunnel with a random hostname (ngrok's free tier, `trycloudflare.com`) also
+  works, but every restart means re-registering the URL with both Slack and HCA.
 
 ```
 npm install
@@ -337,17 +339,29 @@ URL during the import — so the site has to be reachable *before* step 3, not a
 npm run dev
 ```
 
-In a second terminal:
+Then expose it. `--bg` is not optional: a foreground `tailscale funnel 5173` proxies fine from
+inside your tailnet but never publishes the node's public DNS record, so the host doesn't resolve
+from the internet at all — which Slack reports as "that URL doesn't have a valid SSL certificate".
 
 ```
-ngrok http 5173
+tailscale funnel --bg 5173
+tailscale funnel status     # prints the public URL
 ```
 
-Copy the forwarding URL into `.env`, then restart `npm run dev`:
+The first run prints a link to enable Funnel on the tailnet; that's a one-time policy toggle. The
+config lives in `tailscaled`, so it survives reboots and needs no terminal of its own — turn it
+off with `tailscale funnel --https=443 off`.
+
+Put the hostname it prints into `.env` (vite watches `.env` and restarts itself):
 
 ```
-PUBLIC_SITE_URL_DEV=https://xxxx.ngrok-free.app
+PUBLIC_SITE_URL_DEV=https://<machine>.<tailnet>.ts.net
 ```
+
+Vite binds `127.0.0.1` and allows `.ts.net` hosts via `vite.config.ts` — both are load-bearing.
+Its default host is `localhost`, which Node resolves to `::1` only, and the tunnel proxies to
+`127.0.0.1`; the mismatch is a connection refused on every tunneled request while the browser on
+`localhost` keeps working. A tunnel host that isn't in `allowedHosts` gets a blocked-request 403.
 
 ### 3. Slack app
 
@@ -390,8 +404,11 @@ The `:read` scopes are easy to miss: `:history` covers `message.channels`/`messa
 `member_joined_channel` is gated on `channels:read`/`groups:read` and Slack rejects the manifest
 outright if they're absent.
 
-When the ngrok URL changes, update `PUBLIC_SITE_URL_DEV` and re-paste the new Request URL under
-**Event Subscriptions** (re-running `setup:slack` prints it).
+A Funnel hostname is stable, so this is a one-time setup. If you do change the dev URL, update
+`PUBLIC_SITE_URL_DEV` and re-paste the Request URL under **Event Subscriptions** (re-running
+`setup:slack` prints it) — and hit **Save Changes**, because the field can read "Verified" with
+the change still unsaved, at which point Slack keeps delivering to the old URL and the bot goes
+quiet with no visible error.
 
 ### 4. HCA (Hack Club Auth)
 
@@ -409,11 +426,14 @@ The one thing that is still per-environment is the **redirect URI**, because it'
 `PUBLIC_SITE_URL`. Register both on the same app:
 
 ```
-https://<ngrok host>/api/auth/callback
+https://<machine>.<tailnet>.ts.net/api/auth/callback
 https://<the real domain>/api/auth/callback
 ```
 
-The ngrok one changes every time the tunnel restarts, so expect to re-register it.
+Both have to match `PUBLIC_SITE_URL` exactly — the app builds `redirect_uri` from it, and HCA
+rejects anything that doesn't match what's registered. Registering a new URL with HCA does
+nothing on its own if `.env` still points somewhere else; the error names the URI it was sent,
+which is the fastest way to spot a stale `PUBLIC_SITE_URL_DEV`.
 
 Skippable if you only want to test the Slack bot and cron jobs — sign-in is only used by
 `/api/auth/*` and the landing page.
@@ -448,7 +468,7 @@ Blank means nobody is an admin.
 - Post a link → ✅ + threaded reply. Post it again → 🔁 + threaded reply. Post a non-link → ❓.
   Reply in-thread as someone else, 40+ characters → 👀.
 - `@your-bot status` / `remind 9` / `reviews`.
-- `/leaderboard`, `/gallery`, `/user/<slackId>` render from Airtable.
+- `/home`, `/user/<slackId>` render from Airtable.
 - Cron routes work standalone too:
 
   ```

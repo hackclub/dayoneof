@@ -4,7 +4,10 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	server: {
-		allowedHosts: ['.ngrok-free.app']
+		// Vite defaults to `localhost`, which Node resolves to ::1 only — the tunnel proxies to
+		// 127.0.0.1 and gets a refused connection.
+		host: '127.0.0.1',
+		allowedHosts: ['.ngrok-free.app', '.ts.net']
 	},
 	plugins: [
 		sveltekit({

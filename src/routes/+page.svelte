@@ -118,6 +118,43 @@
 
 	let ideaIndex = $state(0);
 
+	const faqItems = [
+		{
+			q: 'What is the Day One Of Challenge?',
+			a: 'A Hack Club YSWS (you-ship-we-ship) where you post a short-form video on YouTube Shorts, TikTok, or Instagram and earn prizes for keeping your streak alive.'
+		},
+		{
+			q: 'What is Hack Club?',
+			a: "We're a worldwide community of 100k+ teen hackers, and a nonprofit that funds programs like this one, plus hackathons and online social events all year round."
+		},
+		{
+			q: 'What are the rules?',
+			a: 'Learn or make anything you want. A series on learning piano, building hardware, or whatever you\'re already into all count. Just mention Hack Club somewhere in the video, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify it.'
+		},
+		{
+			q: 'How do streaks and freezes work?',
+			a: 'Post a video every day to keep your streak going. Every 2 days you post, you bank a streak freeze, and a freeze automatically covers a day you miss. Run out of freezes and miss a day, and the streak breaks.'
+		},
+		{
+			q: 'What prizes can I earn?',
+			prizes: [
+				{ mark: '2 days', text: '5 random Hack Club stickers' },
+				{ mark: '7 days', text: 'a Hack Club t-shirt' },
+				{ mark: '15 days', text: 'socks and an enamel pin' },
+				{ mark: '25 days', text: 'a legendary Orpheus Plushie' }
+			],
+			note: 'The most-viewed creator overall also gets $500 towards their setup.'
+		},
+		{
+			q: 'Anything else I should know?',
+			a: "Please don't use generative AI anywhere in your videos. Prizes ship from Hack Club HQ, so if you're outside the USA, you're responsible for any customs fees your country charges."
+		},
+		{
+			q: 'I have more questions!',
+			contact: true
+		}
+	];
+
 	function generateIdea() {
 		if (reelIdeas.length <= 1) return;
 		let next = Math.floor(Math.random() * reelIdeas.length);
@@ -133,7 +170,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
 	<link
-		href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,900&family=Space+Mono:ital,wght@1,700&family=IBM+Plex+Mono:wght@600&family=Roboto+Mono:wght@700&family=JetBrains+Mono:wght@800&family=DM+Mono:ital,wght@1,500&family=Fira+Code:wght@700&family=Courier+Prime:ital,wght@1,700&family=Source+Code+Pro:wght@700&display=swap"
+		href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,900&family=Space+Mono:ital,wght@1,700&family=IBM+Plex+Mono:wght@600&family=Roboto+Mono:wght@700&family=JetBrains+Mono:wght@800&family=DM+Mono:ital,wght@1,500&family=Fira+Code:wght@700&family=Courier+Prime:ital,wght@1,700&family=Source+Code+Pro:wght@700&family=Pixelify+Sans:wght@500;700&display=swap"
 		rel="stylesheet"
 	/>
 </svelte:head>
@@ -264,54 +301,96 @@
 	</div>
 </main>
 
+<section class="faq-section">
+	<div class="faq-wrap">
+		<div class="faq-col">
+			<span class="stats-kicker">FAQ</span>
+			<h2 class="section-heading">Got questions?</h2>
+			<p class="section-lead">Here's the short version of everything you need to know.</p>
+
+			<div class="accordion">
+				{#each faqItems as item}
+					<details class="faq-item">
+						<summary>
+							<span>{item.q}</span>
+							<svg class="chevron-icon" viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M6 9l6 6 6-6" />
+							</svg>
+						</summary>
+						<div class="faq-body">
+							{#if item.prizes}
+								<ul class="prize-list">
+									{#each item.prizes as row}
+										<li class="prize-row">
+											<span class="prize-day">{row.mark}</span>
+											<span class="prize-text">{row.text}</span>
+										</li>
+									{/each}
+								</ul>
+								<p class="faq-note"><strong>Grand prize:</strong> {item.note}</p>
+							{:else if item.contact}
+								<p>
+									Reach out at <a href="mailto:darshg321@gmail.com">darshg321@gmail.com</a>, message
+									<a
+										href="https://hackclub.enterprise.slack.com/team/U0795SNGE9L"
+										target="_blank"
+										rel="noopener">@darsh</a
+									>, or drop a note in
+									<a
+										href="https://hackclub.enterprise.slack.com/archives/C0C2U1ANNP7"
+										target="_blank"
+										rel="noopener">#dayoneof</a
+									> on the Hack Club Slack.
+								</p>
+							{:else}
+								<p>{item.a}</p>
+							{/if}
+						</div>
+					</details>
+				{/each}
+			</div>
+		</div>
+
+		<aside class="board">
+			<span class="stats-kicker">Leaderboard</span>
+			<ol class="rows">
+				{#each data.leaderboard as person, i}
+					<li class="row row-{i + 1}">
+						<span class="rank rank-{i + 1}">{i + 1}</span>
+						{#if person.slackId}
+							<a class="row-name" href="/user/{person.slackId}">
+								<span class="row-title">{person.name}</span>
+							</a>
+						{:else}
+							<span class="row-name"><span class="row-title">{person.name}</span></span>
+						{/if}
+						<span class="row-value">{person.streak}d</span>
+					</li>
+				{:else}
+					<li class="empty-row">Nobody's started a streak yet. Be the first!</li>
+				{/each}
+			</ol>
+		</aside>
+	</div>
+</section>
+
+<footer class="site-footer">
+	<p class="footer-made">made with &lt;3 by teens, for teens</p>
+	<nav class="footer-links" aria-label="Hack Club">
+		<a href="https://hackclub.com" target="_blank" rel="noopener" class="link-hackclub">hack club</a>
+		<span class="footer-dot" aria-hidden="true"></span>
+		<a href="https://slack.hackclub.com" target="_blank" rel="noopener" class="link-slack">slack</a>
+		<span class="footer-dot" aria-hidden="true"></span>
+		<a href="https://clubs.hackclub.com" target="_blank" rel="noopener" class="link-clubs">clubs</a>
+		<span class="footer-dot" aria-hidden="true"></span>
+		<a href="https://hackathons.hackclub.com" target="_blank" rel="noopener" class="link-hackathons"
+			>hackathons</a
+		>
+	</nav>
+</footer>
+
 <style>
-	@font-face {
-		font-family: 'Phantom Sans';
-		src:
-			url('https://assets.hackclub.com/fonts/Phantom_Sans_0.7/Regular.woff2') format('woff2'),
-			url('https://assets.hackclub.com/fonts/Phantom_Sans_0.7/Regular.woff') format('woff');
-		font-weight: normal;
-		font-style: normal;
-		font-display: swap;
-	}
-	@font-face {
-		font-family: 'Phantom Sans';
-		src:
-			url('https://assets.hackclub.com/fonts/Phantom_Sans_0.7/Bold.woff2') format('woff2'),
-			url('https://assets.hackclub.com/fonts/Phantom_Sans_0.7/Bold.woff') format('woff');
-		font-weight: bold;
-		font-style: normal;
-		font-display: swap;
-	}
-
 	:global(:root) {
-		--darker: #121217;
-		--dark: #17171d;
-		--black: #1f2d3d;
-		--steel: #273444;
-		--slate: #3c4858;
-		--muted: #8492a6;
-		--smoke: #e0e6ed;
-		--snow: #f9fafc;
-		--white: #ffffff;
-		--red: #ec3750;
-		--orange: #ff8c37;
-		--yellow: #f1c40f;
-		--green: #33d6a6;
-		--cyan: #5bc0de;
-		--blue: #338eda;
-		--purple: #a633d6;
-
-		--text: var(--black);
-		--heading: var(--darker);
-		--secondary: var(--slate);
-		--accent: var(--blue);
-		--background: var(--white);
-		--sheet: var(--snow);
-		--border: var(--smoke);
-
-		--accent-glow: rgb(51 142 218 / 0.2);
-		--accent-veil: rgb(51 142 218 / 0.85);
 		--shadow-reel: 0 12px 36px rgb(18 18 23 / 0.55);
 		--shadow-peek: 0 10px 30px rgb(18 18 23 / 0.65);
 		--ring-reel: 0 0 0 3px var(--white);
@@ -333,34 +412,10 @@
 		--dot-size: 1.1px;
 		--grid-opacity: 0.4;
 		--marquee-duration: 26s;
-		--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-		--transition-hover: 0.15s ease-in-out;
-		--transition-press: 0.125s ease-in-out;
-
-		--space-1: clamp(2px, 0.5vh, 4px);
-		--space-2: clamp(4px, 1vh, 8px);
-		--space-3: clamp(6px, 1.6vh, 14px);
-		--space-4: clamp(12px, 3.2vh, 28px);
-		--space-5: clamp(20px, 5vh, 44px);
-		--stack: clamp(10px, 2.6vh, 24px);
-		--stack-lg: clamp(16px, 4.4vh, 40px);
-		--gutter: clamp(1.5rem, 3vw, 3rem);
-		--radius: 8px;
-		--radius-lg: 16px;
-		--radius-pill: 9999px;
 	}
 
 	:global(html, body) {
-		margin: 0;
-		padding: 0;
-		background: var(--background);
-		height: 100%;
-		overflow: hidden;
-	}
-
-	:global(body) {
-		font-family: 'Phantom Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-		color: var(--text);
+		overflow-x: hidden;
 	}
 
 	.hero {
@@ -968,6 +1023,334 @@
 		.stats-card,
 		.prize-track {
 			animation: none;
+		}
+	}
+
+	.faq-section {
+		position: relative;
+		z-index: 1;
+		background: var(--sheet);
+		border-top: 1px solid var(--border);
+		padding: var(--space-5) var(--gutter);
+	}
+
+	.faq-wrap {
+		display: grid;
+		grid-template-columns: 1fr 1.15fr;
+		gap: var(--space-5);
+		max-width: 92rem;
+		margin: 0 auto;
+		align-items: start;
+	}
+
+	.faq-col {
+		min-width: 0;
+	}
+
+	.section-heading {
+		font-size: clamp(1.8rem, 1.4vw + 1.4rem, 2.6rem);
+		color: var(--heading);
+		margin: var(--space-3) 0 var(--space-2);
+	}
+
+	.section-lead {
+		font-size: clamp(0.95rem, 0.4vw + 0.85rem, 1.15rem);
+		color: var(--secondary);
+		line-height: 1.55;
+		max-width: 40rem;
+		margin: 0 0 var(--space-4);
+	}
+
+	.section-lead a {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.accordion {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+	}
+
+	.faq-item {
+		background: var(--background);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+	}
+
+	.faq-item summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		list-style: none;
+		cursor: pointer;
+		padding: var(--space-4);
+		font-weight: bold;
+		color: var(--heading);
+		font-size: clamp(1rem, 0.15vw + 0.95rem, 1.15rem);
+	}
+
+	.faq-item summary::marker,
+	.faq-item summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.faq-item summary:hover {
+		color: var(--accent);
+	}
+
+	.chevron-icon {
+		flex: 0 0 auto;
+		width: 1.1rem;
+		height: 1.1rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.5;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		transition: transform var(--transition-hover);
+	}
+
+	.faq-item[open] .chevron-icon {
+		transform: rotate(180deg);
+	}
+
+	.faq-body {
+		padding: 0 var(--space-4) var(--space-4);
+		color: var(--secondary);
+	}
+
+	.faq-body p {
+		margin: 0;
+		font-size: clamp(0.85rem, 0.15vw + 0.8rem, 1rem);
+		line-height: 1.6;
+	}
+
+	.faq-body a {
+		color: var(--accent);
+		font-weight: 600;
+	}
+
+	.prize-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.prize-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.prize-day {
+		flex: 0 0 auto;
+		min-width: 4.25rem;
+		font-size: 0.85rem;
+		font-weight: bold;
+		color: var(--heading);
+	}
+
+	.prize-text {
+		font-size: clamp(0.85rem, 0.15vw + 0.8rem, 1rem);
+	}
+
+	.faq-body p.faq-note {
+		margin: var(--space-3) 0 0;
+		font-size: clamp(0.85rem, 0.15vw + 0.8rem, 1rem);
+	}
+
+	.faq-note strong {
+		color: var(--accent);
+	}
+
+	.board {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		background: var(--background);
+		border: 1px solid var(--border);
+		border-top: 4px solid var(--accent);
+		border-radius: var(--radius-lg);
+		box-shadow: 0 6px 24px rgb(18 18 23 / 0.08);
+		padding: var(--space-5);
+		box-sizing: border-box;
+		position: sticky;
+		top: var(--space-5);
+	}
+
+	.board .stats-kicker {
+		align-self: flex-start;
+		font-size: clamp(1.5rem, 0.6vw + 1.35rem, 1.8rem);
+	}
+
+	.rows {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-4);
+		border-bottom: 1px solid var(--border);
+		padding: 0.85rem 0.3rem;
+		border-radius: var(--radius);
+		min-width: 0;
+	}
+
+	.row:last-child {
+		border-bottom: none;
+	}
+
+	.row-1 {
+		background: var(--accent-glow);
+	}
+
+	.row-2 {
+		background: rgb(51 142 218 / 0.06);
+	}
+
+	.row-3 {
+		background: rgb(51 142 218 / 0.03);
+	}
+
+	.row-1 .row-title {
+		font-size: 1.08em;
+	}
+
+	.row-1 .row-value {
+		color: var(--accent);
+	}
+
+	.rank {
+		flex: 0 0 auto;
+		width: 2.4rem;
+		height: 2.4rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		background: var(--sheet);
+		color: var(--muted);
+		font-weight: bold;
+		font-variant-numeric: tabular-nums;
+		font-size: 1.05rem;
+	}
+
+	.rank-1 {
+		background: var(--orange);
+		color: var(--white);
+	}
+
+	.row-name {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		font-weight: bold;
+		font-size: 1.2rem;
+		color: var(--heading);
+		text-decoration: none;
+	}
+
+	.row-name:is(a):hover {
+		color: var(--accent);
+	}
+
+	.row-title {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.row-value {
+		flex: 0 0 auto;
+		font-weight: bold;
+		font-variant-numeric: tabular-nums;
+		font-size: 1.25rem;
+		color: var(--heading);
+	}
+
+	.empty-row {
+		color: var(--secondary);
+		font-size: 1rem;
+		padding: var(--space-2);
+	}
+
+	.site-footer {
+		background: var(--background);
+		padding: var(--space-5) var(--gutter) var(--space-4);
+		text-align: center;
+	}
+
+	.footer-made {
+		font-family: 'Pixelify Sans', sans-serif;
+		font-weight: 500;
+		font-size: clamp(1.05rem, 0.3vw + 0.95rem, 1.3rem);
+		color: #b0a6ad;
+		margin: 0 0 var(--space-2);
+	}
+
+	.footer-links {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-wrap: wrap;
+		gap: 0.7rem;
+		font-family: 'Pixelify Sans', sans-serif;
+		font-weight: 700;
+		font-size: clamp(1.1rem, 0.35vw + 1rem, 1.4rem);
+	}
+
+	.footer-links a {
+		text-decoration: none;
+		transition: opacity var(--transition-hover);
+	}
+
+	.footer-links a:hover {
+		opacity: 0.7;
+	}
+
+	.footer-dot {
+		width: 0.4rem;
+		height: 0.4rem;
+		border-radius: 1px;
+		background: var(--muted);
+		opacity: 0.5;
+		transform: rotate(45deg);
+	}
+
+	.link-hackclub {
+		color: #c48f92;
+	}
+
+	.link-slack {
+		color: #7fa87a;
+	}
+
+	.link-clubs {
+		color: #8890c4;
+	}
+
+	.link-hackathons {
+		color: #a985bd;
+	}
+
+	@media (max-width: 62rem) {
+		.faq-wrap {
+			grid-template-columns: 1fr;
+		}
+
+		.board {
+			position: static;
 		}
 	}
 </style>
