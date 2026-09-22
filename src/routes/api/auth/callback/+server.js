@@ -29,10 +29,12 @@ export async function GET({ url, cookies }) {
 
 	let tz;
 	let slackName;
+	let avatar;
 	try {
 		const slackUser = await slack.usersInfo(slackId);
 		tz = slackUser?.tz;
 		slackName = slackUser?.profile?.display_name || slackUser?.profile?.real_name;
+		avatar = slackUser?.profile?.image_192 || slackUser?.profile?.image_72;
 	} catch (err) {
 		console.error('users.info failed during sign-in, continuing without tz', err);
 	}
@@ -43,7 +45,8 @@ export async function GET({ url, cookies }) {
 			slackName || [identity.first_name, identity.last_name].filter(Boolean).join(' '),
 		[F.participants.email]: String(identity.primary_email ?? '').toLowerCase(),
 		[F.participants.verificationStatus]: identity.verification_status ?? 'needs_submission',
-		...(tz ? { [F.participants.tz]: tz } : {})
+		...(tz ? { [F.participants.tz]: tz } : {}),
+		...(avatar ? { [F.participants.avatar]: avatar } : {})
 	});
 
 	try {

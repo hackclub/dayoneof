@@ -115,6 +115,7 @@ async function handleSubmission(event) {
 			await airtable.update(TABLES.submissions, duplicateSubmission.id, {
 				[F.submissions.views]: stats.views,
 				[F.submissions.title]: stats.title,
+				[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
 				[F.submissions.unifiedId]: String(stats.id)
 			});
 			await syncParticipantTotalViews(event.user);
@@ -167,7 +168,12 @@ async function handleSubmission(event) {
 		[F.submissions.streakAtPost]: streak,
 		[F.submissions.freezesAtPost]: freezes,
 		...(stats
-			? { [F.submissions.views]: stats.views, [F.submissions.title]: stats.title, [F.submissions.unifiedId]: String(stats.id) }
+			? {
+					[F.submissions.views]: stats.views,
+					[F.submissions.title]: stats.title,
+					[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
+					[F.submissions.unifiedId]: String(stats.id)
+				}
 			: {})
 	});
 	if (stats) await syncParticipantTotalViews(event.user);
