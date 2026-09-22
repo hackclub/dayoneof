@@ -90,7 +90,7 @@ dev copy lives in a file on a laptop and gets pasted into terminals; the prod co
 What's genuinely shared is the narrow set where dev and prod want the identical value and leaking
 the dev copy costs nothing extra: `AIRTABLE_TOKEN`/`AIRTABLE_BASE_ID` (one base, see above),
 `HCA_CLIENT_ID`/`HCA_CLIENT_SECRET` (one HCA app, see below), `UNIFIED_SOCIALS_TOKEN`
-(read-only), `ADMIN_SLACK_IDS`, `MIN_REVIEW_LENGTH`.
+(read-only), `ADMIN_SLACK_IDS`, `MIN_REVIEW_LENGTH`, `MAX_POST_AGE_DAYS`.
 
 ## Data model (Airtable)
 
@@ -251,11 +251,16 @@ total — the site and the Slack leaderboard always agree with what a thread rep
 ## Streak rules (`streak.js`, pure functions)
 
 - First link of a UTC day counts. Later links the same day are stored, react 🔁, don't advance.
-- A video published more than `MAX_POST_AGE_DAYS` (2) days ago is refused outright — ⏳ and a reply,
+- A video published more than `MAX_POST_AGE_DAYS` (default 2) days ago is refused outright — ⏳ and a reply,
   no day row and no submission row. The publish date comes from unified-socials' `published_at`, so
   a video nobody has tracked yet has no date to judge and is allowed: refusing on a missing date
   would reject the ordinary case of a video uploaded minutes ago. The dev seed writes to Airtable
   directly and never passes through this check, so its older videos still populate the site.
+- A video already stored on any submission row is refused outright — ❌ and a reply, no day row and
+  no submission row. Matched on `platform` + `video_id`, so a repost under a different link shape
+  still hits the stored row, and across all participants rather than per poster: views are summed
+  per submission row, so a second row for one video would double-count it in `total_views`.
+  Checked before the stats lookup, so a refused repost never starts paid tracking work either.
 - Every 2 days completed earns a freeze, capped at 3.
 - A gap spends one freeze per missed day. Cover the whole gap and the streak continues; run out
   and it resets to 1.
@@ -530,6 +535,8 @@ views pass and admin's "Check stats".
 Blank means nobody is an admin.
 
 `MIN_REVIEW_LENGTH` — default `40` is fine.
+
+`MAX_POST_AGE_DAYS` — how old a video may be at submission time; default `2` is fine.
 
 ### 6. Try it
 

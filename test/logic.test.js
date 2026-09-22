@@ -19,21 +19,23 @@ test('isDuplicatePost detects an existing posted day', () => {
 	assert.equal(isDuplicatePost(days, '2026-01-02'), false);
 });
 
-test('isPostTooOld rejects only past the two-day mark', () => {
+test('isPostTooOld rejects only past the given age limit', () => {
 	const now = new Date('2026-01-10T12:00:00Z');
-	assert.equal(isPostTooOld('2026-01-10T11:00:00Z', now), false);
-	assert.equal(isPostTooOld('2026-01-08T12:00:01Z', now), false);
-	assert.equal(isPostTooOld('2026-01-08T11:59:59Z', now), true);
-	assert.equal(isPostTooOld('2025-12-01T00:00:00Z', now), true);
-	assert.equal(isPostTooOld('2026-01-08T12:00:00+00:00', now), false);
+	assert.equal(isPostTooOld('2026-01-10T11:00:00Z', 2, now), false);
+	assert.equal(isPostTooOld('2026-01-08T12:00:01Z', 2, now), false);
+	assert.equal(isPostTooOld('2026-01-08T11:59:59Z', 2, now), true);
+	assert.equal(isPostTooOld('2025-12-01T00:00:00Z', 2, now), true);
+	assert.equal(isPostTooOld('2026-01-08T12:00:00+00:00', 2, now), false);
+	assert.equal(isPostTooOld('2026-01-08T11:59:59Z', 5, now), false);
+	assert.equal(isPostTooOld('2026-01-08T11:59:59Z', 1, now), true);
 });
 
 test('isPostTooOld allows a post whose age cannot be known', () => {
 	const now = new Date('2026-01-10T12:00:00Z');
-	assert.equal(isPostTooOld(null, now), false);
-	assert.equal(isPostTooOld(undefined, now), false);
-	assert.equal(isPostTooOld('', now), false);
-	assert.equal(isPostTooOld('not a date', now), false);
+	assert.equal(isPostTooOld(null, 2, now), false);
+	assert.equal(isPostTooOld(undefined, 2, now), false);
+	assert.equal(isPostTooOld('', 2, now), false);
+	assert.equal(isPostTooOld('not a date', 2, now), false);
 });
 
 test('computeStreak counts back from the most recent day', () => {

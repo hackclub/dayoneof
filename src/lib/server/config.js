@@ -58,6 +58,9 @@ export const config = {
 	// Falls back on anything unparseable rather than passing NaN on: `length < NaN` is false, so a
 	// typo'd value would silently turn every one-word reply into a review.
 	minReviewLength: Number(priv('MIN_REVIEW_LENGTH')) || 40,
+	// Same NaN guard as above: an unparseable value would make every age comparison false and let
+	// any old video through.
+	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 2,
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')
 		.map((id) => id.trim())

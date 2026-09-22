@@ -32,6 +32,12 @@ export const messages = {
 	postTooOld(slackId, maxAgeDays) {
 		return `<@${slackId}> that video was published more than ${maxAgeDays} days ago, so it can't count toward your streak. Post something you've made in the last ${maxAgeDays} days!`;
 	},
+	// Points at #dayoneof because, unlike an old video, a link the poster believes is new can only
+	// be sorted out by a human looking at the earlier submission.
+	/** @param {string} slackId */
+	duplicateVideo(slackId) {
+		return `<@${slackId}> error: that video has already been posted, so it can't count toward your streak. Post a different video, and if you think this is a mistake, send a message in #dayoneof on Slack!`;
+	},
 	/**
 	 * @param {number} streak
 	 * @param {number} freezesRemaining

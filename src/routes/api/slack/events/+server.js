@@ -12,7 +12,6 @@ import {
 	utcDateString,
 	isDuplicatePost,
 	isPostTooOld,
-	MAX_POST_AGE_DAYS,
 	computeStreak,
 	daysCompletedCount,
 	freezesEarned,
@@ -63,6 +62,19 @@ async function getParticipant(slackId) {
 	return airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, slackId));
 }
 
+// Matched on platform + video id rather than url so a repost of the same video under a different
+// link shape still lands on the row already stored.
+/**
+ * @param {string} platform
+ * @param {string} videoId
+ */
+async function findSubmissionByVideo(platform, videoId) {
+	return airtable.find(
+		TABLES.submissions,
+		`AND(${airtable.eq(F.submissions.platform, platform)}, ${airtable.eq(F.submissions.videoId, videoId)})`
+	);
+}
+
 /** @param {SlackEvent} event */
 async function handleSubmission(event) {
 	const link = extractLink(event.text);
@@ -88,6 +100,14 @@ async function handleSubmission(event) {
 		return;
 	}
 
+	// Ahead of the stats lookup and of trackPost: a video already stored is refused outright, so
+	// nothing is written and no paid work is started for it.
+	if (await findSubmissionByVideo(link.platform, link.videoId)) {
+		await slack.addReaction(event.channel, event.ts, 'x');
+		await slack.postMessage(event.channel, messages.duplicateVideo(event.user), event.ts);
+		return;
+	}
+
 	// Looked up once, before anything is written, because the age rule below has to be able to
 	// refuse the post without having left a day or a submission row behind.
 	let stats = null;
@@ -97,9 +117,13 @@ async function handleSubmission(event) {
 		console.error('unified-socials stats lookup failed at submission time', err);
 	}
 
-	if (isPostTooOld(stats?.publishedAt)) {
+	if (isPostTooOld(stats?.publishedAt, config.maxPostAgeDays)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
-		await slack.postMessage(event.channel, messages.postTooOld(event.user, MAX_POST_AGE_DAYS), event.ts);
+		await slack.postMessage(
+			event.channel,
+			messages.postTooOld(event.user, config.maxPostAgeDays),
+			event.ts
+		);
 		return;
 	}
 
