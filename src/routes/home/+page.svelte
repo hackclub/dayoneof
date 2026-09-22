@@ -29,19 +29,13 @@
 
 <svelte:head>
 	<title>Day One Of</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link
-		href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,900&display=swap"
-		rel="stylesheet"
-	/>
 </svelte:head>
 
-<div class="dash">
+<div class="dash day-one">
 	<header class="bar">
 		<a class="brand" href="/home">Day One Of</a>
 		<div class="bar-right">
-			<span class="posted">{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
+			<span class="posted torn-tape">{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
 			{#if data.session}
 				{#if data.name}
 					<a class="who" href="/user/{data.session.slackId}">
@@ -186,7 +180,7 @@
 <style>
 	.dash {
 		--frame: clamp(1.5rem, 2.6vw, 3.25rem);
-		--tile-gap: clamp(0.6rem, 1.1vw, 1.15rem);
+		--tile-gap: clamp(0.8rem, 1.3vw, 1.35rem);
 		--meta-h: 1.45rem;
 		/* Everything above the wall: bar, column padding, the feed heading and its gap. */
 		--feed-chrome: clamp(11rem, 23.5vh, 15.5rem);
@@ -202,27 +196,49 @@
 		display: flex;
 		flex-direction: column;
 		height: 100dvh;
-		background: var(--background);
+	}
+
+	h1 {
+		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-weight: 700;
+		margin: 0;
+	}
+
+	.torn-tape {
+		clip-path: polygon(
+			3px 0,
+			calc(100% - 3px) 0,
+			100% 28%,
+			calc(100% - 3px) 58%,
+			100% 100%,
+			3px 100%,
+			0 58%,
+			3px 28%
+		);
+		background-image: repeating-linear-gradient(
+			48deg,
+			rgba(255, 255, 255, 0.32) 0 2px,
+			transparent 2px 7px
+		);
+		background-blend-mode: overlay;
 	}
 
 	.bar {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--space-4);
+		gap: 16px;
 		padding: clamp(0.9rem, 2.1vh, 1.6rem) var(--frame);
-		border-bottom: 1px solid var(--border);
-		background: var(--background);
+		border-bottom: 2px solid var(--line);
 	}
 
 	.brand {
-		font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
-		font-style: italic;
-		font-weight: 900;
-		font-size: clamp(1.75rem, 2.5vw, 2.9rem);
-		letter-spacing: -0.01em;
-		color: var(--heading);
-		text-decoration: none;
+		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-weight: 700;
+		font-size: clamp(1.6rem, 2.2vw, 2.4rem);
+		color: var(--ink);
+		text-decoration: underline wavy var(--accent) 2px;
+		text-underline-offset: 7px;
 	}
 
 	.bar-right {
@@ -233,8 +249,14 @@
 	}
 
 	.posted {
-		color: var(--secondary);
-		font-size: clamp(0.95rem, 1.05vw, 1.2rem);
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		background-color: var(--tape);
+		color: var(--ink);
+		padding: 6px 12px;
+		transform: rotate(-2deg);
 		white-space: nowrap;
 	}
 
@@ -242,9 +264,9 @@
 		display: flex;
 		align-items: center;
 		gap: 0.55rem;
-		font-weight: bold;
-		font-size: clamp(1rem, 1.15vw, 1.3rem);
-		color: var(--heading);
+		font-weight: 700;
+		font-size: clamp(1rem, 1.1vw, 1.2rem);
+		color: var(--ink);
 		text-decoration: none;
 		min-width: 0;
 	}
@@ -261,8 +283,9 @@
 		width: clamp(1.9rem, 2.2vw, 2.4rem);
 		height: clamp(1.9rem, 2.2vw, 2.4rem);
 		border-radius: 50%;
+		border: 2px solid var(--ink);
 		object-fit: cover;
-		background: var(--smoke);
+		background: var(--bg-2);
 	}
 
 	.avatar-fallback {
@@ -270,8 +293,8 @@
 		align-items: center;
 		justify-content: center;
 		font-size: 0.8rem;
-		font-weight: bold;
-		color: var(--slate);
+		font-weight: 700;
+		color: var(--ink-soft);
 	}
 
 	.who:hover {
@@ -279,23 +302,29 @@
 	}
 
 	.ghost-btn {
-		font-weight: bold;
-		font-size: clamp(0.95rem, 1.05vw, 1.15rem);
-		color: var(--accent);
-		background: var(--background);
-		border: 2px solid var(--accent);
-		border-radius: var(--radius);
-		padding: 0.5rem 1.4rem;
+		font-weight: 700;
+		font-size: 0.95rem;
+		color: var(--bg);
+		background: var(--ink);
+		border: 2px solid var(--ink);
+		border-radius: 10px;
+		padding: 0.5rem 1.2rem;
 		text-decoration: none;
 		white-space: nowrap;
+		box-shadow: 3px 3px 0 var(--accent);
 		transition:
-			background-color var(--transition-hover),
-			color var(--transition-hover);
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
 	}
 
 	.ghost-btn:hover {
-		background: var(--accent);
-		color: var(--white);
+		transform: translate(-2px, -2px);
+		box-shadow: 5px 5px 0 var(--accent);
+	}
+
+	.ghost-btn:active {
+		transform: translate(0, 0);
+		box-shadow: 1px 1px 0 var(--accent);
 	}
 
 	.columns {
@@ -305,7 +334,6 @@
 		flex: 1 1 auto;
 		min-height: 0;
 		padding: clamp(1.75rem, 4.4vh, 3.5rem) var(--frame) clamp(1rem, 2.2vh, 1.75rem);
-		box-sizing: border-box;
 	}
 
 	.feed {
@@ -321,46 +349,52 @@
 		align-items: center;
 		justify-content: space-between;
 		flex-wrap: wrap;
-		gap: var(--space-3);
+		gap: 12px;
 	}
 
 	.feed-head h1 {
-		margin: 0;
-		font-size: clamp(1.45rem, 1vh + 1.1vw, 2.2rem);
-		color: var(--heading);
+		font-size: clamp(1.45rem, 1vh + 1.1vw, 2.1rem);
 	}
 
-	.segmented {
+	.segmented,
+	.tabs {
 		display: flex;
-		gap: 2px;
+		gap: 3px;
 		padding: 3px;
-		background: var(--sheet);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
+		background: var(--bg-2);
+		border: 2px solid var(--ink);
+		border-radius: 10px;
+		box-shadow: 3px 3px 0 var(--shadow);
+	}
+
+	.segment,
+	.tab {
+		font: inherit;
+		font-weight: 700;
+		color: var(--ink-soft);
+		background: none;
+		border: none;
+		border-radius: 7px;
+		cursor: var(--cursor-pointer);
+		transition:
+			background-color 0.12s ease,
+			color 0.12s ease;
 	}
 
 	.segment {
-		font-family: inherit;
-		font-size: clamp(0.9rem, 1vw, 1.1rem);
-		font-weight: bold;
-		color: var(--secondary);
-		background: none;
-		border: none;
-		border-radius: calc(var(--radius) - 3px);
-		padding: 0.5rem 1.3rem;
-		cursor: pointer;
-		transition:
-			background-color var(--transition-hover),
-			color var(--transition-hover);
+		font-size: clamp(0.9rem, 1vw, 1.05rem);
+		padding: 0.45rem 1.2rem;
 	}
 
-	.segment:hover {
-		color: var(--heading);
+	.segment:hover,
+	.tab:hover {
+		color: var(--ink);
 	}
 
-	.segment.active {
+	.segment.active,
+	.tab.active {
 		background: var(--accent);
-		color: var(--white);
+		color: var(--accent-ink);
 	}
 
 	/* Five fixed columns: tile width follows the column, and 9:16 gives the height, so tracks never
@@ -374,13 +408,13 @@
 		flex: 1 1 auto;
 		min-height: 0;
 		overflow-y: auto;
-		padding-right: var(--space-2);
+		padding: 6px 12px 12px 4px;
 	}
 
 	.card {
 		display: flex;
 		flex-direction: column;
-		gap: 0.35rem;
+		gap: 0.4rem;
 		width: 100%;
 		min-width: 0;
 	}
@@ -390,18 +424,28 @@
 		display: block;
 		width: 100%;
 		aspect-ratio: 9 / 16;
-		border-radius: var(--radius-lg);
+		border: 2px solid var(--ink);
+		border-radius: 15px 8px 12px 9px/9px 13px 8px 15px;
 		overflow: hidden;
-		background: linear-gradient(160deg, var(--steel), var(--darker));
+		background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%);
+		box-shadow: 4px 5px 0 var(--shadow);
 		text-decoration: none;
 		transition:
-			transform var(--transition-hover),
-			box-shadow var(--transition-hover);
+			transform 0.12s ease,
+			box-shadow 0.12s ease;
 	}
 
-	.tile:hover {
-		transform: translateY(-4px);
-		box-shadow: 0 14px 30px rgb(18 18 23 / 0.3);
+	.card:nth-child(odd) .tile {
+		transform: rotate(-1deg);
+	}
+
+	.card:nth-child(even) .tile {
+		transform: rotate(1deg);
+	}
+
+	.card .tile:hover {
+		transform: translate(-2px, -3px);
+		box-shadow: 7px 8px 0 var(--shadow);
 	}
 
 	.thumb {
@@ -423,21 +467,20 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: 50%;
-		background: rgb(18 18 23 / 0.32);
-		border: 1.5px solid rgb(255 255 255 / 0.75);
-		opacity: 0.8;
-		backdrop-filter: blur(2px);
+		background: var(--bg-2);
+		border: 2px solid var(--ink);
+		opacity: 0.85;
 		transition:
-			transform var(--transition-hover),
-			opacity var(--transition-hover);
+			transform 0.12s ease,
+			opacity 0.12s ease;
 	}
 
 	.play svg {
 		width: 55%;
 		height: 55%;
 		margin-left: 6%;
-		fill: var(--white);
-		stroke: var(--white);
+		fill: var(--accent);
+		stroke: var(--accent);
 		stroke-width: 2.4;
 		stroke-linejoin: round;
 	}
@@ -458,18 +501,18 @@
 		   the scrim goes near-opaque at the base and the type carries its own shadow. */
 		background: linear-gradient(
 			to top,
-			rgb(18 18 23 / 0.94),
-			rgb(18 18 23 / 0.72) 45%,
-			rgb(18 18 23 / 0.3) 75%,
+			rgb(43 34 22 / 0.94),
+			rgb(43 34 22 / 0.72) 45%,
+			rgb(43 34 22 / 0.3) 75%,
 			transparent
 		);
-		color: var(--white);
-		text-shadow: 0 1px 3px rgb(18 18 23 / 0.9);
+		color: var(--accent-ink);
+		text-shadow: 0 1px 3px rgb(43 34 22 / 0.9);
 	}
 
 	.tile-title {
 		font-size: clamp(0.9rem, 0.95vw, 1.1rem);
-		font-weight: bold;
+		font-weight: 700;
 		line-height: 1.25;
 		overflow-wrap: anywhere;
 		display: -webkit-box;
@@ -490,15 +533,16 @@
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
-		gap: var(--space-2);
-		font-size: clamp(0.9rem, 0.95vw, 1.1rem);
+		gap: 8px;
+		font-size: clamp(0.9rem, 0.95vw, 1.05rem);
 		height: var(--meta-h);
 		min-width: 0;
 	}
 
 	.author {
-		font-weight: bold;
-		color: var(--heading);
+		font-family: 'Shantell Sans', cursive;
+		font-weight: 700;
+		color: var(--ink);
 		text-decoration: none;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -510,14 +554,14 @@
 	}
 
 	.when {
-		color: var(--muted);
+		color: var(--ink-soft);
 		white-space: nowrap;
 	}
 
 	.empty {
-		color: var(--secondary);
-		font-size: 1.15rem;
-		margin: var(--space-4) 0 0;
+		color: var(--ink-soft);
+		font-size: 1.1rem;
+		margin: 16px 0 0;
 	}
 
 	.board {
@@ -525,48 +569,18 @@
 		flex-direction: column;
 		min-height: 0;
 		gap: clamp(0.6rem, 1.4vh, 1.1rem);
-		background: var(--background);
-		border: 1px solid var(--border);
-		border-top: 4px solid var(--accent);
-		border-radius: var(--radius);
-		box-shadow: 0 6px 24px rgb(18 18 23 / 0.1);
+		background: var(--bg-2);
+		border: 2px solid var(--ink);
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		box-shadow: 4px 5px 0 var(--shadow);
 		padding: clamp(0.75rem, 1.6vh, 1.25rem);
-		box-sizing: border-box;
-	}
-
-	/* Same control as the sort toggle — two different pill treatments for the same job was noise. */
-	.tabs {
-		display: flex;
-		gap: 2px;
-		padding: 3px;
-		background: var(--sheet);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
+		transform: rotate(0.6deg);
 	}
 
 	.tab {
-		font-family: inherit;
-		font-size: clamp(0.85rem, 0.92vw, 1.05rem);
-		font-weight: bold;
 		flex: 1 1 0;
-		color: var(--secondary);
-		background: none;
-		border: none;
-		border-radius: calc(var(--radius) - 3px);
-		padding: 0.55rem 0.4rem;
-		cursor: pointer;
-		transition:
-			background-color var(--transition-hover),
-			color var(--transition-hover);
-	}
-
-	.tab:hover {
-		color: var(--heading);
-	}
-
-	.tab.active {
-		background: var(--accent);
-		color: var(--white);
+		font-size: clamp(0.85rem, 0.92vw, 1rem);
+		padding: 0.5rem 0.4rem;
 	}
 
 	/* Rows share the panel height, but only up to --row-max — without the cap a board with two
@@ -577,7 +591,6 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: clamp(0.25rem, 0.55vh, 0.5rem);
 		flex: 1 1 auto;
 		min-height: 0;
 		overflow-y: auto;
@@ -590,28 +603,13 @@
 		flex: 1 1 auto;
 		min-height: var(--row-min);
 		max-height: var(--row-max);
-		border-bottom: 1px solid var(--border);
+		border-top: 1px dashed var(--line);
 		padding: 0.3rem 0.55rem;
-		border-radius: var(--radius);
 		min-width: 0;
 	}
 
-	.row:last-child {
-		border-bottom: none;
-	}
-
-	/* The podium carries the emphasis: a tint that fades out by third place, and the leader's
-	   number and metric in the accent. Ranks 4-10 stay plain so the top actually reads as the top. */
-	.row-1 {
-		background: rgb(51 142 218 / 0.1);
-	}
-
-	.row-2 {
-		background: rgb(51 142 218 / 0.06);
-	}
-
-	.row-3 {
-		background: rgb(51 142 218 / 0.03);
+	.row:first-child {
+		border-top: none;
 	}
 
 	.row-1 .row-title {
@@ -619,21 +617,25 @@
 	}
 
 	.row-1 .row-value {
-		color: var(--accent);
+		background: var(--accent);
+		color: var(--accent-ink);
+		padding: 3px 10px;
+		border-radius: 999px;
 	}
 
 	.rank {
 		flex: 0 0 auto;
 		width: 1.6rem;
 		text-align: right;
-		color: var(--muted);
-		font-weight: bold;
+		font-family: 'Shantell Sans', cursive;
+		font-weight: 700;
+		color: var(--ink-soft);
 		font-variant-numeric: tabular-nums;
 		font-size: clamp(0.9rem, 1.5vh, 1.15rem);
 	}
 
 	.rank-1 {
-		color: var(--orange);
+		color: var(--accent);
 	}
 
 	.row-name {
@@ -641,9 +643,9 @@
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		font-weight: bold;
-		font-size: clamp(1.05rem, 1.9vh, 1.4rem);
-		color: var(--heading);
+		font-weight: 700;
+		font-size: clamp(1rem, 1.8vh, 1.3rem);
+		color: var(--ink);
 		text-decoration: none;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -656,13 +658,10 @@
 
 	.row-value {
 		flex: 0 0 auto;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		font-weight: bold;
+		font-weight: 800;
 		font-variant-numeric: tabular-nums;
-		font-size: clamp(1.1rem, 2vh, 1.5rem);
-		color: var(--heading);
+		font-size: clamp(1rem, 1.8vh, 1.3rem);
+		color: var(--ink);
 	}
 
 	.row-title {
@@ -672,34 +671,34 @@
 	}
 
 	.row-sub {
-		font-weight: normal;
+		font-weight: 400;
 		font-size: clamp(0.8rem, 1.3vh, 0.95rem);
-		color: var(--muted);
+		color: var(--ink-soft);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
 	.empty-row {
-		color: var(--secondary);
-		font-size: 1.05rem;
-		padding: var(--space-2);
+		color: var(--ink-soft);
+		font-size: 1rem;
+		padding: 8px;
 	}
 
 	:global(.dash a:focus-visible),
 	:global(.dash button:focus-visible) {
-		outline: 2px solid var(--accent);
+		outline: 3px solid var(--accent);
 		outline-offset: 2px;
-		border-radius: var(--radius);
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.tile,
-		.play {
+		.play,
+		.ghost-btn {
 			transition: none;
 		}
 
-		.tile:hover {
+		.card .tile:hover {
 			transform: none;
 		}
 
@@ -729,6 +728,7 @@
 
 		.board {
 			order: -1;
+			transform: none;
 		}
 	}
 </style>
