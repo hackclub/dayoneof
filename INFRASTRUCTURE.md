@@ -17,6 +17,7 @@ bot living inside it as a route, deployed as a container on Orchard, backed by A
 - **Hack Club Auth (HCA)** gates who can count a submission — sign-in via OIDC.
 - **unified-socials-db** (Hack Club's own service) supplies view/like counts and video titles for
   tracked videos, read-only.
+- **GoatCounter** (hosted, free tier) counts pageviews — cookieless, so no consent banner.
 
 ## Layout
 
@@ -161,9 +162,11 @@ body, echoes the `url_verification` challenge, acks retries, then routes on `eve
 
 - **`message` in the submissions channel, with a supported link** — not signed in → 🔒 + reply
   telling them to sign in; signed in but HCA hasn't verified them → 🔒 + reply explaining that;
-  otherwise: records the day, advances the streak, reacts ✅, replies in-thread with the streak
-  and (if the video happens to already be tracked) live stats. A same-day repeat gets 🔁 and
-  still replies in-thread, just without advancing the streak.
+  published more than two days ago → ⏳ + reply, and nothing is written at all; otherwise: records
+  the day, advances the streak, reacts ✅, replies in-thread with the streak and (if the video
+  happens to already be tracked) live stats. A same-day repeat gets 🔁 and still replies in-thread,
+  just without advancing the streak. A video unified-socials doesn't know yet is submitted for
+  tracking — see "Submitting an untracked post".
 - **`message` in the submissions channel, no supported link** — reacts ❓, replies in-thread
   explaining which platforms count.
 - **threaded reply by someone other than the poster, 40+ characters** — records a review, ✅ 👀.
@@ -193,6 +196,33 @@ channel.
 Milestones (2/7/15/25 days) fire inside the submission handler: announce in the announce channel,
 DM the participant, write `last_milestone` so it doesn't repeat.
 
+## Analytics (GoatCounter)
+
+`PUBLIC_GOATCOUNTER_URL` names a hosted GoatCounter site; blank turns tracking off, which is what
+dev runs with. `+layout.server.js` resolves it and `+layout.svelte` injects the tracker from the
+browser — resolving server-side is what lets the `_DEV`/`_PROD` convention apply to it like every
+other var, instead of the suffix logic being duplicated on the client.
+
+The tracker itself is `static/count.js`, GoatCounter's own ISC-licensed script vendored so it loads
+same-origin. `gc.zgo.at` is on the usual tracker blocklists — a third-party fetch of it is dropped
+with no console error and no pageview, which is easy to mistake for the integration being broken.
+Serving it ourselves fixes the script; the `*.goatcounter.com/count` endpoint it reports to can
+still be blocked separately. Update the file by re-downloading it from `https://gc.zgo.at/count.js`.
+
+Two paths never get reported as they stand. `/user/[slackId]` carries a Slack id, so it is rewritten
+to `/user/:slackId`; `/admin` isn't a public page, so its callback returns `null` and count.js drops
+the pageview entirely. Nothing about a visitor is stored in their browser, so there is no banner to
+show — GoatCounter counts a unique visit from a salted server-side hash that rotates daily.
+
+`count.js` only counts the load it arrived on, and this site navigates client-side (`/home`'s grid,
+`/user/...` links, `data-sveltekit-preload-data="hover"` in `app.html`). So `afterNavigate` reports
+each subsequent navigation by hand, with a blank referrer: without that, every internal hop would
+re-credit whatever external link brought the visitor in and inflate that referrer's count.
+
+Blank is the dev value rather than a second GoatCounter site because the tunnel host is a real
+public hostname — count.js only skips `localhost` and private ranges, so local browsing through a
+Funnel would otherwise land in production's numbers.
+
 ## Cron jobs
 
 Three `GET /api/cron/<name>` routes, each gated on `Authorization: Bearer $CRON_SECRET`. Each
@@ -217,6 +247,11 @@ total — the site and the Slack leaderboard always agree with what a thread rep
 ## Streak rules (`streak.js`, pure functions)
 
 - First link of a UTC day counts. Later links the same day are stored, react 🔁, don't advance.
+- A video published more than `MAX_POST_AGE_DAYS` (2) days ago is refused outright — ⏳ and a reply,
+  no day row and no submission row. The publish date comes from unified-socials' `published_at`, so
+  a video nobody has tracked yet has no date to judge and is allowed: refusing on a missing date
+  would reject the ordinary case of a video uploaded minutes ago. The dev seed writes to Airtable
+  directly and never passes through this check, so its older videos still populate the site.
 - Every 2 days completed earns a freeze, capped at 3.
 - A gap spends one freeze per missed day. Cover the whole gap and the streak continues; run out
   and it resets to 1.
@@ -243,8 +278,33 @@ at most one row. `views` and `likes` are null until some source reports them (ma
 `platform_post_id` is the same id `links.js` extracts: a YouTube video id, an Instagram shortcode,
 a TikTok video id.
 
-**Writing is disabled** — there is no write endpoint; the service is read-only SQL views over
-`api.posts`. Do not add one without explicit approval.
+### Submitting an untracked post
+
+`GET /api/v1/posts` is a read-only SQL view, so a video nobody has tracked yet simply isn't in it —
+which is the normal case for a video posted minutes ago. `trackPost` in `unified.js` submits it:
+`POST /api/v1/tracked-posts` with `{"url": ...}`, answering 201 for a new post or 200 if it was
+already tracked, with the same `tracked_post_id` either way and nothing re-run. That id is the same
+id as `api.posts.id` (it arrives as a string, which is why `unified_id` stores `String(...)`).
+
+**This is the only write in the codebase and it spends money** — the submission pays Arker to
+archive the post and Gemini to watch and code it. Everything guarding it is deliberate:
+
+- **Off unless `UNIFIED_SOCIALS_TRACK_POSTS` is exactly `"true"`.** Deploying the code cannot spend
+  anything until someone turns it on, and turning it off again is the kill switch. Because the var
+  resolves per-environment like every other one, `UNIFIED_SOCIALS_TRACK_POSTS_PROD=true` on its own
+  leaves dev unable to spend.
+- **The token needs `Can start tracking posts`** (`tracked_posts:write`). Without it the API answers
+  403 and no work starts, so the scope is a second gate that doesn't depend on our code.
+- **One call site**, in the submission handler, reached only after the read returned no row. It sits
+  behind the sign-in and HCA-verification gates and behind the too-old refusal, so a stranger and a
+  video that was just rejected both cost nothing.
+- **Never retried.** Retrying a paid endpoint that failed halfway is the one thing that could double
+  charge, and reconcile re-reads every submission nightly anyway.
+- **Never throws.** A tracking failure returns null and the poster keeps their streak.
+- **Reconcile does not call it.** `refreshViews` walks every submission every night; submitting from
+  there would mean a nightly burst against the 100-new-posts-per-hour token limit.
+
+Do not add a second write, or call `trackPost` from anywhere else, without explicit approval.
 
 ## Sign-in and verification gate
 
@@ -497,6 +557,7 @@ deployment's environment variables in Orchard — **unsuffixed**, plus `APP_ENV=
 APP_ENV=prod
 PUBLIC_SITE_URL=https://<the real domain>
 ORIGIN=https://<the real domain>
+PUBLIC_GOATCOUNTER_URL=https://<code>.goatcounter.com
 AIRTABLE_TOKEN=pat...
 AIRTABLE_BASE_ID=app...
 SLACK_BOT_TOKEN=xoxb-...
@@ -508,6 +569,7 @@ HCA_CLIENT_SECRET=...
 SESSION_SECRET=...
 CRON_SECRET=...
 UNIFIED_SOCIALS_TOKEN=...
+UNIFIED_SOCIALS_TRACK_POSTS=true
 ADMIN_SLACK_IDS=U...,U...
 ```
 

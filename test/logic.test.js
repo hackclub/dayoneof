@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
 	isDuplicatePost,
+	isPostTooOld,
 	computeStreak,
 	daysCompletedCount,
 	freezesEarned,
@@ -16,6 +17,23 @@ test('isDuplicatePost detects an existing posted day', () => {
 	const days = [{ date: '2026-01-01', status: 'posted' }];
 	assert.equal(isDuplicatePost(days, '2026-01-01'), true);
 	assert.equal(isDuplicatePost(days, '2026-01-02'), false);
+});
+
+test('isPostTooOld rejects only past the two-day mark', () => {
+	const now = new Date('2026-01-10T12:00:00Z');
+	assert.equal(isPostTooOld('2026-01-10T11:00:00Z', now), false);
+	assert.equal(isPostTooOld('2026-01-08T12:00:01Z', now), false);
+	assert.equal(isPostTooOld('2026-01-08T11:59:59Z', now), true);
+	assert.equal(isPostTooOld('2025-12-01T00:00:00Z', now), true);
+	assert.equal(isPostTooOld('2026-01-08T12:00:00+00:00', now), false);
+});
+
+test('isPostTooOld allows a post whose age cannot be known', () => {
+	const now = new Date('2026-01-10T12:00:00Z');
+	assert.equal(isPostTooOld(null, now), false);
+	assert.equal(isPostTooOld(undefined, now), false);
+	assert.equal(isPostTooOld('', now), false);
+	assert.equal(isPostTooOld('not a date', now), false);
 });
 
 test('computeStreak counts back from the most recent day', () => {

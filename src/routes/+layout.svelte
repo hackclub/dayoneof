@@ -1,7 +1,37 @@
 <script lang="ts">
+	import { afterNavigate } from '$app/navigation';
 	import favicon from '$lib/assets/favicon.svg';
 
-	let { children } = $props();
+	let { children, data } = $props();
+
+	// /user/[slackId] puts a Slack id in the path and /admin isn't a public page, so neither is
+	// reported as it stands: returning null from the callback drops the pageview altogether.
+	function reportedPath(path: string) {
+		if (path.startsWith('/admin')) return null;
+		return path.replace(/^\/user\/[^/?#]+/, '/user/:slackId');
+	}
+
+	// An effect rather than a top-level branch so `data` is read reactively, and idempotent because
+	// it reruns on every navigation. Effects don't run on the server, so no `browser` guard.
+	// static/count.js is GoatCounter's own script, vendored so it loads same-origin — gc.zgo.at is
+	// on the usual tracker blocklists and a third-party fetch of it is silently dropped.
+	$effect(() => {
+		if (!data.goatcounterUrl || window.goatcounter) return;
+		window.goatcounter = { endpoint: `${data.goatcounterUrl}/count`, path: reportedPath };
+
+		const script = document.createElement('script');
+		script.async = true;
+		script.src = '/count.js';
+		document.head.append(script);
+	});
+
+	// count.js only counts the load it arrived on, so client-side navigation has to report itself.
+	// Blanking the referrer stops an internal hop from re-crediting whatever external link brought
+	// the visitor to the site in the first place.
+	afterNavigate(({ type }) => {
+		if (type === 'enter') return;
+		window.goatcounter?.count?.({ referrer: '' });
+	});
 </script>
 
 <svelte:head>
