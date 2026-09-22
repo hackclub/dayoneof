@@ -10,6 +10,14 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	interface Window {
+		goatcounter?: {
+			endpoint?: string;
+			path?: (path: string) => string | null;
+			count?: (vars?: { path?: string; referrer?: string; title?: string }) => void;
+		};
+	}
 }
 
 export {};

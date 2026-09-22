@@ -35,6 +35,9 @@ export const config = {
 	// Trailing slash stripped — every use appends a rooted path, and `.dev//api/auth/callback`
 	// doesn't match the redirect URI registered with HCA.
 	siteUrl: pub('PUBLIC_SITE_URL')?.replace(/\/$/, ''),
+	// Blank switches tracking off entirely. Dev leaves it blank on purpose: a Funnel host is not
+	// localhost, so count.js would report local browsing straight into the real site's numbers.
+	goatcounterUrl: pub('PUBLIC_GOATCOUNTER_URL')?.replace(/\/$/, ''),
 	airtableToken: priv('AIRTABLE_TOKEN'),
 	airtableBaseId: priv('AIRTABLE_BASE_ID'),
 	slackBotToken: priv('SLACK_BOT_TOKEN'),
@@ -50,6 +53,9 @@ export const config = {
 	unifiedSocialsToken: priv('UNIFIED_SOCIALS_TOKEN'),
 	unifiedSocialsApiUrl:
 		priv('UNIFIED_SOCIALS_API_URL') ?? 'https://unified-socials-db.hackclub.com/api/v1',
+	// Opt-in because submitting a post to unified-socials-db starts paid work. Off in both
+	// environments until it is set to exactly "true" — see trackPost in unified.js.
+	unifiedSocialsTrackPosts: priv('UNIFIED_SOCIALS_TRACK_POSTS') === 'true',
 	minReviewLength: Number(priv('MIN_REVIEW_LENGTH') ?? 40),
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')

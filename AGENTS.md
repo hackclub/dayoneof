@@ -32,3 +32,4 @@ A good way to figure out if you are not adhering to this rule is to tell yoursel
 Commits should explain the change, but not be longer than 50 characters
 A commit message is used for quickly summarizing a change. Another contributor should be able to read it, along with the content and immediately understand what the change does.
 
+Do not ever write to unified-socials-db yourself for tests etc., and do not touch any code related to actually writing to unified-socials-db without explicit instruction.

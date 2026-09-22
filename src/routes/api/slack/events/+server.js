@@ -3,7 +3,7 @@ import { json } from '@sveltejs/kit';
 import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-import { fetchPostByPlatformId } from '$lib/server/unified.js';
+import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
 import { isHcaVerified } from '$lib/server/verification.js';
@@ -11,6 +11,8 @@ import { syncParticipantTotalViews } from '$lib/server/jobs.js';
 import {
 	utcDateString,
 	isDuplicatePost,
+	isPostTooOld,
+	MAX_POST_AGE_DAYS,
 	computeStreak,
 	daysCompletedCount,
 	freezesEarned,
@@ -86,6 +88,36 @@ async function handleSubmission(event) {
 		return;
 	}
 
+	// Looked up once, before anything is written, because the age rule below has to be able to
+	// refuse the post without having left a day or a submission row behind.
+	let stats = null;
+	try {
+		stats = await fetchPostByPlatformId(link.platform, link.videoId);
+	} catch (err) {
+		console.error('unified-socials stats lookup failed at submission time', err);
+	}
+
+	if (isPostTooOld(stats?.publishedAt)) {
+		await slack.addReaction(event.channel, event.ts, 'hourglass');
+		await slack.postMessage(event.channel, messages.postTooOld(event.user, MAX_POST_AGE_DAYS), event.ts);
+		return;
+	}
+
+	// Paid, so it sits behind every gate above: an unverified poster or a video that just got
+	// refused for being too old never reaches it, and it only fires when the read found no row.
+	const trackedId = stats ? null : await trackPost(link.url);
+
+	const statsFields = stats
+		? {
+				[F.submissions.views]: stats.views,
+				[F.submissions.title]: stats.title,
+				[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
+				[F.submissions.unifiedId]: String(stats.id)
+			}
+		: trackedId
+			? { [F.submissions.unifiedId]: trackedId }
+			: {};
+
 	const today = utcDateString();
 	const days = await getDays(event.user);
 
@@ -105,21 +137,10 @@ async function handleSubmission(event) {
 
 		const streak = computeStreak(days);
 		const freezes = participant.fields[F.participants.streakFreezes] ?? 0;
-		let stats = null;
-		try {
-			stats = await fetchPostByPlatformId(link.platform, link.videoId);
-		} catch (err) {
-			console.error('unified-socials stats lookup failed for duplicate post', err);
+		if (Object.keys(statsFields).length) {
+			await airtable.update(TABLES.submissions, duplicateSubmission.id, statsFields);
 		}
-		if (stats) {
-			await airtable.update(TABLES.submissions, duplicateSubmission.id, {
-				[F.submissions.views]: stats.views,
-				[F.submissions.title]: stats.title,
-				[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
-				[F.submissions.unifiedId]: String(stats.id)
-			});
-			await syncParticipantTotalViews(event.user);
-		}
+		if (stats) await syncParticipantTotalViews(event.user);
 		await slack.postMessage(event.channel, messages.duplicatePost(event.user, streak, freezes, stats), event.ts);
 		return;
 	}
@@ -154,27 +175,12 @@ async function handleSubmission(event) {
 		[F.participants.status]: 'active'
 	});
 
-	// Best-effort — the video was likely just posted and may not be tracked yet.
-	let stats = null;
-	try {
-		stats = await fetchPostByPlatformId(link.platform, link.videoId);
-	} catch (err) {
-		console.error('unified-socials stats lookup failed at submission time', err);
-	}
-
 	// Written before attempting to react/reply so a Slack API failure below (rate limit, etc.)
 	// can never leave the streak recorded but views/site data missing.
 	await airtable.update(TABLES.submissions, submission.id, {
 		[F.submissions.streakAtPost]: streak,
 		[F.submissions.freezesAtPost]: freezes,
-		...(stats
-			? {
-					[F.submissions.views]: stats.views,
-					[F.submissions.title]: stats.title,
-					[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
-					[F.submissions.unifiedId]: String(stats.id)
-				}
-			: {})
+		...statsFields
 	});
 	if (stats) await syncParticipantTotalViews(event.user);
 

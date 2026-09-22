@@ -22,6 +22,14 @@ export const messages = {
 	submissionFailed(slackId) {
 		return `<@${slackId}> something went wrong on our end handling that post — it might not have counted. Try posting it again in a minute, and if it still doesn't work, ask for help in #dayoneof on Slack!`;
 	},
+	// An old video is the rule working, not a failure, so this doesn't point at #dayoneof.
+	/**
+	 * @param {string} slackId
+	 * @param {number} maxAgeDays
+	 */
+	postTooOld(slackId, maxAgeDays) {
+		return `<@${slackId}> that video was published more than ${maxAgeDays} days ago, so it can't count toward your streak. Post something you've made in the last ${maxAgeDays} days!`;
+	},
 	/**
 	 * @param {number} streak
 	 * @param {number} freezesRemaining
