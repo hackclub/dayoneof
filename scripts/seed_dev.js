@@ -1,7 +1,7 @@
 // Fills the dev tables with believable participants and submissions so the site can be looked at
 // populated. Everything is real: the videos are shortform rows from unified-socials-db, and each
 // participant is one of their actual authors, carrying that author's own posts, view counts,
-// titles, archive thumbnails and publish dates.
+// titles, archive thumbnails and links, and publish dates.
 //
 //   node --env-file=.env scripts/seed_dev.js
 //   node --env-file=.env scripts/seed_dev.js --clean    # remove seeded rows, insert nothing
@@ -142,7 +142,8 @@ async function fetchAuthors(people) {
 				title: (row.title ?? '').split('\n')[0].trim().slice(0, 100),
 				views: row.views,
 				publishedAt: row.published_at,
-				thumbnailUrl: String(row.preview_thumbnail_url).replace(/^http:\/\//, 'https://')
+				thumbnailUrl: String(row.preview_thumbnail_url).replace(/^http:\/\//, 'https://'),
+				archiveUrl: row.video_url ?? ''
 			});
 			byAuthor.set(author, posts);
 		}
@@ -234,6 +235,7 @@ async function main() {
 				[F.submissions.views]: video.views,
 				[F.submissions.title]: video.title,
 				[F.submissions.thumbnailUrl]: video.thumbnailUrl,
+				[F.submissions.archiveUrl]: video.archiveUrl,
 				[F.submissions.unifiedId]: video.unifiedId,
 				[F.submissions.streakAtPost]: Math.max(1, streak - n),
 				[F.submissions.freezesAtPost]: freezes

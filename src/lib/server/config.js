@@ -4,7 +4,7 @@ import { env as publicEnv } from '$env/dynamic/public';
 
 import { tablesFor } from './schema.js';
 
-export { F, DAY_STATUSES, PARTICIPANT_STATUSES, PARTICIPANT_HAS_SLACK_ID } from './schema.js';
+export { F, PARTICIPANT_HAS_SLACK_ID } from './schema.js';
 
 /** @type {'dev' | 'prod'} */
 export const appEnv = env.APP_ENV?.trim().toLowerCase() === 'prod' ? 'prod' : 'dev';
@@ -31,7 +31,6 @@ const priv = (name) => envVar(env, name);
 const pub = (name) => envVar(publicEnv, name);
 
 export const config = {
-	appEnv,
 	// Trailing slash stripped — every use appends a rooted path, and `.dev//api/auth/callback`
 	// doesn't match the redirect URI registered with HCA.
 	siteUrl: pub('PUBLIC_SITE_URL')?.replace(/\/$/, ''),
@@ -52,11 +51,13 @@ export const config = {
 	cronSecret: priv('CRON_SECRET'),
 	unifiedSocialsToken: priv('UNIFIED_SOCIALS_TOKEN'),
 	unifiedSocialsApiUrl:
-		priv('UNIFIED_SOCIALS_API_URL') ?? 'https://unified-socials-db.hackclub.com/api/v1',
+		priv('UNIFIED_SOCIALS_API_URL') || 'https://unified-socials-db.hackclub.com/api/v1',
 	// Opt-in because submitting a post to unified-socials-db starts paid work. Off in both
 	// environments until it is set to exactly "true" — see trackPost in unified.js.
 	unifiedSocialsTrackPosts: priv('UNIFIED_SOCIALS_TRACK_POSTS') === 'true',
-	minReviewLength: Number(priv('MIN_REVIEW_LENGTH') ?? 40),
+	// Falls back on anything unparseable rather than passing NaN on: `length < NaN` is false, so a
+	// typo'd value would silently turn every one-word reply into a review.
+	minReviewLength: Number(priv('MIN_REVIEW_LENGTH')) || 40,
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')
 		.map((id) => id.trim())

@@ -16,7 +16,7 @@
 <main>
 	<h1>Admin</h1>
 	<p>
-		Participant fields (streak, freezes, status, etc.) are correctable directly in Airtable —
+		Participant fields (streak, freezes, status, etc.) are correctable directly in Airtable, so
 		this page doesn't duplicate that. Everything for debugging lives here now, not in Slack.
 	</p>
 	<p>{data.videosPosted} videos posted · {data.videosTracked} tracked by unified-socials</p>
@@ -25,31 +25,31 @@
 		<h2>Jobs</h2>
 		<ul>
 			<li>
-				<strong>reconcile</strong> — for anyone active/frozen who didn't post yesterday: spends
+				<strong>reconcile</strong>: for anyone active/frozen who didn't post yesterday, spends
 				a freeze (or breaks their streak if they have none left), then refreshes view counts
 				from unified-socials for every submission (and edits each submission's original reply
-				in place with the fresh numbers). Runs nightly at 00:05 UTC.
+				in place with the fresh numbers). Runs nightly at 00:00 UTC.
 			</li>
 			<li>
-				<strong>leaderboard</strong> — posts the streak, views, and top-videos boards to the
-				announce channel. Runs nightly at 00:00 UTC.
+				<strong>leaderboard</strong>: posts the streak, views, and top-videos boards to the
+				announce channel. Runs nightly at 00:15 UTC, after reconcile has refreshed the views.
 			</li>
 			<li>
-				<strong>remind</strong> — the real hourly cron DMs anyone whose reminder hour matches
+				<strong>remind</strong>: the real hourly cron DMs anyone whose reminder hour matches
 				right now (their local time) and who hasn't posted today. The button below is a pure
-				test blast: DMs <em>everyone</em>, ignoring reminder hour, whether they've posted
-				today, and whether they were already reminded — and doesn't mark anyone as reminded,
+				test blast. It DMs <em>everyone</em>, ignoring reminder hour, whether they've posted
+				today, and whether they were already reminded, and it doesn't mark anyone as reminded,
 				so it can't suppress a real reminder later today.
 			</li>
 		</ul>
 
-		<form method="POST" action="?/runReconcile" style="display:inline">
+		<form class="inline" method="POST" action="?/runReconcile">
 			<button type="submit">Run reconcile</button>
 		</form>
-		<form method="POST" action="?/runLeaderboard" style="display:inline">
+		<form class="inline" method="POST" action="?/runLeaderboard">
 			<button type="submit">Run leaderboard</button>
 		</form>
-		<form method="POST" action="?/runRemind" style="display:inline">
+		<form class="inline" method="POST" action="?/runRemind">
 			<button type="submit">Run remind</button>
 		</form>
 
@@ -74,7 +74,7 @@
 			<p><strong>Failed:</strong> {form.statsError}</p>
 		{:else if form?.statsChecked}
 			<p>
-				{form.statsChecked} —
+				{form.statsChecked}:
 				{#if form.stats}
 					{form.stats.views} views · {form.stats.likes} likes
 				{:else}
@@ -107,7 +107,7 @@
 						<td><a href="/user/{p.slackId}">{p.name}</a></td>
 						<td>{p.slackId}</td>
 						<td>{p.status}</td>
-						<td>{p.verificationStatus || '—'}</td>
+						<td>{p.verificationStatus || 'none'}</td>
 						<td>{p.currentStreak}</td>
 						<td>{p.streakFreezes}</td>
 						<td>{p.daysCompleted}</td>
@@ -115,7 +115,7 @@
 						<td>{p.totalViews}</td>
 						<td>
 							{#if !p.verified}
-								<form method="POST" action="?/forceVerify" style="display:inline">
+								<form class="inline" method="POST" action="?/forceVerify">
 									<input type="hidden" name="id" value={p.id} />
 									<button type="submit">Force verify</button>
 								</form>
@@ -130,7 +130,7 @@
 	{#if data.canNuke}
 		<section>
 			<h2>Danger zone</h2>
-			<p>Deletes every row in every Airtable table. Dev only — no undo.</p>
+			<p>Deletes every row in every Airtable table. Dev only, and there is no undo.</p>
 			{#if form?.nuked}
 				<p>Deleted {form.deleted} rows.</p>
 			{/if}
@@ -140,3 +140,9 @@
 		</section>
 	{/if}
 </main>
+
+<style>
+	.inline {
+		display: inline;
+	}
+</style>

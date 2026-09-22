@@ -1,5 +1,7 @@
 import { config } from './config.js';
 
+const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
+
 export const messages = {
 	/** @param {string} slackId */
 	unsupportedLink(slackId) {
@@ -14,13 +16,13 @@ export const messages = {
 	 * @param {string | undefined} status
 	 */
 	notVerified(slackId, status) {
-		return `<@${slackId}> your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}) — posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
+		return `<@${slackId}> your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}), so posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
 	},
 	// The post may or may not have been recorded when this fires, so it deliberately doesn't
 	// promise either way — reconcile is what actually settles the day.
 	/** @param {string} slackId */
 	submissionFailed(slackId) {
-		return `<@${slackId}> something went wrong on our end handling that post — it might not have counted. Try posting it again in a minute, and if it still doesn't work, ask for help in #dayoneof on Slack!`;
+		return `<@${slackId}> something went wrong on our end handling that post, so it might not have counted. Try posting it again in a minute, and if it still doesn't work, ask for help in #dayoneof on Slack!`;
 	},
 	// An old video is the rule working, not a failure, so this doesn't point at #dayoneof.
 	/**
@@ -38,7 +40,7 @@ export const messages = {
 	streakUpdate(streak, freezesRemaining, stats) {
 		const day = streak === 1 ? 'day' : 'days';
 		const base = `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.`;
-		if (!stats) return `${base}\nStats: not tracked yet — check back later.`;
+		if (!stats) return `${base}\n${NOT_TRACKED}`;
 		return `${base}\nStats: ${stats.views} views · ${stats.likes} likes`;
 	},
 	/**
@@ -48,8 +50,8 @@ export const messages = {
 	 * @param {{ views: number, likes: number } | null} [stats]
 	 */
 	duplicatePost(slackId, streak, freezesRemaining, stats) {
-		const statsLine = stats ? `Stats: ${stats.views} views · ${stats.likes} likes` : 'Stats: not tracked yet — check back later.';
-		return `<@${slackId}> you've already posted today — this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine}`;
+		const statsLine = stats ? `Stats: ${stats.views} views · ${stats.likes} likes` : NOT_TRACKED;
+		return `<@${slackId}> you've already posted today, so this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine}`;
 	},
 	/**
 	 * @param {string} slackId
@@ -70,7 +72,7 @@ export const messages = {
 		return `You missed yesterday, so a freeze covered it. ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} left.`;
 	},
 	streakBroken() {
-		return "You missed yesterday and had no freezes left — your streak reset. Post today to start a new one.";
+		return 'You missed yesterday and had no freezes left, so your streak reset. Post today to start a new one.';
 	},
 	/**
 	 * @param {number} streak
@@ -82,7 +84,7 @@ export const messages = {
 	},
 	/** @param {number} hour */
 	remindSet(hour) {
-		return `Got it — I'll remind you at ${hour}:00 your time if you haven't posted yet.`;
+		return `Got it! I'll remind you at ${hour}:00 your time if you haven't posted yet.`;
 	},
 	remindUsage() {
 		return 'Usage: `@dayoneof remind <hour>` where hour is 0-23 in your local time.';

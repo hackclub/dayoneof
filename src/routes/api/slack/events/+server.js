@@ -112,6 +112,7 @@ async function handleSubmission(event) {
 				[F.submissions.views]: stats.views,
 				[F.submissions.title]: stats.title,
 				[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
+				[F.submissions.archiveUrl]: stats.archiveUrl,
 				[F.submissions.unifiedId]: String(stats.id)
 			}
 		: trackedId
@@ -303,11 +304,13 @@ async function handleEvent(event) {
 }
 
 // Last resort when a handler threw: without this the poster sees no reaction and no reply and
-// has no way to tell a broken submission from an ignored one. Swallows its own failure, since
-// Slack is usually what's already broken by the time we get here.
+// has no way to tell a broken submission from an ignored one. Only the submissions channel gets
+// this, since that is the only place the message's "that post" means anything. Swallows its own
+// failure, since Slack is usually what's already broken by the time we get here.
 /** @param {SlackEvent} [event] */
 async function replyWithFailure(event) {
-	if (!event?.channel || !event.user) return;
+	if (!event?.user || event.type !== 'message') return;
+	if (event.channel !== config.submissionChannelId) return;
 	try {
 		await slack.postMessage(event.channel, messages.submissionFailed(event.user), event.ts);
 	} catch (err) {

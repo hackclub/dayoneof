@@ -15,10 +15,13 @@ function headers() {
 // preview_thumbnail_url is the archive's own thumbnail (archive.hackclub.com/thumb/<id>) and is
 // set for ~99% of tracked posts on every platform — some rows store it as http, which the site
 // can't embed over https, and the same path answers over https.
+// video_url is the post's video on file: Arker's copy at archive.hackclub.com/archive/<id>/yt-dlp,
+// or a cdn.hackclub.com render when the pipeline built one from a gallery. Null until the archive
+// step has run, which is why reconcile keeps re-reading it rather than writing it once.
 /**
  * @param {string} platform
  * @param {string} platformPostId
- * @returns {Promise<{ id: number, views: number, likes: number, title: string, thumbnailUrl: string, publishedAt: string | null } | null>}
+ * @returns {Promise<{ id: number, views: number, likes: number, title: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null } | null>}
  */
 export async function fetchPostByPlatformId(platform, platformPostId) {
 	const params = new URLSearchParams({ platform, platform_post_id: platformPostId });
@@ -33,6 +36,7 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 		likes: post.likes ?? 0,
 		title: (post.title ?? '').split('\n')[0].trim().slice(0, 100),
 		thumbnailUrl: (post.preview_thumbnail_url ?? '').replace(/^http:\/\//, 'https://'),
+		archiveUrl: post.video_url ?? '',
 		publishedAt: post.published_at ?? null
 	};
 }

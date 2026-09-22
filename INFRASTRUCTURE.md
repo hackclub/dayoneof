@@ -37,8 +37,10 @@ src/lib/server/          server-only modules (SvelteKit refuses to ship these to
   streak.js                streak/freeze/milestone math — pure functions, unit-tested
   verification.js         HCA verification_status check — pure, unit-tested
   messages.js              every user-facing Slack message string, in one place
-  unified.js               unified-socials-db read client (views/likes/title lookup)
+  unified.js               unified-socials-db client: views/likes/title/thumbnail/archive lookup
   jobs.js                  the three cron job bodies, shared with the admin panel
+
+src/lib/format.ts          the view/date/initials formatters /home and /user both render with
 
 src/routes/
   +page.svelte                      landing page
@@ -106,7 +108,7 @@ them verified.
 | field | type | notes |
 | --- | --- | --- |
 | `slack_id` | Single line text | primary field |
-| `name`, `email`, `tz` | text | `tz` best-effort backfilled from Slack at sign-in |
+| `name`, `email`, `tz`, `avatar` | text | `tz` and `avatar` are best-effort backfilled from the Slack profile at sign-in; the site falls back to initials without an avatar |
 | `status` | Single select | `notStarted` \| `active` \| `frozen` \| `broken` |
 | `verification_status` | Single line text | HCA's claim — `needs_submission`, `pending`, `verified_eligible`, `verified_but_over_18`, `rejected`, `not_found`. Only rows starting with `verified` count posts. |
 | `days_completed`, `streak_freezes`, `current_streak` | Number | cache rewritten by the reconcile cron and by every submission |
@@ -139,6 +141,8 @@ back from today while status != missed"; a freeze is a row, not a counter you ha
 | `review_count` | Number | |
 | `views` | Number | kept in sync by `syncParticipantTotalViews` — see "Views sync" below |
 | `title` | Single line text | video title (YouTube) or first line of caption (TikTok/Instagram), from unified-socials |
+| `thumbnail_url` | Single line text | the archive's own thumbnail, `https` forced (see unified.js) |
+| `archive_url` | Single line text | Hack Club's own copy of the video — `posts.video_url`, see below |
 | `unified_id` | Single line text | set once unified-socials confirms a match |
 | `reply_message_ts` | Single line text | the `ts` of *our* confirmation reply (not the poster's message) — lets reconcile edit that message with fresh stats instead of posting a new one nightly |
 | `streak_at_post`, `freezes_at_post` | Number | captured once at submit time so an edited reply stays historically accurate |
@@ -231,7 +235,7 @@ panel). Orchard jobs call them on the schedules below — see "Cron on Orchard".
 
 | job | schedule | what it does |
 | --- | --- | --- |
-| `reconcile` | `0 0 * * *` | For every active/frozen participant with history before yesterday and no `posted` row for yesterday: spends a freeze (writes a `frozen` day) or breaks the streak. Then refreshes views/likes/title for every tracked submission and edits each one's original Slack reply in place. |
+| `reconcile` | `0 0 * * *` | For every active/frozen participant with history before yesterday and no `posted` row for yesterday: spends a freeze (writes a `frozen` day) or breaks the streak. Then refreshes views, title, thumbnail and archive link for every tracked submission and edits each one's original Slack reply in place. |
 | `leaderboard` | `15 0 * * *` | Posts three boards to the announce channel: longest streaks, most total views, highest-viewed videos. Scheduled *after* reconcile on purpose, so it reflects that night's refreshed views. |
 | `remind` | `0 * * * *` | DMs anyone whose `reminder_hour` matches the current hour in their `tz` and who hasn't posted today. |
 
@@ -270,6 +274,14 @@ subdomains never end up stored either.
 Read-only. `GET https://unified-socials-db.hackclub.com/api/v1/posts?platform=...&platform_post_id=...`
 looks a video up by its platform + id — `GET /api/v1/<relation>` takes column names as equality
 query params. Returns views, likes, and title (first line only, truncated).
+
+It also returns the archive link — `posts.video_url`, stored as `submissions.archive_url`. That is
+Hack Club's own copy of the video: Arker's archive at `archive.hackclub.com/archive/<id>/yt-dlp`,
+or a `cdn.hackclub.com` render when the pipeline built one from a gallery post. It is null until
+the pipeline's archive step has run, which is usually minutes *after* the post is submitted, so
+it gets written by whichever pass first sees it — the submit-time read if the video was already
+tracked, otherwise a nightly reconcile. Both write it through the same `statsFields`/`refreshViews`
+paths as views and title, so there is nothing extra to keep in sync.
 
 The response is `{ rows, count, limit, offset }`. A post unified-socials doesn't track yet is a
 200 with `rows: []`, not a 404, so a miss is indistinguishable from "not tracked" on purpose and

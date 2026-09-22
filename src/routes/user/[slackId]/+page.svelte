@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { formatDate, formatViews, initials } from '$lib/format';
+
 	let { data } = $props();
 
 	type Sort = 'date' | 'views';
@@ -12,31 +14,9 @@
 
 	const isMe = $derived(data.session?.slackId === data.slackId);
 
-	const initials = $derived(
-		(data.name ?? '')
-			.split(/\s+/)
-			.filter(Boolean)
-			.slice(0, 2)
-			.map((part: string) => part[0]?.toUpperCase() ?? '')
-			.join('')
-	);
-
 	const videos = $derived(
 		sort === 'views' ? [...data.videos].sort((a, b) => b.views - a.views) : data.videos
 	);
-
-	const viewFormatter = new Intl.NumberFormat('en-US', { notation: 'compact' });
-	const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
-
-	function formatViews(n: number) {
-		return viewFormatter.format(n);
-	}
-
-	function formatDate(value: string | undefined) {
-		if (!value) return '';
-		const date = new Date(value);
-		return Number.isNaN(date.valueOf()) ? '' : dateFormatter.format(date);
-	}
 </script>
 
 <svelte:head>
@@ -66,7 +46,7 @@
 			{#if data.avatar}
 				<img class="avatar" src={data.avatar} alt="" width="88" height="88" />
 			{:else}
-				<span class="avatar avatar-fallback" aria-hidden="true">{initials}</span>
+				<span class="avatar avatar-fallback" aria-hidden="true">{initials(data.name)}</span>
 			{/if}
 			<div class="who">
 				<h1>{data.name}</h1>

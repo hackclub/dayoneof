@@ -74,6 +74,7 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.views, ...int },
 				{ name: F.submissions.title, ...text },
 				{ name: F.submissions.thumbnailUrl, ...text },
+				{ name: F.submissions.archiveUrl, ...text },
 				{ name: F.submissions.unifiedId, ...text },
 				{ name: F.submissions.replyMessageTs, ...text },
 				{ name: F.submissions.streakAtPost, ...int },

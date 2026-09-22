@@ -11,14 +11,14 @@ function sign(payload) {
 }
 
 /** @param {string} slackId */
-export function createSessionValue(slackId) {
+function createSessionValue(slackId) {
 	const payload = JSON.stringify({ slackId, exp: Date.now() + MAX_AGE * 1000 });
 	const encoded = Buffer.from(payload).toString('base64url');
 	return `${encoded}.${sign(encoded)}`;
 }
 
 /** @param {string | undefined} value */
-export function verifySessionValue(value) {
+function verifySessionValue(value) {
 	if (!value) return null;
 	const [encoded, signature] = value.split('.');
 	if (!encoded || !signature) return null;

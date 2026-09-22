@@ -108,6 +108,7 @@ async function refreshViews() {
 			[F.submissions.views]: post.views,
 			[F.submissions.title]: post.title,
 			[F.submissions.thumbnailUrl]: post.thumbnailUrl,
+			[F.submissions.archiveUrl]: post.archiveUrl,
 			[F.submissions.unifiedId]: String(post.id)
 		});
 
@@ -134,46 +135,62 @@ async function refreshViews() {
 	return { viewsChecked };
 }
 
+const BOARD_SIZE = 10;
+
+/** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
+
+/**
+ * @param {AirtableRecord[]} records
+ * @param {string} field
+ */
+function topBy(records, field) {
+	return [...records]
+		.sort((a, b) => (b.fields[field] ?? 0) - (a.fields[field] ?? 0))
+		.slice(0, BOARD_SIZE);
+}
+
+/**
+ * @param {AirtableRecord[]} records
+ * @param {(record: AirtableRecord) => string} line
+ */
+function numbered(records, line) {
+	return records.map((record, i) => `${i + 1}. ${line(record)}`).join('\n');
+}
+
 export async function runLeaderboard() {
 	const [participants, submissions] = await Promise.all([
 		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
 		airtable.list(TABLES.submissions)
 	]);
 
+	// Fewer freezes banked wins the tie: the same streak kept with less cover is the better run.
 	const byStreak = [...participants]
-		.sort((a, b) => {
-			const streakDiff =
-				(b.fields[F.participants.currentStreak] ?? 0) - (a.fields[F.participants.currentStreak] ?? 0);
-			if (streakDiff !== 0) return streakDiff;
-			return (a.fields[F.participants.streakFreezes] ?? 0) - (b.fields[F.participants.streakFreezes] ?? 0);
-		})
-		.slice(0, 10);
+		.sort(
+			(a, b) =>
+				(b.fields[F.participants.currentStreak] ?? 0) -
+					(a.fields[F.participants.currentStreak] ?? 0) ||
+				(a.fields[F.participants.streakFreezes] ?? 0) - (b.fields[F.participants.streakFreezes] ?? 0)
+		)
+		.slice(0, BOARD_SIZE);
+	const byViews = topBy(participants, F.participants.totalViews);
+	const byVideo = topBy(submissions, F.submissions.views);
 
-	const byViews = [...participants]
-		.sort((a, b) => (b.fields[F.participants.totalViews] ?? 0) - (a.fields[F.participants.totalViews] ?? 0))
-		.slice(0, 10);
+	const streakLines = numbered(
+		byStreak,
+		(p) =>
+			`<@${p.fields[F.participants.slackId]}> · ${p.fields[F.participants.currentStreak] ?? 0} days`
+	);
 
-	const byVideo = [...submissions]
-		.sort((a, b) => (b.fields[F.submissions.views] ?? 0) - (a.fields[F.submissions.views] ?? 0))
-		.slice(0, 10);
+	const viewLines = numbered(
+		byViews,
+		(p) => `<@${p.fields[F.participants.slackId]}> · ${p.fields[F.participants.totalViews] ?? 0} views`
+	);
 
-	const streakLines = byStreak
-		.map((p, i) => `${i + 1}. <@${p.fields[F.participants.slackId]}> — ${p.fields[F.participants.currentStreak] ?? 0} days`)
-		.join('\n');
-
-	const viewLines = byViews
-		.map((p, i) => `${i + 1}. <@${p.fields[F.participants.slackId]}> — ${p.fields[F.participants.totalViews] ?? 0} views`)
-		.join('\n');
-
-	const videoLines = byVideo
-		.map((s, i) => {
-			const url = s.fields[F.submissions.url];
-			const label = s.fields[F.submissions.title] || s.fields[F.submissions.platform];
-			const slackId = s.fields[F.submissions.slackId];
-			const views = s.fields[F.submissions.views] ?? 0;
-			return `${i + 1}. <${url}|${label}> by <@${slackId}> — ${views} views`;
-		})
-		.join('\n');
+	const videoLines = numbered(byVideo, (s) => {
+		const label = s.fields[F.submissions.title] || s.fields[F.submissions.platform];
+		const views = s.fields[F.submissions.views] ?? 0;
+		return `<${s.fields[F.submissions.url]}|${label}> by <@${s.fields[F.submissions.slackId]}> · ${views} views`;
+	});
 
 	const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
 	await slack.postMessage(announceChannelId, `*Longest active streaks*\n${streakLines}`);

@@ -48,15 +48,6 @@ export function updateMessage(channel, ts, text) {
 }
 
 /**
- * @param {string} channel
- * @param {string} user
- * @param {string} text
- */
-export function postEphemeral(channel, user, text) {
-	return call('chat.postEphemeral', { channel, user, text });
-}
-
-/**
  * @param {string} user
  * @param {string} text
  */

@@ -1,8 +1,11 @@
 <script lang="ts">
 	import instagramgrid from '$lib/assets/instagramgrid.png';
-	import reelVideo from '$lib/assets/reel.mp4';
-	import reelThumbnail from '$lib/assets/thumbnail.jpg';
-	import reelImage from '$lib/assets/reelimage.png';
+	import reeltop from '$lib/assets/reeltop.mp4';
+	import reeltopThumb from '$lib/assets/reeltop_thumb.jpg';
+	import reelmid from '$lib/assets/reelmid.mp4';
+	import reelmidThumb from '$lib/assets/reelmid_thumb.jpg';
+	import reelbot from '$lib/assets/reelbot.mp4';
+	import reelbotThumb from '$lib/assets/reelbot_thumb.jpg';
 	import tshirtimage from '$lib/assets/tshirtimage.png';
 	import orpheusplushie from '$lib/assets/orpheusplushie.png';
 	import purplesticker from '$lib/assets/purplesticker.webp';
@@ -79,21 +82,37 @@
 		return () => observer.disconnect();
 	});
 
+	// Ordered as they sit in the showcase, so the middle one starts out featured with the other two
+	// peeking above and below it. The posters are frames pulled out of each video with ffmpeg.
 	const reels = [
-		{ src: reelVideo, poster: reelThumbnail },
-		{ src: reelVideo, poster: reelImage },
-		{ src: reelVideo, poster: reelThumbnail }
+		{ src: reeltop, poster: reeltopThumb },
+		{ src: reelmid, poster: reelmidThumb },
+		{ src: reelbot, poster: reelbotThumb }
 	];
-	let reelIndex = $state(0);
+	let reelIndex = $state(1);
 	const prevIndex = $derived((reelIndex - 1 + reels.length) % reels.length);
 	const nextIndex = $derived((reelIndex + 1) % reels.length);
 
+	// Muted and paused to start: sound only ever arrives because someone asked for it. Swapping
+	// reels resets both, so the next one can't inherit the last one's playhead or start itself.
+	let paused = $state(true);
+	let muted = $state(true);
+	let currentTime = $state(0);
+	let duration = $state(0);
+
+	function showReel(index: number) {
+		reelIndex = index;
+		paused = true;
+		currentTime = 0;
+		duration = 0;
+	}
+
 	function nextReel() {
-		reelIndex = nextIndex;
+		showReel(nextIndex);
 	}
 
 	function prevReel() {
-		reelIndex = prevIndex;
+		showReel(prevIndex);
 	}
 
 	const prizeItems = [
@@ -285,9 +304,67 @@
 
 		<div class="featured">
 			{#key reelIndex}
-				<video src={reels[reelIndex].src} poster={reels[reelIndex].poster} autoplay muted loop playsinline
+				<!-- Plays only when asked to: the poster carries the tile until then, and metadata-only
+				     preload keeps the reel off the critical path while still reporting a duration the
+				     scrubber can use. The caption rule doesn't see `bind:muted` as muted, and the reels
+				     carry burned-in captions anyway, so there is no track to attach. -->
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video
+					bind:paused
+					bind:muted
+					bind:currentTime
+					bind:duration
+					src={reels[reelIndex].src}
+					poster={reels[reelIndex].poster}
+					loop
+					playsinline
+					preload="metadata"
 				></video>
 			{/key}
+
+			<div class="reel-bar">
+				<button
+					class="reel-btn"
+					type="button"
+					onclick={() => (paused = !paused)}
+					aria-label={paused ? 'Play reel' : 'Pause reel'}
+				>
+					{#if paused}
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg>
+					{:else}
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h3v14H8zm5 0h3v14h-3z" /></svg>
+					{/if}
+				</button>
+
+				<!-- Inert until the metadata lands, since a range whose max is still 0 can only pretend
+				     to scrub. duration is NaN before then, hence the `|| 0`. -->
+				<input
+					class="reel-scrub"
+					type="range"
+					min="0"
+					max={duration || 0}
+					step="0.05"
+					disabled={!duration}
+					bind:value={currentTime}
+					aria-label="Skip through reel"
+				/>
+
+				<button
+					class="reel-btn"
+					type="button"
+					onclick={() => (muted = !muted)}
+					aria-label={muted ? 'Unmute reel' : 'Mute reel'}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M4 9.5h3.5L12 6v12L7.5 14.5H4z" />
+						{#if muted}
+							<path d="M16 9.5l5 5m0-5l-5 5" fill="none" />
+						{:else}
+							<path d="M16 9a4.5 4.5 0 0 1 0 6" fill="none" />
+						{/if}
+					</svg>
+				</button>
+			</div>
 		</div>
 
 		<button class="chevron chevron-bottom" type="button" onclick={nextReel} aria-label="Next reel">
@@ -847,6 +924,100 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+	}
+
+	.reel-bar {
+		position: absolute;
+		inset: auto 0 0 0;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 1.4rem 0.6rem 0.5rem;
+		background: linear-gradient(to top, rgb(18 18 23 / 0.7), rgb(18 18 23 / 0));
+		color: var(--white);
+	}
+
+	.reel-btn {
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.65rem;
+		height: 1.65rem;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: rgb(18 18 23 / 0.45);
+		color: inherit;
+		cursor: pointer;
+		transition: background-color var(--transition-hover);
+	}
+
+	.reel-btn:hover {
+		background: rgb(18 18 23 / 0.8);
+	}
+
+	.reel-btn svg {
+		width: 0.95rem;
+		height: 0.95rem;
+		fill: currentColor;
+		stroke: currentColor;
+		stroke-width: 1.7;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	/* A bare range input, restyled rather than replaced: dragging, arrow keys and the whole
+	   click-anywhere-on-the-track behaviour come free that way. */
+	.reel-scrub {
+		flex: 1 1 auto;
+		min-width: 0;
+		height: 1rem;
+		margin: 0;
+		appearance: none;
+		background: none;
+		cursor: pointer;
+	}
+
+	.reel-scrub:disabled {
+		cursor: default;
+		opacity: 0.55;
+	}
+
+	.reel-scrub::-webkit-slider-runnable-track {
+		height: 3px;
+		border-radius: 2px;
+		background: rgb(255 255 255 / 0.4);
+	}
+
+	.reel-scrub::-moz-range-track {
+		height: 3px;
+		border-radius: 2px;
+		background: rgb(255 255 255 / 0.4);
+	}
+
+	.reel-scrub::-webkit-slider-thumb {
+		appearance: none;
+		width: 10px;
+		height: 10px;
+		margin-top: -3.5px;
+		border-radius: 50%;
+		background: var(--white);
+	}
+
+	.reel-scrub::-moz-range-thumb {
+		width: 10px;
+		height: 10px;
+		border: none;
+		border-radius: 50%;
+		background: var(--white);
+	}
+
+	.reel-btn:focus-visible,
+	.reel-scrub:focus-visible {
+		outline: 2px solid var(--white);
+		outline-offset: 2px;
 	}
 
 	.peek {

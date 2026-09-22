@@ -53,6 +53,7 @@ export const F = {
 		views: 'views',
 		title: 'title',
 		thumbnailUrl: 'thumbnail_url',
+		archiveUrl: 'archive_url',
 		unifiedId: 'unified_id',
 		replyMessageTs: 'reply_message_ts',
 		streakAtPost: 'streak_at_post',

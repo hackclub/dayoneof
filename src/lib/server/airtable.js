@@ -51,16 +51,15 @@ export async function find(table, filterByFormula) {
 
 /**
  * @param {string} table
- * @param {{ filterByFormula?: string, sort?: SortRule[], pageSize?: number }} [options]
+ * @param {{ filterByFormula?: string, sort?: SortRule[] }} [options]
  * @returns {Promise<AirtableRecord[]>}
  */
-export async function list(table, { filterByFormula, sort, pageSize } = {}) {
+export async function list(table, { filterByFormula, sort } = {}) {
 	const records = [];
 	let offset;
 	do {
 		const params = new URLSearchParams();
 		if (filterByFormula) params.set('filterByFormula', filterByFormula);
-		if (pageSize) params.set('pageSize', String(pageSize));
 		if (sort)
 			sort.forEach((s, i) => {
 				params.set(`sort[${i}][field]`, s.field);
@@ -79,13 +78,12 @@ export async function list(table, { filterByFormula, sort, pageSize } = {}) {
  * @param {Record<string, any>} fields
  * @returns {Promise<AirtableRecord>}
  */
-export async function create(table, fields) {
-	const data = await request(baseUrl(table), {
+export function create(table, fields) {
+	return request(baseUrl(table), {
 		method: 'POST',
 		headers: headers(),
 		body: JSON.stringify({ fields })
 	});
-	return data;
 }
 
 /**
@@ -94,13 +92,12 @@ export async function create(table, fields) {
  * @param {Record<string, any>} fields
  * @returns {Promise<AirtableRecord>}
  */
-export async function update(table, recordId, fields) {
-	const data = await request(`${baseUrl(table)}/${recordId}`, {
+export function update(table, recordId, fields) {
+	return request(`${baseUrl(table)}/${recordId}`, {
 		method: 'PATCH',
 		headers: headers(),
 		body: JSON.stringify({ fields })
 	});
-	return data;
 }
 
 /**
