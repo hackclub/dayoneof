@@ -58,6 +58,7 @@ export const config = {
 	// Falls back on anything unparseable rather than passing NaN on: every age comparison against
 	// NaN is false, which would let any old video through.
 	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 2,
+	minVideoSeconds: 15,
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')
 		.map((id) => id.trim())

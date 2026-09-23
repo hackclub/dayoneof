@@ -82,7 +82,7 @@
 		},
 		{
 			q: 'What are the rules?',
-			a: 'Learn or make anything you want. A series on learning piano, building hardware, or whatever you\'re already into all count. Just mention Hack Club somewhere in the video, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify it.'
+			a: 'Learn or make anything you want. A series on learning piano, building hardware, or whatever you\'re already into all count. Just mention Hack Club somewhere in the video, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify it. Videos must be at least 15 seconds long.'
 		},
 		{
 			q: 'How do streaks and freezes work?',
@@ -100,7 +100,7 @@
 		},
 		{
 			q: 'Anything else I should know?',
-			a: "Please don't use generative AI anywhere in your videos. Prizes ship from Hack Club HQ, so if you're outside the USA, you're responsible for any customs fees your country charges."
+			a: "Please don't use generative AI anywhere in your videos. Prizes ship from Hack Club HQ, so if you're outside the USA, you're responsible for any customs fees your country charges. Giving feedback on other people's reels may be rewarded with extra stickers!"
 		},
 		{
 			q: 'I have more questions!',
@@ -311,7 +311,7 @@
 						<p class="receipt-title">How it works</p>
 						<ol class="steps">
 							<li>Sign in with your email</li>
-							<li>Post a short-form video every day and mention Hack Club</li>
+							<li>Post a short-form video (15 seconds or longer) every day and mention Hack Club</li>
 							<li>Drop the link in #dayoneof on Slack</li>
 							<li>Keep your streak alive to unlock prizes</li>
 						</ol>

@@ -90,7 +90,7 @@ export const actions = {
 		requireAdmin(locals);
 		const data = await request.formData();
 		const url = String(data.get('url') ?? '');
-		const link = extractLink(url);
+		const link = await extractLink(url);
 		if (!link) return { statsError: "that doesn't look like a YouTube/TikTok/Instagram link" };
 		try {
 			const post = await fetchPostByPlatformId(link.platform, link.videoId);

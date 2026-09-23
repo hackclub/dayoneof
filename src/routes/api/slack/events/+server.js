@@ -13,6 +13,7 @@ import {
 	streakDay,
 	addDays,
 	isPostTooOld,
+	isVideoTooShort,
 	freezesAfterPost,
 	nextMilestone
 } from '$lib/server/streak.js';
@@ -68,7 +69,7 @@ async function findSubmissionByVideo(platform, videoId) {
 
 /** @param {SlackEvent} event */
 async function handleSubmission(event) {
-	const link = extractLink(event.text);
+	const link = await extractLink(event.text);
 	if (!link) {
 		await slack.addReaction(event.channel, event.ts, 'question');
 		await slack.postMessage(event.channel, messages.unsupportedLink(event.user), event.ts);
@@ -118,8 +119,18 @@ async function handleSubmission(event) {
 		return;
 	}
 
+	if (isVideoTooShort(stats?.durationSeconds, config.minVideoSeconds)) {
+		await slack.addReaction(event.channel, event.ts, 'hourglass');
+		await slack.postMessage(
+			event.channel,
+			messages.videoTooShort(event.user, config.minVideoSeconds),
+			event.ts
+		);
+		return;
+	}
+
 	// Paid, so it sits behind every gate above: an unverified poster or a video that just got
-	// refused for being too old never reaches it, and it only fires when the read found no row.
+	// refused for being too old or too short never reaches it, and it only fires when the read found no row.
 	const trackedId = stats ? null : await trackPost(link.url);
 
 	const statsFields = stats

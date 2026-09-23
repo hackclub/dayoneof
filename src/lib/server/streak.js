@@ -44,6 +44,15 @@ export function isPostTooOld(publishedAt, maxAgeDays, now = new Date()) {
 	return now.getTime() - published > maxAgeDays * 24 * 60 * 60 * 1000;
 }
 
+// Unknown means allowed, for the same reason as isPostTooOld.
+/**
+ * @param {number | null | undefined} durationSeconds
+ * @param {number} minSeconds
+ */
+export function isVideoTooShort(durationSeconds, minSeconds) {
+	return typeof durationSeconds === 'number' && durationSeconds < minSeconds;
+}
+
 // Every second posted day banks one freeze, up to the cap. Spent freezes stay spent.
 /**
  * @param {number} freezes

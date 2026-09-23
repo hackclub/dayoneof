@@ -32,6 +32,13 @@ export const messages = {
 	postTooOld(slackId, maxAgeDays) {
 		return `<@${slackId}> that video was published more than ${maxAgeDays} days ago, so it can't count toward your streak. Post something you've made in the last ${maxAgeDays} days!`;
 	},
+	/**
+	 * @param {string} slackId
+	 * @param {number} minSeconds
+	 */
+	videoTooShort(slackId, minSeconds) {
+		return `<@${slackId}> that video is shorter than ${minSeconds} seconds, so it can't count toward your streak. Post a video that's at least ${minSeconds} seconds long!`;
+	},
 	// Points at #dayoneof because, unlike an old video, a link the poster believes is new can only
 	// be sorted out by a human looking at the earlier submission.
 	/** @param {string} slackId */

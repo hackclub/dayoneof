@@ -150,6 +150,7 @@
 		color: var(--ink);
 		text-decoration: underline wavy var(--accent) 2px;
 		text-underline-offset: 7px;
+		white-space: nowrap;
 	}
 
 	.bar-right {
@@ -492,6 +493,11 @@
 	@media (max-width: 30rem) {
 		.grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.bar,
+		.bar-right {
+			flex-wrap: wrap;
 		}
 
 		.profile {
