@@ -1,18 +1,33 @@
-/** @typedef {{ date: string, status: 'posted' | 'frozen' | 'missed' }} Day */
+/** @typedef {{ date: string, status: 'frozen' | 'missed' }} MissedDay */
 
 export const MILESTONES = [2, 7, 15, 25];
 export const MAX_STREAK_FREEZES = 3;
+const DEADLINE_HOUR = 1;
 
-export function utcDateString(date = new Date()) {
-	return date.toISOString().slice(0, 10);
+// A day runs until 1am in the participant's own timezone, so a post at 00:30 still counts for the
+// day before.
+/**
+ * @param {string | undefined} tz
+ * @param {Date} [now]
+ */
+export function streakDay(tz, now = new Date()) {
+	const shifted = new Date(now.getTime() - DEADLINE_HOUR * 60 * 60 * 1000);
+	return new Intl.DateTimeFormat('en-CA', {
+		timeZone: tz || 'UTC',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit'
+	}).format(shifted);
 }
 
 /**
- * @param {Day[]} days
- * @param {string} date
+ * @param {string} day
+ * @param {number} n
  */
-export function isDuplicatePost(days, date) {
-	return days.some((d) => d.date === date && d.status === 'posted');
+export function addDays(day, n) {
+	const date = new Date(`${day}T00:00:00Z`);
+	date.setUTCDate(date.getUTCDate() + n);
+	return date.toISOString().slice(0, 10);
 }
 
 // Unknown means allowed: a video posted minutes ago usually isn't tracked yet, so there is no
@@ -29,33 +44,34 @@ export function isPostTooOld(publishedAt, maxAgeDays, now = new Date()) {
 	return now.getTime() - published > maxAgeDays * 24 * 60 * 60 * 1000;
 }
 
-/** @param {Day[]} days */
-export function computeStreak(days) {
-	const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
-	let streak = 0;
-	for (let i = sorted.length - 1; i >= 0; i--) {
-		if (sorted[i].status === 'missed') break;
+// Every second posted day banks one freeze, up to the cap. Spent freezes stay spent.
+/**
+ * @param {number} freezes
+ * @param {number} daysCompleted
+ */
+export function freezesAfterPost(freezes, daysCompleted) {
+	return daysCompleted % 2 === 0 ? Math.min(MAX_STREAK_FREEZES, freezes + 1) : freezes;
+}
+
+// Each day after lastDay through throughDay went unposted: a freeze covers it and keeps the streak
+// growing, and the first one without a freeze breaks the streak and ends the walk.
+/**
+ * @param {{ lastDay: string, freezes: number, streak: number }} state
+ * @param {string} throughDay
+ */
+export function settleMissedDays({ lastDay, freezes, streak }, throughDay) {
+	/** @type {MissedDay[]} */
+	const days = [];
+	for (let day = addDays(lastDay, 1); day <= throughDay; day = addDays(day, 1)) {
+		if (freezes === 0) {
+			days.push({ date: day, status: 'missed' });
+			return { days, freezes, streak: 0, broke: true };
+		}
+		freezes--;
 		streak++;
+		days.push({ date: day, status: 'frozen' });
 	}
-	return streak;
-}
-
-/** @param {Day[]} days */
-export function daysCompletedCount(days) {
-	return days.filter((d) => d.status === 'posted').length;
-}
-
-/** @param {number} completedCount */
-export function freezesEarned(completedCount) {
-	return Math.min(MAX_STREAK_FREEZES, Math.floor(completedCount / 2));
-}
-
-/** @param {number} freezesAvailable */
-export function resolveMissedDay(freezesAvailable) {
-	if (freezesAvailable > 0) {
-		return { status: 'frozen', freezesRemaining: freezesAvailable - 1, broke: false };
-	}
-	return { status: 'missed', freezesRemaining: 0, broke: true };
+	return { days, freezes, streak, broke: false };
 }
 
 /**

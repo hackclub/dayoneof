@@ -1,4 +1,4 @@
-// Creates (or tops up) the four tables this app needs in an Airtable base, so standing up a second
+// Creates (or tops up) the three tables this app needs in an Airtable base, so standing up a second
 // base for testing is one command instead of a couple dozen clicks. Safe to re-run: existing
 // tables and fields are left alone, only missing ones are added.
 //
@@ -12,7 +12,6 @@ import { tablesFor, F, DAY_STATUSES, PARTICIPANT_STATUSES } from '../src/lib/ser
 const META = 'https://api.airtable.com/v0/meta/bases';
 
 const text = { type: 'singleLineText' };
-const longText = { type: 'multilineText' };
 const int = { type: 'number', options: { precision: 0 } };
 const check = { type: 'checkbox', options: { icon: 'check', color: 'greenBright' } };
 const when = {
@@ -46,6 +45,7 @@ function schemaFor(appEnv) {
 				{ name: F.participants.lastMilestone, ...int },
 				{ name: F.participants.reminderHour, ...int },
 				{ name: F.participants.lastReminderDay, ...text },
+				{ name: F.participants.lastDay, ...text },
 				{ name: F.participants.totalViews, ...int }
 			]
 		},
@@ -70,7 +70,6 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.countedTowardStreak, ...check },
 				{ name: F.submissions.channelId, ...text },
 				{ name: F.submissions.messageTs, ...text },
-				{ name: F.submissions.reviewCount, ...int },
 				{ name: F.submissions.views, ...int },
 				{ name: F.submissions.title, ...text },
 				{ name: F.submissions.thumbnailUrl, ...text },
@@ -79,18 +78,6 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.replyMessageTs, ...text },
 				{ name: F.submissions.streakAtPost, ...int },
 				{ name: F.submissions.freezesAtPost, ...int }
-			]
-		},
-		{
-			name: TABLES.reviews,
-			fields: [
-				{ name: F.reviews.reviewId, type: 'autoNumber' },
-				{ name: F.reviews.submissionId, ...text },
-				{ name: F.reviews.reviewerId, ...text },
-				{ name: F.reviews.reviewedAt, ...when },
-				{ name: F.reviews.messageTs, ...text },
-				{ name: F.reviews.length, ...int },
-				{ name: F.reviews.text, ...longText }
 			]
 		}
 	];
@@ -178,7 +165,7 @@ main().catch((err) => {
 	if (message.includes('PRIMARY_FIELD')) {
 		console.error(
 			'hint: if Airtable rejects an autoNumber primary field, create that table by hand with ' +
-				'submission_id / review_id as an Autonumber primary field, then re-run to add the rest.'
+				'submission_id as an Autonumber primary field, then re-run to add the rest.'
 		);
 	}
 	// Not process.exit(): exiting from inside a rejection handler while fetch's handles are still

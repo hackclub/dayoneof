@@ -7,14 +7,13 @@ import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
 import { isHcaVerified } from '$lib/server/verification.js';
-import { syncParticipantTotalViews } from '$lib/server/jobs.js';
+import { syncParticipantTotalViews, settleParticipant } from '$lib/server/jobs.js';
+import { serialize } from '$lib/server/queue.js';
 import {
-	utcDateString,
-	isDuplicatePost,
+	streakDay,
+	addDays,
 	isPostTooOld,
-	computeStreak,
-	daysCompletedCount,
-	freezesEarned,
+	freezesAfterPost,
 	nextMilestone
 } from '$lib/server/streak.js';
 
@@ -45,14 +44,6 @@ function verifySignature(rawBody, timestamp, signature) {
 	const a = Buffer.from(signature);
 	const b = Buffer.from(expected);
 	return a.length === b.length && timingSafeEqual(a, b);
-}
-
-/** @param {string} slackId */
-async function getDays(slackId) {
-	const records = await airtable.list(TABLES.days, {
-		filterByFormula: airtable.eq(F.days.slackId, slackId)
-	});
-	return records.map((r) => ({ date: r.fields[F.days.date], status: r.fields[F.days.status] }));
 }
 
 // Participants only exist once they've signed in via HCA (src/routes/api/auth/callback) — never
@@ -143,10 +134,13 @@ async function handleSubmission(event) {
 			? { [F.submissions.unifiedId]: trackedId }
 			: {};
 
-	const today = utcDateString();
-	const days = await getDays(event.user);
+	const today = streakDay(participant.fields[F.participants.tz]);
+	// Settles any unposted days first, so the streak and freezes below already account for them.
+	const { record } = await settleParticipant(participant, addDays(today, -1));
+	const streakBefore = record.fields[F.participants.currentStreak] ?? 0;
+	const freezesBefore = record.fields[F.participants.streakFreezes] ?? 0;
 
-	if (isDuplicatePost(days, today)) {
+	if (record.fields[F.participants.lastDay] >= today) {
 		await slack.addReaction(event.channel, event.ts, 'repeat');
 		const duplicateSubmission = await airtable.create(TABLES.submissions, {
 			[F.submissions.slackId]: event.user,
@@ -160,13 +154,15 @@ async function handleSubmission(event) {
 			[F.submissions.messageTs]: event.ts
 		});
 
-		const streak = computeStreak(days);
-		const freezes = participant.fields[F.participants.streakFreezes] ?? 0;
 		if (Object.keys(statsFields).length) {
 			await airtable.update(TABLES.submissions, duplicateSubmission.id, statsFields);
 		}
 		if (stats) await syncParticipantTotalViews(event.user);
-		await slack.postMessage(event.channel, messages.duplicatePost(event.user, streak, freezes, stats), event.ts);
+		await slack.postMessage(
+			event.channel,
+			messages.duplicatePost(event.user, streakBefore, freezesBefore, stats),
+			event.ts
+		);
 		return;
 	}
 
@@ -188,16 +184,16 @@ async function handleSubmission(event) {
 		[F.submissions.messageTs]: event.ts
 	});
 
-	const updatedDays = [...days, { date: today, status: 'posted' }];
-	const streak = computeStreak(updatedDays);
-	const completed = daysCompletedCount(updatedDays);
-	const freezes = freezesEarned(completed);
+	const streak = streakBefore + 1;
+	const completed = (record.fields[F.participants.daysCompleted] ?? 0) + 1;
+	const freezes = freezesAfterPost(freezesBefore, completed);
 
 	await airtable.update(TABLES.participants, participant.id, {
 		[F.participants.daysCompleted]: completed,
 		[F.participants.streakFreezes]: freezes,
 		[F.participants.currentStreak]: streak,
-		[F.participants.status]: 'active'
+		[F.participants.status]: 'active',
+		[F.participants.lastDay]: today
 	});
 
 	// Written before attempting to react/reply so a Slack API failure below (rate limit, etc.)
@@ -230,39 +226,13 @@ async function handleSubmission(event) {
 }
 
 /** @param {SlackEvent} event */
-async function handleThreadReply(event) {
-	if (!event.text || event.text.length < config.minReviewLength) return;
-
-	const submission = await airtable.find(
-		TABLES.submissions,
-		airtable.eq(F.submissions.messageTs, event.thread_ts ?? '')
-	);
-	if (!submission || submission.fields[F.submissions.slackId] === event.user) return;
-
-	await airtable.create(TABLES.reviews, {
-		[F.reviews.submissionId]: submission.fields[F.submissions.submissionId] ?? submission.id,
-		[F.reviews.reviewerId]: event.user,
-		[F.reviews.reviewedAt]: new Date().toISOString(),
-		[F.reviews.messageTs]: event.ts,
-		[F.reviews.length]: event.text.length,
-		[F.reviews.text]: event.text
-	});
-
-	await airtable.update(TABLES.submissions, submission.id, {
-		[F.submissions.reviewCount]: (submission.fields[F.submissions.reviewCount] ?? 0) + 1
-	});
-	await slack.addReaction(event.channel, event.ts, 'eyes');
-}
-
-/** @param {SlackEvent} event */
 async function handleAppMention(event) {
 	const text = event.text.replace(/<@\w+>/, '').trim();
 	const [command, arg] = text.split(/\s+/);
 
 	if (command === 'status') {
 		const participant = await getParticipant(event.user);
-		const days = await getDays(event.user);
-		const streak = computeStreak(days);
+		const streak = participant?.fields[F.participants.currentStreak] ?? 0;
 		const freezes = participant?.fields[F.participants.streakFreezes] ?? 0;
 		const completed = participant?.fields[F.participants.daysCompleted] ?? 0;
 		await slack.postMessage(event.channel, messages.status(streak, freezes, completed), event.ts);
@@ -284,15 +254,6 @@ async function handleAppMention(event) {
 			[F.participants.reminderHour]: hour
 		});
 		await slack.postMessage(event.channel, messages.remindSet(hour), event.ts);
-		return;
-	}
-
-	if (command === 'reviews') {
-		const reviews = await airtable.list(TABLES.reviews, {
-			filterByFormula: airtable.eq(F.reviews.reviewerId, event.user)
-		});
-		await slack.postMessage(event.channel, `You've left ${reviews.length} reviews.`, event.ts);
-		return;
 	}
 }
 
@@ -320,10 +281,10 @@ async function handleEvent(event) {
 
 	if (event.type === 'message') {
 		if (event.channel !== config.submissionChannelId) return;
-		// Edits, joins and the bot's own replies all arrive here as message events.
+		// Edits, joins, thread replies and the bot's own replies all arrive here as message events.
 		if (event.subtype || event.bot_id) return;
-		if (event.thread_ts && event.thread_ts !== event.ts) return handleThreadReply(event);
-		return handleSubmission(event);
+		if (event.thread_ts && event.thread_ts !== event.ts) return;
+		return serialize(() => handleSubmission(event));
 	}
 }
 
@@ -361,12 +322,12 @@ export async function POST({ request }) {
 		return json({ ok: true });
 	}
 
-	try {
-		await handleEvent(body.event);
-	} catch (err) {
+	// Acked before handling: a submission waits its turn in the queue and on Airtable's rate limit,
+	// and Slack gives up on an event it hasn't had a 200 for within 3 seconds.
+	handleEvent(body.event).catch(async (err) => {
 		console.error('slack event handling failed', body.event?.channel, body.event?.ts, err);
 		await replyWithFailure(body.event);
-	}
+	});
 
 	return json({ ok: true });
 }

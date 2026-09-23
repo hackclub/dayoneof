@@ -29,7 +29,8 @@ scripts/                 one-off setup helpers, plain node (not part of the app)
 src/lib/server/          server-only modules (SvelteKit refuses to ship these to the browser)
   config.js               env resolution (APP_ENV dev/prod), isAdmin, requireEnv
   schema.js               Airtable table/field name map (F) — no $env, so scripts can import it
-  airtable.js             REST client: find/list/create/update/remove/upsert
+  airtable.js             REST client: find/get/list/listCached/create/update/remove/upsert, rate-limited
+  queue.js                serializes every streak read-modify-write in-process
   slack.js                Slack Web API wrappers: postMessage/updateMessage/dm/reactions/etc
   hca.js                  Hack Club Auth OIDC (authorize/token/userinfo)
   session.js              signed session cookie for the logged-in participant
@@ -60,7 +61,7 @@ code, same routes, same behaviour, just different data and credentials.
 
 Airtable is the exception to the "two of everything" shape: both environments share **one base**,
 and dev works against a `_dev` copy of each table (`participants_dev`, `days_dev`,
-`submissions_dev`, `reviews_dev`). Prod keeps the bare names. `schema.js`'s `tablesFor(appEnv)`
+`submissions_dev`). Prod keeps the bare names. `schema.js`'s `tablesFor(appEnv)`
 applies the suffix and `config.js` exports the resolved map as `TABLES`, so every call site keeps
 writing `TABLES.submissions` and lands in the right place automatically. One base means one base
 id, one token grant, and one Airtable tab to look at when something's wrong.
@@ -90,9 +91,15 @@ dev copy lives in a file on a laptop and gets pasted into terminals; the prod co
 What's genuinely shared is the narrow set where dev and prod want the identical value and leaking
 the dev copy costs nothing extra: `AIRTABLE_TOKEN`/`AIRTABLE_BASE_ID` (one base, see above),
 `HCA_CLIENT_ID`/`HCA_CLIENT_SECRET` (one HCA app, see below), `UNIFIED_SOCIALS_TOKEN`
-(read-only), `ADMIN_SLACK_IDS`, `MIN_REVIEW_LENGTH`, `MAX_POST_AGE_DAYS`.
+(read-only), `ADMIN_SLACK_IDS`, `MAX_POST_AGE_DAYS`.
 
 ## Data model (Airtable)
+
+Airtable allows 5 requests a second per base and locks the base for 30 seconds after a 429.
+`airtable.js` spaces every request ~220ms apart and waits out a 429 before retrying, and the public
+pages (`/`, `/home`, `/user/<slackId>`) read through `listCached`, which shares one fetch per table
+across visitors for 60 seconds and is dropped on any write. Both the spacing and `queue.js` are
+in-process, so the app must run as a single replica.
 
 Four tables, times two environments — the names below are prod's; dev's carry a `_dev` suffix
 (see "Dev vs prod"). Field names are identical in both and live once in `schema.js`'s `F` map —
@@ -111,16 +118,17 @@ them verified.
 | `name`, `email`, `tz`, `avatar` | text | `tz` and `avatar` are best-effort backfilled from the Slack profile at sign-in; the site falls back to initials without an avatar |
 | `status` | Single select | `notStarted` \| `active` \| `frozen` \| `broken` |
 | `verification_status` | Single line text | HCA's claim — `needs_submission`, `pending`, `verified_eligible`, `verified_but_over_18`, `rejected`, `not_found`. Only rows starting with `verified` count posts. |
-| `days_completed`, `streak_freezes`, `current_streak` | Number | cache rewritten by the reconcile cron and by every submission |
+| `days_completed`, `streak_freezes`, `current_streak` | Number | source of truth for the streak, updated by every submission and by reconcile |
+| `last_day` | Single line text | `YYYY-MM-DD` of the participant's latest `days` row — reconcile settles every day after it |
 | `last_milestone` | Number | highest milestone announced, so it fires once |
 | `reminder_hour` | Number | local hour for the daily DM; null = no reminder |
 | `last_reminder_day` | Single line text | guards against double-sending a reminder |
 | `total_views` | Number | recomputed by `syncParticipantTotalViews` (see below), never incremented |
 
-### `days` — one row per participant per UTC calendar day
+### `days` — one row per participant per local day
 
-Source of truth for streaks. `status` is `posted` \| `frozen` \| `missed`. A streak is "count
-back from today while status != missed"; a freeze is a row, not a counter you have to trust.
+A log of every settled day. A day runs until 1am in the participant's own `tz` (UTC if unknown).
+`status` is `posted` \| `frozen` \| `missed`. The streak itself lives on the participant row.
 
 | field | type |
 | --- | --- |
@@ -138,7 +146,6 @@ back from today while status != missed"; a freeze is a row, not a counter you ha
 | `day` | Single line text | `YYYY-MM-DD`, same reasoning as `days.date` |
 | `counted_toward_streak` | Checkbox | false for a same-day repeat post |
 | `channel_id`, `message_ts` | text | the poster's original message |
-| `review_count` | Number | |
 | `views` | Number | kept in sync by `syncParticipantTotalViews` — see "Views sync" below |
 | `title` | Single line text | video title (YouTube) or first line of caption (TikTok/Instagram), from unified-socials |
 | `thumbnail_url` | Single line text | the archive's own thumbnail, `https` forced (see unified.js) |
@@ -151,18 +158,11 @@ back from today while status != missed"; a freeze is a row, not a counter you ha
 (a Slack message, admin's "Check stats"), so persisting it would just be one more field to keep
 in sync for no benefit.
 
-### `reviews`
-
-| field | type |
-| --- | --- |
-| `review_id` | Autonumber (primary field) |
-| `submission_id` | Single line text — stores `submissions.submission_id`, not an Airtable link |
-| `reviewer_id`, `reviewed_at`, `message_ts`, `length`, `text` | — |
-
 ## The bot: `POST /api/slack/events`
 
 Single endpoint, HTTP Events API (not Socket Mode). Verifies the Slack v0 signature over the raw
-body, echoes the `url_verification` challenge, acks retries, then routes on `event.type`:
+body, echoes the `url_verification` challenge, acks retries, then returns 200 immediately and
+handles the event in the background (Slack gives up after 3 seconds). Routes on `event.type`:
 
 - **`message` in the submissions channel, with a supported link** — not signed in → 🔒 + reply
   telling them to sign in; signed in but HCA hasn't verified them → 🔒 + reply explaining that;
@@ -173,8 +173,8 @@ body, echoes the `url_verification` challenge, acks retries, then routes on `eve
   tracking — see "Submitting an untracked post".
 - **`message` in the submissions channel, no supported link** — reacts ❓, replies in-thread
   explaining which platforms count.
-- **threaded reply by someone other than the poster, 40+ characters** — records a review, ✅ 👀.
-- **`app_mention`** — `status`, `remind <hour>`, `reviews`.
+- **threaded replies** — ignored.
+- **`app_mention`** — `status`, `remind <hour>`.
 - **`member_joined_channel`** — if it's the bot itself joining, posts a one-line greeting. It
   doubles as a smoke test for "is Slack delivering events to this endpoint at all", since it is
   independent of every other code path.
@@ -235,12 +235,12 @@ panel). Orchard jobs call them on the schedules below — see "Cron on Orchard".
 
 | job | schedule | what it does |
 | --- | --- | --- |
-| `reconcile` | `0 0 * * *` | For every active/frozen participant with history before yesterday and no `posted` row for yesterday: spends a freeze (writes a `frozen` day) or breaks the streak. Then refreshes views, title, thumbnail and archive link for every tracked submission and edits each one's original Slack reply in place. |
-| `leaderboard` | `15 0 * * *` | Posts three boards to the announce channel: longest streaks, most total views, highest-viewed videos. Scheduled *after* reconcile on purpose, so it reflects that night's refreshed views. |
+| `reconcile` | `0 * * * *` | For every active/frozen participant whose `last_day` is before their local yesterday: spends a freeze per missed day (writes a `frozen` day) or breaks the streak (writes a `missed` day). Hourly so each timezone is settled within the hour after its 1am deadline. A submission runs the same settling first, so a post that beats reconcile can't skip a missed day. |
+| `leaderboard` | `15 0 * * *` | Refreshes views, title, thumbnail and archive link for every tracked submission (writing and editing the original Slack reply only when something changed), then posts three boards to the announce channel: longest streaks, most total views, highest-viewed videos. |
 | `remind` | `0 * * * *` | DMs anyone whose `reminder_hour` matches the current hour in their `tz` and who hasn't posted today. |
 
 **Views sync**: `submissions.views` and `participants.total_views` get written in two places —
-at submit time (if the video happens to already be tracked) and nightly in reconcile — both
+at submit time (if the video happens to already be tracked) and nightly in leaderboard — both
 calling the same `syncParticipantTotalViews(slackId)`, which recomputes a participant's total by
 summing their stored `submissions.views` fresh from Airtable rather than incrementing. This
 matters: an earlier version summed only submissions whose live re-fetch succeeded *in that one
@@ -250,7 +250,9 @@ total — the site and the Slack leaderboard always agree with what a thread rep
 
 ## Streak rules (`streak.js`, pure functions)
 
-- First link of a UTC day counts. Later links the same day are stored, react 🔁, don't advance.
+- First link of a local day (ending 1am in the participant's `tz`) counts. Later links the same day
+  are stored, react 🔁, don't advance. Submissions run one at a time (`queue.js`), so two quick posts
+  can't both count.
 - A video published more than `MAX_POST_AGE_DAYS` (default 2) days ago is refused outright — ⏳ and a reply,
   no day row and no submission row. The publish date comes from unified-socials' `published_at`, so
   a video nobody has tracked yet has no date to judge and is allowed: refusing on a missing date
@@ -261,9 +263,9 @@ total — the site and the Slack leaderboard always agree with what a thread rep
   still hits the stored row, and across all participants rather than per poster: views are summed
   per submission row, so a second row for one video would double-count it in `total_views`.
   Checked before the stats lookup, so a refused repost never starts paid tracking work either.
-- Every 2 days completed earns a freeze, capped at 3.
-- A gap spends one freeze per missed day. Cover the whole gap and the streak continues; run out
-  and it resets to 1.
+- Every second posted day banks a freeze, capped at 3. A spent freeze stays spent.
+- A gap spends one freeze per missed day, and each frozen day still counts toward the streak.
+  Cover the whole gap and the streak continues; run out and it resets to 0, then 1 on the next post.
 
 ## Links (`links.js`)
 
@@ -285,7 +287,7 @@ Hack Club's own copy of the video: Arker's archive at `archive.hackclub.com/arch
 or a `cdn.hackclub.com` render when the pipeline built one from a gallery post. It is null until
 the pipeline's archive step has run, which is usually minutes *after* the post is submitted, so
 it gets written by whichever pass first sees it — the submit-time read if the video was already
-tracked, otherwise a nightly reconcile. Both write it through the same `statsFields`/`refreshViews`
+tracked, otherwise the nightly leaderboard refresh. Both write it through the same `statsFields`/`refreshViews`
 paths as views and title, so there is nothing extra to keep in sync.
 
 The response is `{ rows, count, limit, offset }`. A post unified-socials doesn't track yet is a
@@ -316,9 +318,9 @@ archive the post and Gemini to watch and code it. Everything guarding it is deli
   behind the sign-in and HCA-verification gates and behind the too-old refusal, so a stranger and a
   video that was just rejected both cost nothing.
 - **Never retried.** Retrying a paid endpoint that failed halfway is the one thing that could double
-  charge, and reconcile re-reads every submission nightly anyway.
+  charge, and the leaderboard job re-reads every submission nightly anyway.
 - **Never throws.** A tracking failure returns null and the poster keeps their streak.
-- **Reconcile does not call it.** `refreshViews` walks every submission every night; submitting from
+- **The nightly refresh does not call it.** `refreshViews` walks every submission every night; submitting from
   there would mean a nightly burst against the 100-new-posts-per-hour token limit.
 
 Do not add a second write, or call `trackPost` from anywhere else, without explicit approval.
@@ -393,11 +395,11 @@ Then let the script build the tables instead of clicking them in — once per en
 that same base:
 
 ```
-npm run setup:airtable -- prod    # participants, days, submissions, reviews
-npm run setup:airtable -- dev     # participants_dev, days_dev, submissions_dev, reviews_dev
+npm run setup:airtable -- prod    # participants, days, submissions
+npm run setup:airtable -- dev     # participants_dev, days_dev, submissions_dev
 ```
 
-Each run creates its four tables with the field types documented above, and is safe to re-run —
+Each run creates its three tables with the field types documented above, and is safe to re-run —
 it only adds what's missing, so it doubles as a way to top up after a schema change. Running both
 gives you eight tables side by side in one base. (Needs Node 20.6+ for `--env-file`.)
 
@@ -528,13 +530,11 @@ CRON_SECRET_DEV=$(openssl rand -hex 32)
 (Windows without `openssl`: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.)
 
 `UNIFIED_SOCIALS_TOKEN` — mint a personal token from the unified-socials-db web app's MCP/API
-page. Safe to leave blank while testing the rest of the bot — it's only used by reconcile's
+page. Safe to leave blank while testing the rest of the bot — it's only used by the leaderboard's
 views pass and admin's "Check stats".
 
 `ADMIN_SLACK_IDS` — comma-separated Slack user IDs (the `U...` kind) allowed to use `/admin`.
 Blank means nobody is an admin.
-
-`MIN_REVIEW_LENGTH` — default `40` is fine.
 
 `MAX_POST_AGE_DAYS` — how old a video may be at submission time; default `2` is fine.
 
@@ -544,9 +544,9 @@ Blank means nobody is an admin.
   "👋 dayoneof bot is here!" — if not, don't bother testing links yet, recheck steps 2 and 3.
 - Sign in at `<PUBLIC_SITE_URL>/api/auth/login`. Use admin's "Force verify" to unblock testing
   without waiting on real HCA verification.
-- Post a link → ✅ + threaded reply. Post it again → 🔁 + threaded reply. Post a non-link → ❓.
-  Reply in-thread as someone else, 40+ characters → 👀.
-- `@your-bot status` / `remind 9` / `reviews`.
+- Post a link → ✅ + threaded reply. Post another the same day → 🔁 + threaded reply. Post a
+  non-link → ❓.
+- `@your-bot status` / `remind 9`.
 - `/home`, `/user/<slackId>` render from Airtable.
 - Cron routes work standalone too:
 
@@ -626,7 +626,7 @@ each an `app`-type step that runs inside the deployment's own image and environm
 
 | job | cron (UTC) | step |
 | --- | --- | --- |
-| `reconcile` | `0 0 * * *` | `GET /api/cron/reconcile` |
+| `reconcile` | `0 * * * *` | `GET /api/cron/reconcile` |
 | `leaderboard` | `15 0 * * *` | `GET /api/cron/leaderboard` |
 | `remind` | `0 * * * *` | `GET /api/cron/remind` |
 
@@ -635,5 +635,5 @@ also sidesteps ingress protection entirely, whatever it's set to.
 
 ## Not yet built
 
-Per the original plan's "Deferred" list: review queue assignment, fraud/slop pass, plagiarism
+Per the original plan's "Deferred" list: fraud/slop pass, plagiarism
 reverse search, per-post view milestones auto-updating in-thread.

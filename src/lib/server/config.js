@@ -55,11 +55,8 @@ export const config = {
 	// Opt-in because submitting a post to unified-socials-db starts paid work. Off in both
 	// environments until it is set to exactly "true" — see trackPost in unified.js.
 	unifiedSocialsTrackPosts: priv('UNIFIED_SOCIALS_TRACK_POSTS') === 'true',
-	// Falls back on anything unparseable rather than passing NaN on: `length < NaN` is false, so a
-	// typo'd value would silently turn every one-word reply into a review.
-	minReviewLength: Number(priv('MIN_REVIEW_LENGTH')) || 40,
-	// Same NaN guard as above: an unparseable value would make every age comparison false and let
-	// any old video through.
+	// Falls back on anything unparseable rather than passing NaN on: every age comparison against
+	// NaN is false, which would let any old video through.
 	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 2,
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')

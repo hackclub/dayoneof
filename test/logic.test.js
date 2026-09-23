@@ -1,22 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-	isDuplicatePost,
+	streakDay,
+	addDays,
 	isPostTooOld,
-	computeStreak,
-	daysCompletedCount,
-	freezesEarned,
-	resolveMissedDay,
+	freezesAfterPost,
+	settleMissedDays,
 	nextMilestone
 } from '../src/lib/server/streak.js';
 
-/** @typedef {import('../src/lib/server/streak.js').Day} Day */
+test('streakDay rolls over at 1am local time', () => {
+	assert.equal(streakDay('UTC', new Date('2026-01-10T00:59:00Z')), '2026-01-09');
+	assert.equal(streakDay('UTC', new Date('2026-01-10T01:00:00Z')), '2026-01-10');
+	assert.equal(streakDay('America/New_York', new Date('2026-01-10T05:30:00Z')), '2026-01-09');
+	assert.equal(streakDay('America/New_York', new Date('2026-01-10T06:00:00Z')), '2026-01-10');
+	assert.equal(streakDay(undefined, new Date('2026-01-10T12:00:00Z')), '2026-01-10');
+});
 
-test('isDuplicatePost detects an existing posted day', () => {
-	/** @type {Day[]} */
-	const days = [{ date: '2026-01-01', status: 'posted' }];
-	assert.equal(isDuplicatePost(days, '2026-01-01'), true);
-	assert.equal(isDuplicatePost(days, '2026-01-02'), false);
+test('addDays crosses month and year boundaries', () => {
+	assert.equal(addDays('2026-01-31', 1), '2026-02-01');
+	assert.equal(addDays('2026-01-01', -1), '2025-12-31');
 });
 
 test('isPostTooOld rejects only past the given age limit', () => {
@@ -38,50 +41,48 @@ test('isPostTooOld allows a post whose age cannot be known', () => {
 	assert.equal(isPostTooOld('not a date', 2, now), false);
 });
 
-test('computeStreak counts back from the most recent day', () => {
-	/** @type {Day[]} */
-	const days = [
-		{ date: '2026-01-01', status: 'posted' },
-		{ date: '2026-01-02', status: 'posted' },
-		{ date: '2026-01-03', status: 'frozen' },
-		{ date: '2026-01-04', status: 'posted' }
-	];
-	assert.equal(computeStreak(days), 4);
+test('freezesAfterPost banks one per two posted days, capped at three', () => {
+	assert.equal(freezesAfterPost(0, 1), 0);
+	assert.equal(freezesAfterPost(0, 2), 1);
+	assert.equal(freezesAfterPost(1, 3), 1);
+	assert.equal(freezesAfterPost(3, 10), 3);
 });
 
-test('computeStreak stops at a missed day', () => {
-	/** @type {Day[]} */
-	const days = [
-		{ date: '2026-01-01', status: 'posted' },
-		{ date: '2026-01-02', status: 'missed' },
-		{ date: '2026-01-03', status: 'posted' }
-	];
-	assert.equal(computeStreak(days), 1);
+test('freezesAfterPost does not refund a spent freeze', () => {
+	assert.equal(freezesAfterPost(2, 7), 2);
 });
 
-test('daysCompletedCount only counts posted days', () => {
-	/** @type {Day[]} */
-	const days = [
-		{ date: '2026-01-01', status: 'posted' },
-		{ date: '2026-01-02', status: 'frozen' },
-		{ date: '2026-01-03', status: 'missed' }
-	];
-	assert.equal(daysCompletedCount(days), 1);
+test('settleMissedDays spends a freeze per missed day', () => {
+	assert.deepEqual(settleMissedDays({ lastDay: '2026-01-01', freezes: 2, streak: 5 }, '2026-01-03'), {
+		days: [
+			{ date: '2026-01-02', status: 'frozen' },
+			{ date: '2026-01-03', status: 'frozen' }
+		],
+		freezes: 0,
+		streak: 7,
+		broke: false
+	});
 });
 
-test('freezesEarned grants one per two days, capped at three', () => {
-	assert.equal(freezesEarned(0), 0);
-	assert.equal(freezesEarned(1), 0);
-	assert.equal(freezesEarned(4), 2);
-	assert.equal(freezesEarned(10), 3);
+test('settleMissedDays breaks the streak when freezes run out', () => {
+	assert.deepEqual(settleMissedDays({ lastDay: '2026-01-01', freezes: 1, streak: 5 }, '2026-01-04'), {
+		days: [
+			{ date: '2026-01-02', status: 'frozen' },
+			{ date: '2026-01-03', status: 'missed' }
+		],
+		freezes: 0,
+		streak: 0,
+		broke: true
+	});
 });
 
-test('resolveMissedDay spends a freeze when one is available', () => {
-	assert.deepEqual(resolveMissedDay(2), { status: 'frozen', freezesRemaining: 1, broke: false });
-});
-
-test('resolveMissedDay breaks the streak with no freezes left', () => {
-	assert.deepEqual(resolveMissedDay(0), { status: 'missed', freezesRemaining: 0, broke: true });
+test('settleMissedDays does nothing when no day was missed', () => {
+	assert.deepEqual(settleMissedDays({ lastDay: '2026-01-03', freezes: 1, streak: 5 }, '2026-01-03'), {
+		days: [],
+		freezes: 1,
+		streak: 5,
+		broke: false
+	});
 });
 
 test('nextMilestone fires once per threshold crossed', () => {

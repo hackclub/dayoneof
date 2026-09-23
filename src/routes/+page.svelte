@@ -86,7 +86,7 @@
 		},
 		{
 			q: 'How do streaks and freezes work?',
-			a: 'Post a video every day to keep your streak going. Every 2 days you post, you bank a streak freeze, and a freeze automatically covers a day you miss. Run out of freezes and miss a day, and the streak breaks.'
+			a: 'Post a video every day to keep your streak going. Your day ends at 1am your local time. Every 2 days you post, you bank a streak freeze, and a freeze automatically covers a day you miss. Run out of freezes and miss a day, and the streak breaks.'
 		},
 		{
 			q: 'What prizes can I earn?',

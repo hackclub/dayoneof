@@ -48,7 +48,7 @@ function manifest(name, siteUrl) {
 		display_information: {
 			name,
 			description: 'Post a video every day, keep the streak alive',
-			background_color: '#1f1f1f'
+			background_color: '#2b2216'
 		},
 		features: {
 			bot_user: { display_name: name, always_online: true },

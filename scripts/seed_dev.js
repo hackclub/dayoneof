@@ -231,7 +231,6 @@ async function main() {
 				[F.submissions.countedTowardStreak]: true,
 				[F.submissions.channelId]: 'CSEEDCHANNEL',
 				[F.submissions.messageTs]: `${Math.floor(postedAt.getTime() / 1000)}.000${counter}`,
-				[F.submissions.reviewCount]: (i + n) % 4,
 				[F.submissions.views]: video.views,
 				[F.submissions.title]: video.title,
 				[F.submissions.thumbnailUrl]: video.thumbnailUrl,
@@ -259,6 +258,7 @@ async function main() {
 			[F.participants.daysCompleted]: dates.length,
 			[F.participants.currentStreak]: streak,
 			[F.participants.streakFreezes]: freezes,
+			[F.participants.lastDay]: dates[0],
 			[F.participants.verificationStatus]: 'verified_eligible',
 			[F.participants.reminderHour]: 18,
 			[F.participants.totalViews]: views

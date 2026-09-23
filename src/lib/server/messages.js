@@ -71,7 +71,7 @@ export const messages = {
 		return `You hit ${milestone} days! Fill out the fulfillment form to claim your reward.`;
 	},
 	reminder() {
-		return "Haven't seen today's video yet. Post it before midnight UTC to keep your streak alive.";
+		return "Haven't seen today's video yet. Post it before 1am your time to keep your streak alive.";
 	},
 	/** @param {number} freezesRemaining */
 	dayFrozen(freezesRemaining) {

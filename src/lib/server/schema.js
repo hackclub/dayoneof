@@ -11,8 +11,7 @@ export function tablesFor(appEnv) {
 	return {
 		participants: `participants${s}`,
 		days: `days${s}`,
-		submissions: `submissions${s}`,
-		reviews: `reviews${s}`
+		submissions: `submissions${s}`
 	};
 }
 
@@ -31,6 +30,7 @@ export const F = {
 		lastMilestone: 'last_milestone',
 		reminderHour: 'reminder_hour',
 		lastReminderDay: 'last_reminder_day',
+		lastDay: 'last_day',
 		totalViews: 'total_views'
 	},
 	days: {
@@ -49,7 +49,6 @@ export const F = {
 		countedTowardStreak: 'counted_toward_streak',
 		channelId: 'channel_id',
 		messageTs: 'message_ts',
-		reviewCount: 'review_count',
 		views: 'views',
 		title: 'title',
 		thumbnailUrl: 'thumbnail_url',
@@ -58,15 +57,6 @@ export const F = {
 		replyMessageTs: 'reply_message_ts',
 		streakAtPost: 'streak_at_post',
 		freezesAtPost: 'freezes_at_post'
-	},
-	reviews: {
-		reviewId: 'review_id',
-		submissionId: 'submission_id',
-		reviewerId: 'reviewer_id',
-		reviewedAt: 'reviewed_at',
-		messageTs: 'message_ts',
-		length: 'length',
-		text: 'text'
 	}
 };
 

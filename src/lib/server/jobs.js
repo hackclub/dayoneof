@@ -4,13 +4,10 @@ import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import * as unified from './unified.js';
 import { messages } from './messages.js';
-import { resolveMissedDay } from './streak.js';
+import { serialize } from './queue.js';
+import { streakDay, addDays, settleMissedDays } from './streak.js';
 
-function yesterday() {
-	const d = new Date();
-	d.setUTCDate(d.getUTCDate() - 1);
-	return d.toISOString().slice(0, 10);
-}
+/** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 
 // Sums a participant's stored submissions.views fresh from Airtable, rather than incrementing,
 // so it stays correct regardless of which fetches succeed on any given run.
@@ -26,57 +23,76 @@ export async function syncParticipantTotalViews(slackId) {
 	return total;
 }
 
+// Writes a day row for every unposted day since the participant's last one through throughDay,
+// spending freezes or breaking the streak. Callers run it inside serialize().
+/**
+ * @param {AirtableRecord} participant
+ * @param {string} throughDay
+ * @returns {Promise<{ record: AirtableRecord, daysSettled: number, broke: boolean }>}
+ */
+export async function settleParticipant(participant, throughDay) {
+	const fields = participant.fields;
+	const status = fields[F.participants.status];
+	const lastDay = fields[F.participants.lastDay];
+	if ((status !== 'active' && status !== 'frozen') || !lastDay || lastDay >= throughDay) {
+		return { record: participant, daysSettled: 0, broke: false };
+	}
+
+	const { days, freezes, streak, broke } = settleMissedDays(
+		{
+			lastDay,
+			freezes: fields[F.participants.streakFreezes] ?? 0,
+			streak: fields[F.participants.currentStreak] ?? 0
+		},
+		throughDay
+	);
+	const slackId = fields[F.participants.slackId];
+
+	for (const day of days) {
+		await airtable.create(TABLES.days, {
+			[F.days.slackId]: slackId,
+			[F.days.date]: day.date,
+			[F.days.status]: day.status
+		});
+	}
+
+	const record = await airtable.update(TABLES.participants, participant.id, {
+		[F.participants.lastDay]: days[days.length - 1].date,
+		[F.participants.streakFreezes]: freezes,
+		[F.participants.currentStreak]: streak,
+		[F.participants.status]: broke ? 'broken' : 'frozen'
+	});
+
+	try {
+		await slack.dm(slackId, broke ? messages.streakBroken() : messages.dayFrozen(freezes));
+	} catch (err) {
+		console.error('settle dm failed', err);
+	}
+
+	return { record, daysSettled: days.length, broke };
+}
+
+// Hourly, so each participant is settled within the hour after their own 1am deadline.
 export async function runReconcile() {
-	const date = yesterday();
 	const participants = await airtable.list(TABLES.participants, {
 		filterByFormula: `AND(${PARTICIPANT_HAS_SLACK_ID}, OR({${F.participants.status}} = "active", {${F.participants.status}} = "frozen"))`
 	});
-	const days = await airtable.list(TABLES.days, {
-		filterByFormula: airtable.eq(F.days.date, date)
-	});
-	const postedBySlackId = new Set(days.map((d) => d.fields[F.days.slackId]));
-
-	// A participant with no days row before yesterday just signed up today — nothing to reconcile.
-	const priorDays = await airtable.list(TABLES.days, {
-		filterByFormula: `{${F.days.date}} < "${date}"`
-	});
-	const hasHistoryBeforeYesterday = new Set(priorDays.map((d) => d.fields[F.days.slackId]));
 
 	let frozen = 0;
 	let broken = 0;
 
 	for (const participant of participants) {
-		const slackId = participant.fields[F.participants.slackId];
-		if (postedBySlackId.has(slackId)) continue;
-		if (!hasHistoryBeforeYesterday.has(slackId)) continue;
+		const yesterday = addDays(streakDay(participant.fields[F.participants.tz]), -1);
+		if (!(participant.fields[F.participants.lastDay] < yesterday)) continue;
 
-		const freezesAvailable = participant.fields[F.participants.streakFreezes] ?? 0;
-		const { status, freezesRemaining, broke } = resolveMissedDay(freezesAvailable);
+		const { daysSettled, broke } = await serialize(async () =>
+			settleParticipant(await airtable.get(TABLES.participants, participant.id), yesterday)
+		);
 		if (broke) broken++;
-		else frozen++;
-
-		await airtable.create(TABLES.days, {
-			[F.days.slackId]: slackId,
-			[F.days.date]: date,
-			[F.days.status]: status
-		});
-
-		await airtable.update(TABLES.participants, participant.id, {
-			[F.participants.streakFreezes]: freezesRemaining,
-			[F.participants.status]: broke ? 'broken' : 'frozen',
-			[F.participants.currentStreak]: broke ? 0 : participant.fields[F.participants.currentStreak]
-		});
-
-		try {
-			await slack.dm(slackId, broke ? messages.streakBroken() : messages.dayFrozen(freezesRemaining));
-		} catch (err) {
-			console.error('reconcile dm failed', err);
-		}
+		else if (daysSettled) frozen++;
 	}
 
-	const views = await refreshViews();
-
-	return { processed: participants.length, frozen, broken, ...views };
+	return { processed: participants.length, frozen, broken };
 }
 
 async function refreshViews() {
@@ -103,6 +119,16 @@ async function refreshViews() {
 		}
 		if (!post) continue;
 		viewsChecked++;
+
+		const fields = submission.fields;
+		if (
+			fields[F.submissions.views] === post.views &&
+			fields[F.submissions.title] === post.title &&
+			(fields[F.submissions.thumbnailUrl] ?? '') === post.thumbnailUrl &&
+			(fields[F.submissions.archiveUrl] ?? '') === post.archiveUrl
+		) {
+			continue;
+		}
 
 		await airtable.update(TABLES.submissions, submission.id, {
 			[F.submissions.views]: post.views,
@@ -137,8 +163,6 @@ async function refreshViews() {
 
 const BOARD_SIZE = 10;
 
-/** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
-
 /**
  * @param {AirtableRecord[]} records
  * @param {string} field
@@ -157,7 +181,10 @@ function numbered(records, line) {
 	return records.map((record, i) => `${i + 1}. ${line(record)}`).join('\n');
 }
 
+// Refreshes every submission's stats first so the boards reflect tonight's numbers.
 export async function runLeaderboard() {
+	const views = await refreshViews();
+
 	const [participants, submissions] = await Promise.all([
 		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
 		airtable.list(TABLES.submissions)
@@ -197,7 +224,12 @@ export async function runLeaderboard() {
 	await slack.postMessage(announceChannelId, `*Most total views*\n${viewLines}`);
 	await slack.postMessage(announceChannelId, `*Highest viewed videos*\n${videoLines}`);
 
-	return { streakEntries: byStreak.length, viewEntries: byViews.length, videoEntries: byVideo.length };
+	return {
+		...views,
+		streakEntries: byStreak.length,
+		viewEntries: byViews.length,
+		videoEntries: byVideo.length
+	};
 }
 
 /** @param {string | undefined} tz */
@@ -212,21 +244,17 @@ function localHour(tz) {
 // always calls this with no args.
 /** @param {{ force?: boolean }} [options] */
 export async function runRemind({ force = false } = {}) {
-	const today = new Date().toISOString().slice(0, 10);
 	const participants = await airtable.list(TABLES.participants, {
 		filterByFormula: force
 			? PARTICIPANT_HAS_SLACK_ID
 			: `AND(${PARTICIPANT_HAS_SLACK_ID}, NOT({${F.participants.reminderHour}} = ""))`
 	});
-	const daysToday = await airtable.list(TABLES.days, {
-		filterByFormula: airtable.eq(F.days.date, today)
-	});
-	const postedToday = new Set(daysToday.map((d) => d.fields[F.days.slackId]));
 
 	let sent = 0;
 	for (const participant of participants) {
 		const slackId = participant.fields[F.participants.slackId];
-		if (!force && postedToday.has(slackId)) continue;
+		const today = streakDay(participant.fields[F.participants.tz]);
+		if (!force && participant.fields[F.participants.lastDay] === today) continue;
 		if (!force && participant.fields[F.participants.lastReminderDay] === today) continue;
 		if (!force && localHour(participant.fields[F.participants.tz]) !== participant.fields[F.participants.reminderHour]) continue;
 

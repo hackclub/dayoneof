@@ -3,7 +3,7 @@
 
 	function confirmNuke(event: SubmitEvent) {
 		const ok = confirm(
-			'This permanently deletes every row in every dev Airtable table (participants, days, submissions, reviews). There is no undo. Are you sure?'
+			'This permanently deletes every row in every dev Airtable table (participants, days, submissions). There is no undo. Are you sure?'
 		);
 		if (!ok) event.preventDefault();
 	}
@@ -26,14 +26,15 @@
 			<h2>Jobs</h2>
 			<ul>
 				<li>
-					<strong>reconcile</strong>: for anyone active/frozen who didn't post yesterday, spends
-					a freeze (or breaks their streak if they have none left), then refreshes view counts
-					from unified-socials for every submission (and edits each submission's original reply
-					in place with the fresh numbers). Runs nightly at 00:00 UTC.
+					<strong>reconcile</strong>: for anyone active/frozen whose day ended (1am their time)
+					without a post, spends a freeze (or breaks their streak if they have none left). Runs
+					hourly.
 				</li>
 				<li>
-					<strong>leaderboard</strong>: posts the streak, views, and top-videos boards to the
-					announce channel. Runs nightly at 00:15 UTC, after reconcile has refreshed the views.
+					<strong>leaderboard</strong>: refreshes view counts from unified-socials for every
+					submission (editing each submission's original reply in place with the fresh numbers),
+					then posts the streak, views, and top-videos boards to the announce channel. Runs
+					nightly at 00:15 UTC.
 				</li>
 				<li>
 					<strong>remind</strong>: the real hourly cron DMs anyone whose reminder hour matches
