@@ -25,8 +25,8 @@ function count(value) {
 
 export async function load({ locals }) {
 	const [participants, submissions] = await Promise.all([
-		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
-		airtable.list(TABLES.submissions, {
+		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
+		airtable.listCached(TABLES.submissions, {
 			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
 		})
 	]);

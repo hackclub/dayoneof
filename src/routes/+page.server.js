@@ -13,8 +13,10 @@ export async function load({ locals }) {
 	if (locals.session) redirect(302, '/home');
 
 	const [submissions, participants] = await Promise.all([
-		airtable.list(TABLES.submissions),
-		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID })
+		airtable.listCached(TABLES.submissions, {
+			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
+		}),
+		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID })
 	]);
 
 	const views = submissions.map((s) => s.fields[F.submissions.views] ?? 0);

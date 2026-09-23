@@ -1,18 +1,23 @@
 import { error } from '@sveltejs/kit';
-import { TABLES, F } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 
 export async function load({ params, locals }) {
-	const participant = await airtable.find(
-		TABLES.participants,
-		airtable.eq(F.participants.slackId, params.slackId)
+	const [participants, allSubmissions] = await Promise.all([
+		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
+		airtable.listCached(TABLES.submissions, {
+			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
+		})
+	]);
+
+	const participant = participants.find(
+		(p) => p.fields[F.participants.slackId] === params.slackId
 	);
 	if (!participant) error(404, "Nobody's signed up with that Slack ID.");
 
-	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: airtable.eq(F.submissions.slackId, params.slackId),
-		sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
-	});
+	const submissions = allSubmissions.filter(
+		(s) => s.fields[F.submissions.slackId] === params.slackId
+	);
 
 	return {
 		session: locals.session,
