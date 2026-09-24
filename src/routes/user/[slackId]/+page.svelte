@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
+	import { sprite, tape } from '$lib/asset_sheet';
 
 	let { data } = $props();
 
@@ -47,15 +48,15 @@
 				<h1>{data.name}</h1>
 				<div class="stats">
 					<div class="stat">
-						<span class="stat-value">{data.currentStreak}</span>
+						<span class="stat-value taped" style={tape('stat', 0)}>{data.currentStreak}</span>
 						<span class="stat-label">day streak</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value">{formatViews(data.totalViews)}</span>
+						<span class="stat-value taped" style={tape('stat', 1)}>{formatViews(data.totalViews)}</span>
 						<span class="stat-label">views</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value">{data.videosPosted}</span>
+						<span class="stat-value taped" style={tape('stat', 2)}>{data.videosPosted}</span>
 						<span class="stat-label">video{data.videosPosted === 1 ? '' : 's'}</span>
 					</div>
 				</div>
@@ -95,12 +96,7 @@
 									decoding="async"
 								/>
 							{/if}
-							<span class="play" aria-hidden="true">
-								<svg viewBox="0 0 24 24">
-									<path d="M7.5 16.5 16 8" />
-									<path d="M9.5 7.5H16.5V14.5" />
-								</svg>
-							</span>
+							<span class="play" aria-hidden="true"><span style={sprite('badge_arrow')}></span></span>
 							<span class="tile-foot">
 								{#if video.title}<span class="tile-title">{video.title}</span>{/if}
 								<span class="tile-views">{formatViews(video.views)} views</span>
@@ -131,7 +127,7 @@
 
 	h1,
 	h2 {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		margin: 0;
 	}
@@ -146,7 +142,7 @@
 	}
 
 	.brand {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: clamp(1.6rem, 2.2vw, 2.4rem);
 		color: var(--ink);
@@ -218,7 +214,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-size: clamp(1.4rem, 2vw, 1.9rem);
 		font-weight: 700;
 		color: var(--ink-soft);
@@ -258,10 +254,8 @@
 		font-weight: 800;
 		font-variant-numeric: tabular-nums;
 		font-size: 0.95rem;
-		background: var(--accent);
-		color: var(--accent-ink);
-		padding: 3px 10px;
-		border-radius: 999px;
+		color: var(--ink);
+		padding: 3px 12px;
 	}
 
 	.stat-label {
@@ -393,21 +387,15 @@
 		justify-content: center;
 		border-radius: 50%;
 		background: var(--bg-2);
-		border: 2px solid var(--ink);
-		opacity: 0.85;
+		opacity: 0.9;
 		transition:
 			transform 0.12s ease,
 			opacity 0.12s ease;
 	}
 
-	.play svg {
-		width: 58%;
-		height: 58%;
-		fill: none;
-		stroke: var(--accent);
-		stroke-width: 2.6;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+	.play span {
+		position: absolute;
+		inset: -14%;
 	}
 
 	.tile:hover .play {
@@ -462,7 +450,7 @@
 	}
 
 	.platform {
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		color: var(--ink);
 		overflow: hidden;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
 	import { page } from '$app/state';
+	import { sprite, tape } from '$lib/asset_sheet';
 
 	let { data } = $props();
 
@@ -42,7 +43,7 @@
 	<header class="bar">
 		<a class="brand" href="/home">Day One Of</a>
 		<div class="bar-right">
-			<span class="posted torn-tape">{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
+			<span class="posted taped" style={tape('videos posted')}>{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
 			{#if data.session}
 				{#if data.name}
 					<a class="who" href="/user/{data.session.slackId}">
@@ -153,12 +154,7 @@
 										decoding="async"
 									/>
 								{/if}
-								<span class="play" aria-hidden="true">
-									<svg viewBox="0 0 24 24">
-										<path d="M7.5 16.5 16 8" />
-										<path d="M9.5 7.5H16.5V14.5" />
-									</svg>
-								</span>
+								<span class="play" aria-hidden="true"><span style={sprite('badge_arrow')}></span></span>
 								<span class="tile-foot">
 									{#if video.title}<span class="tile-title">{video.title}</span>{/if}
 									<span class="tile-views">{formatViews(video.views)} views</span>
@@ -200,7 +196,9 @@
 									<span class="row-sub">{person.freezes} freeze{person.freezes === 1 ? '' : 's'} left</span>
 								{/if}
 							</a>
-							<span class="row-value">{person.streak}d</span>
+							<span class="row-value" class:taped={i === 0} style={i === 0 ? tape('streak') : undefined}
+								>{person.streak}d</span
+							>
 						</li>
 					{:else}
 						<li class="empty-row">Nobody's started a streak yet.</li>
@@ -214,7 +212,9 @@
 							<a class="row-name" href="/user/{person.slackId}">
 								<span class="row-title">{person.name}</span>
 							</a>
-							<span class="row-value">{formatViews(person.views)}</span>
+							<span class="row-value" class:taped={i === 0} style={i === 0 ? tape('people') : undefined}
+								>{formatViews(person.views)}</span
+							>
 						</li>
 					{:else}
 						<li class="empty-row">No views counted yet.</li>
@@ -229,7 +229,9 @@
 								<span class="row-title">{video.title || video.platform}</span>
 								<span class="row-sub">{video.name}</span>
 							</a>
-							<span class="row-value">{formatViews(video.views)}</span>
+							<span class="row-value" class:taped={i === 0} style={i === 0 ? tape('videos') : undefined}
+								>{formatViews(video.views)}</span
+							>
 						</li>
 					{:else}
 						<li class="empty-row">No videos posted yet.</li>
@@ -262,28 +264,9 @@
 	}
 
 	h1 {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		margin: 0;
-	}
-
-	.torn-tape {
-		clip-path: polygon(
-			3px 0,
-			calc(100% - 3px) 0,
-			100% 28%,
-			calc(100% - 3px) 58%,
-			100% 100%,
-			3px 100%,
-			0 58%,
-			3px 28%
-		);
-		background-image: repeating-linear-gradient(
-			48deg,
-			rgba(255, 255, 255, 0.32) 0 2px,
-			transparent 2px 7px
-		);
-		background-blend-mode: overlay;
 	}
 
 	.bar {
@@ -296,7 +279,7 @@
 	}
 
 	.brand {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: clamp(1.6rem, 2.2vw, 2.4rem);
 		color: var(--ink);
@@ -316,9 +299,8 @@
 		font-weight: 700;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		background-color: var(--tape);
 		color: var(--ink);
-		padding: 6px 12px;
+		padding: 6px 14px;
 		transform: rotate(-2deg);
 		white-space: nowrap;
 	}
@@ -403,7 +385,7 @@
 	}
 
 	.guide summary {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: 1.2rem;
 	}
@@ -635,21 +617,15 @@
 		justify-content: center;
 		border-radius: 50%;
 		background: var(--bg-2);
-		border: 2px solid var(--ink);
-		opacity: 0.85;
+		opacity: 0.9;
 		transition:
 			transform 0.12s ease,
 			opacity 0.12s ease;
 	}
 
-	.play svg {
-		width: 58%;
-		height: 58%;
-		fill: none;
-		stroke: var(--accent);
-		stroke-width: 2.6;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+	.play span {
+		position: absolute;
+		inset: -14%;
 	}
 
 	.tile:hover .play {
@@ -707,7 +683,7 @@
 	}
 
 	.author {
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		color: var(--ink);
 		text-decoration: none;
@@ -784,17 +760,14 @@
 	}
 
 	.row-1 .row-value {
-		background: var(--accent);
-		color: var(--accent-ink);
-		padding: 3px 10px;
-		border-radius: 999px;
+		padding: 3px 12px;
 	}
 
 	.rank {
 		flex: 0 0 auto;
 		width: 1.6rem;
 		text-align: right;
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		color: var(--ink-soft);
 		font-variant-numeric: tabular-nums;

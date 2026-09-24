@@ -154,7 +154,7 @@
 
 	h1,
 	h2 {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 	}
 
@@ -259,7 +259,7 @@
 
 	th {
 		text-align: left;
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		padding: 8px;
 		border-bottom: 2px solid var(--ink);
 	}

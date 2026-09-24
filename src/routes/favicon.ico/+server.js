@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
 
 export function GET() {
-	redirect(308, '/favicon.svg');
+	redirect(308, '/favicon.png');
 }

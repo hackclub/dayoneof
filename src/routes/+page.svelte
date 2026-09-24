@@ -9,6 +9,9 @@
 	import orpheusplushie from '$lib/assets/orpheusplushie.webp';
 	import socks from '$lib/assets/socks.webp';
 	import heidisticker from '$lib/assets/heidisticker.webp';
+	import sticker2 from '$lib/assets/sticker2.webp';
+	import wordmark from '$lib/assets/wordmark.webp';
+	import { sprite, tape } from '$lib/asset_sheet';
 	import { page } from '$app/state';
 
 	let { data } = $props();
@@ -156,9 +159,8 @@
 <svelte:window bind:scrollY />
 
 <div class="day-one">
-	<svg class="scroll-hint" class:hidden={scrollY > 40} viewBox="0 0 24 24" aria-hidden="true">
-		<path d="M6 9l6 6 6-6" />
-	</svg>
+	<span class="scroll-hint" class:hidden={scrollY > 40} style={sprite('chevron_down')} aria-hidden="true"
+	></span>
 	<div class="page">
 		<div class="topbar">
 			<a class="flag" href="https://hackclub.com/"><img src="/flag-orpheus-top.svg" alt="Hack Club" width="180" height="102" /></a>
@@ -167,7 +169,9 @@
 		<main>
 			<section class="hero">
 				<div class="hero-copy">
-					<h1>Day one of <em>anything</em> you want.</h1>
+					<h1 class="wordmark">
+						<img src={wordmark} alt="Day one of anything you want." width="349" height="251" fetchpriority="high" />
+					</h1>
 					<p class="sub">
 						Most people spend too much time scrolling. Post content instead, and get prizes for it.
 					</p>
@@ -252,13 +256,7 @@
 									onclick={() => (paused = !paused)}
 									aria-label={paused ? 'Play reel' : 'Pause reel'}
 								>
-									{#if paused}
-										<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" /></svg>
-									{:else}
-										<svg viewBox="0 0 24 24" aria-hidden="true"
-											><path d="M8 5h3v14H8zm5 0h3v14h-3z" /></svg
-										>
-									{/if}
+									<span class="reel-icon" style={sprite(paused ? 'badge_play' : 'badge_pause')}></span>
 								</button>
 
 								<!-- Inert until the metadata lands, since a range whose max is still 0 can only
@@ -317,14 +315,11 @@
 								{#each prizeLoop as prize, i}
 									<div class="prize-symbol" aria-hidden={i >= prizeItems.length}>
 										<span class="icon-badge">
-											<span class="tape-strip torn-tape"></span>
+											<span class="tape-strip" style={tape('prize', i % prizeItems.length)}></span>
 											{#if prize.img}
 												<img src={prize.img} alt="" loading="lazy" decoding="async" />
 											{:else}
-												<svg viewBox="0 0 24 24">
-													<circle cx="12" cy="12" r="9" />
-													<text x="12" y="16" font-size="10" text-anchor="middle">$</text>
-												</svg>
+												<span class="dollar" style={sprite('badge_dollar')}></span>
 											{/if}
 										</span>
 										<span class="prize-name">{prize.name}</span>
@@ -339,25 +334,19 @@
 						<div class="receipt">
 							<p class="receipt-title">So far…</p>
 							<div class="stat-line">
-								<span>total views</span><span class="num">{formatCount(data.totalViews)}</span>
+								<span>total views</span><span class="num taped" style={tape('receipt', 0)}>{formatCount(data.totalViews)}</span>
 							</div>
 							<div class="stat-line">
-								<span>most viewed reel</span><span class="num">{formatCount(data.mostViewedVideo)}</span>
+								<span>most viewed reel</span><span class="num taped" style={tape('receipt', 1)}>{formatCount(data.mostViewedVideo)}</span>
 							</div>
 							<div class="stat-line">
-								<span>participants</span><span class="num">{data.participants}</span>
+								<span>participants</span><span class="num taped" style={tape('receipt', 2)}>{data.participants}</span>
 							</div>
 						</div>
 					</div>
 
 					<div class="sticky-note">
-						<svg class="pin" viewBox="0 0 24 34" aria-hidden="true">
-							<line class="pin-needle" x1="12" y1="19" x2="12" y2="32" />
-							<path class="pin-body" d="M9 8 L10 15 L14 15 L15 8 Z" />
-							<ellipse class="pin-body" cx="12" cy="16.5" rx="7" ry="2.5" />
-							<rect class="pin-body" x="5.5" y="2" width="13" height="6.5" rx="3.25" />
-							<line class="pin-shine" x1="8.5" y1="4.2" x2="12" y2="4.2" />
-						</svg>
+						<span class="pin" style={sprite('pin')} aria-hidden="true"></span>
 						<p class="receipt-title">How it works</p>
 						<ol class="steps">
 							<li>Sign in with your email</li>
@@ -408,6 +397,9 @@
 						<strong class="grand">Sticker bonus:</strong> give helpful feedback on other people's videos
 						and you can earn extra stickers on top of your streak prizes.
 					</p>
+					<span class="sticker" style="--sticker: url({sticker2})">
+						<img src={sticker2} alt="Hack Club sticker" width="440" height="271" loading="lazy" decoding="async" />
+					</span>
 				</div>
 			</section>
 
@@ -419,9 +411,10 @@
 							<details class="faq-item">
 								<summary>
 									<span>{item.q}</span>
-									<svg class="chevron-icon" viewBox="0 0 24 24" aria-hidden="true">
-										<path d="M6 9l6 6 6-6" />
-									</svg>
+									<span class="chevron-icon" aria-hidden="true">
+										<span style={sprite('chevron_down')}></span>
+										<span class="chevron-hover" style={sprite('chevron_down_red')}></span>
+									</span>
 								</summary>
 								<div class="faq-body">
 									{#if item.contact}
@@ -459,7 +452,7 @@
 								{:else}
 									<span class="row-name">{person.name}</span>
 								{/if}
-								<span class="num">{person.streak}d</span>
+								<span class="num taped" style={tape('board', i)}>{person.streak}d</span>
 							</li>
 						{:else}
 							<li class="empty-row">Nobody's started a streak yet. Be the first!</li>
@@ -493,7 +486,7 @@
 
 	h1,
 	h2 {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 600;
 		margin: 0;
 		text-wrap: balance;
@@ -512,27 +505,6 @@
 		text-align: inherit;
 	}
 
-	.torn-tape {
-		position: relative;
-		clip-path: polygon(
-			3px 0,
-			calc(100% - 3px) 0,
-			100% 28%,
-			calc(100% - 3px) 58%,
-			100% 100%,
-			3px 100%,
-			0 58%,
-			3px 28%
-		);
-		background-image: repeating-linear-gradient(
-			48deg,
-			rgba(255, 255, 255, 0.32) 0 2px,
-			transparent 2px 7px
-		);
-		background-blend-mode: overlay;
-		box-shadow: 1px 3px 0 rgba(43, 34, 22, 0.18);
-	}
-
 	.scroll-hint {
 		position: fixed;
 		left: 50%;
@@ -540,11 +512,6 @@
 		width: 28px;
 		height: 28px;
 		margin-left: -14px;
-		fill: none;
-		stroke: var(--ink-soft);
-		stroke-width: 2.2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
 		opacity: 0.55;
 		pointer-events: none;
 		z-index: 5;
@@ -566,7 +533,7 @@
 		display: flex;
 		justify-content: flex-start;
 		align-items: center;
-		margin-bottom: 38px;
+		margin-bottom: 8px;
 	}
 
 	.flag {
@@ -586,33 +553,33 @@
 		margin-bottom: 56px;
 	}
 
-	.hero-copy h1 {
-		font-size: clamp(2.6rem, 4vw + 1.4rem, 4.6rem);
-		line-height: 1.05;
+	.wordmark {
+		font-size: 1em;
 	}
 
-	.hero-copy h1 em {
-		font-style: normal;
-		color: var(--accent);
+	.wordmark img {
+		display: block;
+		width: clamp(13em, 16vw + 7em, 21em);
+		height: auto;
 	}
 
 	.sub {
-		margin-top: 18px;
-		font-size: 1.3rem;
+		margin-top: 0.9em;
+		font-size: 1.3em;
 		font-weight: 600;
-		max-width: 34ch;
+		max-width: 44ch;
 	}
 
 	.desc {
-		margin-top: 12px;
-		font-size: 1.1rem;
+		margin-top: 0.7em;
+		font-size: 1.1em;
 		color: var(--ink-soft);
-		max-width: 40ch;
+		max-width: 52ch;
 		line-height: 1.5;
 	}
 
 	.signup {
-		margin-top: 26px;
+		margin-top: 1.6em;
 		display: flex;
 		gap: 10px;
 		flex-wrap: wrap;
@@ -621,8 +588,8 @@
 
 	.signup input {
 		font: inherit;
-		font-size: 0.95rem;
-		padding: 13px 16px;
+		font-size: 0.95em;
+		padding: 0.8em 1em;
 		border: 2px solid var(--ink);
 		border-radius: 10px;
 		background: var(--bg-2);
@@ -639,7 +606,7 @@
 	.signup button,
 	.roll-btn {
 		font-weight: 700;
-		font-size: 0.95rem;
+		font-size: 0.95em;
 		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
 		border: 2px solid var(--ink);
 		cursor: var(--cursor-pointer);
@@ -670,11 +637,11 @@
 	}
 
 	.signup-note {
-		margin-top: 12px;
-		font-size: 0.95rem;
+		margin-top: 0.75em;
+		font-size: 0.95em;
 		line-height: 1.5;
 		color: var(--ink-soft);
-		max-width: 46ch;
+		max-width: 56ch;
 	}
 
 	.signup-note strong {
@@ -724,7 +691,8 @@
 
 	.reel-stack {
 		position: relative;
-		height: 580px;
+		height: 36em;
+		margin-top: -2em;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -736,7 +704,7 @@
 		background: var(--bg-2);
 		border: 2px solid var(--ink);
 		border-radius: 15px 8px 12px 9px/9px 13px 8px 15px;
-		padding: 10px 10px 34px;
+		padding: 0.6em 0.6em 2.1em;
 		box-shadow: 4px 5px 0 var(--shadow);
 		transition:
 			transform 0.22s ease,
@@ -744,20 +712,20 @@
 	}
 
 	.reel-card.front {
-		width: 290px;
+		width: 18em;
 		z-index: 2;
 		transform: rotate(-2deg);
 	}
 
 	.reel-card.back-a,
 	.reel-card.back-b {
-		width: 205px;
+		width: 12.8em;
 		cursor: var(--cursor-pointer);
 		z-index: 1;
 	}
 
 	.reel-card.back-a {
-		top: 28px;
+		top: 1.75em;
 		right: 6px;
 		transform: rotate(9deg);
 	}
@@ -871,6 +839,16 @@
 		color: var(--accent);
 	}
 
+	.reel-icon {
+		width: 1.35rem;
+		height: 1.35rem;
+		transition: transform 0.15s ease;
+	}
+
+	.reel-btn:hover .reel-icon {
+		transform: rotate(-10deg) scale(1.1);
+	}
+
 	.reel-btn svg {
 		width: 0.95rem;
 		height: 0.95rem;
@@ -967,6 +945,7 @@
 	}
 
 	.prize-box {
+		position: relative;
 		padding: 24px 26px;
 		color: var(--ink-soft);
 		line-height: 1.55;
@@ -989,6 +968,58 @@
 		color: var(--accent);
 	}
 
+	.sticker {
+		position: absolute;
+		right: 34px;
+		bottom: 28px;
+		width: clamp(90px, 9vw, 124px);
+		transform: rotate(-7deg);
+		filter: drop-shadow(3px 4px 0 var(--shadow));
+		transition:
+			transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+			filter 0.3s ease;
+	}
+
+	.sticker img {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	/* A glare band clipped to the sticker's own outline, swept across on hover. */
+	.sticker::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			115deg,
+			transparent 30%,
+			rgba(255, 255, 255, 0.75) 45%,
+			rgba(255, 255, 255, 0.15) 55%,
+			transparent 65%
+		);
+		background-size: 250% 100%;
+		background-position: 150% 0;
+		mask: var(--sticker) center / 100% 100% no-repeat;
+		pointer-events: none;
+	}
+
+	.sticker:hover {
+		transform: rotate(-2deg) scale(1.3);
+		filter: drop-shadow(6px 8px 0 var(--shadow)) saturate(1.15);
+		z-index: 2;
+	}
+
+	.sticker:hover::after {
+		animation: shine 0.8s ease forwards;
+	}
+
+	@keyframes shine {
+		to {
+			background-position: -50% 0;
+		}
+	}
+
 	.idea-text {
 		display: flex;
 		gap: 10px;
@@ -1009,7 +1040,7 @@
 
 	.mark {
 		color: var(--accent);
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: 1.2rem;
 	}
@@ -1124,41 +1155,23 @@
 		object-fit: contain;
 	}
 
-	.icon-badge svg {
-		width: 52%;
-		height: 52%;
-	}
-
-	.icon-badge svg circle {
-		stroke: var(--accent);
-		stroke-width: 2;
-		fill: none;
-	}
-
-	.icon-badge svg text {
-		fill: var(--accent);
-		font-family: 'Shantell Sans', cursive;
-		font-weight: 700;
+	.dollar {
+		width: 58%;
+		height: 58%;
 	}
 
 	.tape-strip {
 		position: absolute;
 		top: -9px;
 		left: 50%;
-		transform: translateX(-50%) rotate(-4deg);
-		width: 52px;
-		height: 18px;
-		background-color: var(--tape);
-		opacity: 0.9;
-	}
-
-	.prize-symbol:nth-child(even) .tape-strip {
-		background-color: var(--tape-2);
-		transform: translateX(-50%) rotate(4deg);
+		transform: translateX(-50%) rotate(var(--tilt));
+		width: calc(76px + var(--grow) * 3);
+		height: calc(20px + var(--grow));
+		background: var(--tape-bg);
 	}
 
 	.prize-name {
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: 1.05rem;
 	}
@@ -1189,32 +1202,12 @@
 
 	.pin {
 		position: absolute;
-		top: -24px;
+		top: -26px;
 		left: 50%;
-		width: 26px;
-		height: 37px;
+		width: 42px;
+		height: 42px;
 		transform: translateX(-50%) rotate(14deg);
 		filter: drop-shadow(2px 3px 0 var(--shadow));
-		overflow: visible;
-	}
-
-	.pin-body {
-		fill: var(--accent);
-		stroke: var(--ink);
-		stroke-width: 1.5;
-		stroke-linejoin: round;
-	}
-
-	.pin-needle {
-		stroke: var(--ink-soft);
-		stroke-width: 1.6;
-		stroke-linecap: round;
-	}
-
-	.pin-shine {
-		stroke: #f8b3ab;
-		stroke-width: 1.4;
-		stroke-linecap: round;
 	}
 
 	.steps {
@@ -1239,7 +1232,7 @@
 	.steps li::before {
 		content: counter(step);
 		flex: 0 0 auto;
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: 1.1rem;
 		color: var(--accent);
@@ -1257,7 +1250,7 @@
 	}
 
 	.receipt-title {
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: 1.15rem;
 		margin-bottom: 14px;
@@ -1281,10 +1274,8 @@
 	.num {
 		font-variant-numeric: tabular-nums;
 		font-weight: 800;
-		background: var(--accent);
-		color: var(--accent-ink);
-		padding: 3px 10px;
-		border-radius: 999px;
+		color: var(--ink);
+		padding: 3px 12px;
 		font-size: 0.9rem;
 	}
 
@@ -1321,15 +1312,24 @@
 	}
 
 	.chevron-icon {
+		position: relative;
 		flex: 0 0 auto;
-		width: 1.1rem;
-		height: 1.1rem;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2.5;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+		width: 1.6rem;
+		height: 1.6rem;
 		transition: transform 0.15s ease;
+	}
+
+	.chevron-icon span {
+		position: absolute;
+		inset: 0;
+	}
+
+	.chevron-hover {
+		opacity: 0;
+	}
+
+	.faq-item summary:hover .chevron-hover {
+		opacity: 1;
 	}
 
 	.faq-item[open] .chevron-icon {
@@ -1364,7 +1364,7 @@
 
 	.prize-mark {
 		flex: 0 0 4.25rem;
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		color: var(--ink);
 	}
@@ -1383,7 +1383,7 @@
 	.rank {
 		flex: 0 0 auto;
 		width: 1.6rem;
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		color: var(--ink-soft);
 		font-variant-numeric: tabular-nums;
@@ -1423,7 +1423,7 @@
 
 	footer strong {
 		color: var(--ink);
-		font-family: 'Shantell Sans', cursive;
+		font-family: var(--font-hand);
 	}
 
 	.footer-links {
@@ -1441,10 +1441,27 @@
 		color: var(--accent);
 	}
 
+	/* Desktop hero grows with the viewport while its last line of copy stays above the fold. The
+	   height terms are measured slopes (px of hero per px of font); the vw term covers narrow
+	   columns, where the copy wraps more. */
+	@media (min-width: 761px) {
+		.hero {
+			font-size: clamp(
+				12px,
+				min((100dvh - 161px) / 33.25, (100dvh + 11px) / 44, 0.49vw + 10.2px),
+				20px
+			);
+		}
+	}
+
 	@media (max-width: 760px) {
 		.hero,
 		.faq-and-board {
 			grid-template-columns: 1fr;
+		}
+
+		.prize-box {
+			padding-bottom: 120px;
 		}
 	}
 
@@ -1453,8 +1470,13 @@
 		.blip,
 		.prize-cluster,
 		.idea-text,
-		.scroll-hint {
+		.scroll-hint,
+		.sticker:hover::after {
 			animation: none;
+		}
+
+		.sticker {
+			transition: none;
 		}
 
 		.prize-viewport {

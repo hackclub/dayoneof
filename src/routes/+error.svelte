@@ -41,7 +41,7 @@
 	}
 
 	h1 {
-		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-family: var(--font-hand);
 		font-weight: 700;
 		font-size: clamp(1.6rem, 2vw + 1rem, 2.2rem);
 		margin: 0 0 4px;
