@@ -4,11 +4,18 @@ import { config, requireEnv } from './config.js';
 // Form-encoded, not JSON: Slack only accepts a JSON body on some write methods, and answers the
 // rest as if the body were empty — users.info with a JSON body returns user_not_found for a user
 // that plainly exists. Form encoding is accepted by every Web API method.
+const MAX_RATE_LIMIT_RETRIES = 3;
+
+/** @param {number} ms */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * @param {string} method
  * @param {Record<string, unknown>} params
+ * @param {number} [attempt]
+ * @returns {Promise<any>}
  */
-async function call(method, params) {
+async function call(method, params, attempt = 0) {
 	const body = new URLSearchParams();
 	for (const [key, value] of Object.entries(params)) {
 		// A skipped optional (an unthreaded message's thread_ts) would otherwise be sent as the
@@ -25,6 +32,10 @@ async function call(method, params) {
 		},
 		body
 	});
+	if (res.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+		await sleep((Number(res.headers.get('retry-after')) || 1) * 1000);
+		return call(method, params, attempt + 1);
+	}
 	const data = await res.json();
 	if (!data.ok) throw new Error(`slack ${method} failed: ${data.error}`);
 	return data;

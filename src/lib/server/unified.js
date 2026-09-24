@@ -11,7 +11,7 @@ function headers() {
 /**
  * @param {string} platform
  * @param {string} platformPostId
- * @returns {Promise<{ id: number, views: number, likes: number, title: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null, durationSeconds: number | null } | null>}
+ * @returns {Promise<{ id: number, views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean, title: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null, durationSeconds: number | null } | null>}
  */
 export async function fetchPostByPlatformId(platform, platformPostId) {
 	const params = new URLSearchParams({ platform, platform_post_id: platformPostId });
@@ -24,6 +24,9 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 		id: post.id,
 		views: post.views ?? 0,
 		likes: post.likes ?? 0,
+		shares: post.shares ?? null,
+		watchHours: post.watch_hours ?? null,
+		watchHoursEstimated: post.watch_hours_basis === 'estimated',
 		title: (post.title ?? '').split('\n')[0].trim().slice(0, 100),
 		thumbnailUrl: (post.preview_thumbnail_url ?? '').replace(/^http:\/\//, 'https://'),
 		archiveUrl: post.video_url ?? '',

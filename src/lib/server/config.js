@@ -60,6 +60,7 @@ export const config = {
 	// NaN is false, which would let any old video through.
 	// Flipped by hand once the channel reaches 200 members; until then only admins' posts count.
 	submissionsOpen: priv('SUBMISSIONS_OPEN') === 'true',
+	prizeFormUrl: priv('PRIZE_FORM_URL'),
 	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 1,
 	minVideoSeconds: 15,
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')

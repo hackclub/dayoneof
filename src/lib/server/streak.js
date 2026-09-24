@@ -3,6 +3,7 @@ import { F } from './schema.js';
 /** @typedef {{ date: string, status: 'frozen' | 'missed' }} MissedDay */
 
 const MILESTONES = [2, 7, 15, 25];
+const VIEW_MILESTONES = [10_000, 100_000, 500_000, 1_000_000];
 const MAX_STREAK_FREEZES = 3;
 const DEADLINE_HOUR = 3;
 
@@ -90,6 +91,15 @@ export function settleMissedDays({ lastDay, freezes, streak }, throughDay) {
  */
 export function nextMilestone(streak, lastMilestone) {
 	return MILESTONES.find((m) => streak >= m && m > (lastMilestone ?? 0)) ?? null;
+}
+
+// Only the highest threshold crossed, so a video that jumps past several gets one announcement.
+/**
+ * @param {number | null | undefined} before
+ * @param {number} after
+ */
+export function viewMilestoneCrossed(before, after) {
+	return VIEW_MILESTONES.findLast((m) => after >= m && m > (before ?? 0)) ?? null;
 }
 
 // Fewer freezes banked wins a tie: the same streak kept with less cover is the better run.

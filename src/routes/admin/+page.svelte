@@ -32,6 +32,10 @@
 					hourly.
 				</li>
 				<li>
+					<strong>views</strong>: hourly, refreshes view counts from unified-socials for every
+					submission, edits each changed reply, resyncs totals, and announces videos passing 10k/100k/500k/1M views.
+				</li>
+				<li>
 					<strong>leaderboard</strong>: refreshes view counts from unified-socials for every
 					submission (editing each submission's original reply in place with the fresh numbers),
 					then posts the streak, views, and top-videos boards to the announce channel. The cron
@@ -52,6 +56,9 @@
 
 			<form class="inline" method="POST" action="?/runReconcile">
 				<button type="submit">Run reconcile</button>
+			</form>
+			<form class="inline" method="POST" action="?/runViews">
+				<button type="submit">Run views</button>
 			</form>
 			<form class="inline" method="POST" action="?/runLeaderboard">
 				<button type="submit">Run leaderboard</button>

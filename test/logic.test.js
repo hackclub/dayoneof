@@ -6,7 +6,8 @@ import {
 	isPostTooOld,
 	freezesAfterPost,
 	settleMissedDays,
-	nextMilestone
+	nextMilestone,
+	viewMilestoneCrossed
 } from '../src/lib/server/streak.js';
 
 test('streakDay rolls over at 3am local time', () => {
@@ -90,4 +91,11 @@ test('nextMilestone fires once per threshold crossed', () => {
 	assert.equal(nextMilestone(2, 2), null);
 	assert.equal(nextMilestone(10, 7), null);
 	assert.equal(nextMilestone(15, 7), 15);
+});
+
+test('viewMilestoneCrossed returns the highest threshold newly passed', () => {
+	assert.equal(viewMilestoneCrossed(9_999, 10_000), 10_000);
+	assert.equal(viewMilestoneCrossed(10_000, 50_000), null);
+	assert.equal(viewMilestoneCrossed(undefined, 600_000), 500_000);
+	assert.equal(viewMilestoneCrossed(900_000, 2_000_000), 1_000_000);
 });

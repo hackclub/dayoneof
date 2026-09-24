@@ -2,6 +2,19 @@ import { config } from './config.js';
 
 const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
 
+/** @typedef {{ views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean }} PostStats */
+
+/** @param {PostStats | null | undefined} stats */
+export function statsLine(stats) {
+	if (!stats) return NOT_TRACKED;
+	const parts = [`${stats.views} views`, `${stats.likes} likes`];
+	if (stats.shares != null) parts.push(`${stats.shares} shares`);
+	if (stats.watchHours != null) {
+		parts.push(`${stats.watchHoursEstimated ? '~' : ''}${stats.watchHours.toFixed(1)} watch hours`);
+	}
+	return `Stats: ${parts.join(' · ')}`;
+}
+
 export const messages = {
 	/** @param {string} slackId */
 	unsupportedLink(slackId) {
@@ -54,23 +67,20 @@ export const messages = {
 	/**
 	 * @param {number} streak
 	 * @param {number} freezesRemaining
-	 * @param {{ views: number, likes: number } | null} [stats]
+	 * @param {PostStats | null} [stats]
 	 */
 	streakUpdate(streak, freezesRemaining, stats) {
 		const day = streak === 1 ? 'day' : 'days';
-		const base = `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.`;
-		if (!stats) return `${base}\n${NOT_TRACKED}`;
-		return `${base}\nStats: ${stats.views} views · ${stats.likes} likes`;
+		return `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.\n${statsLine(stats)}`;
 	},
 	/**
 	 * @param {string} slackId
 	 * @param {number} streak
 	 * @param {number} freezesRemaining
-	 * @param {{ views: number, likes: number } | null} [stats]
+	 * @param {PostStats | null} [stats]
 	 */
 	duplicatePost(slackId, streak, freezesRemaining, stats) {
-		const statsLine = stats ? `Stats: ${stats.views} views · ${stats.likes} likes` : NOT_TRACKED;
-		return `<@${slackId}> you've already posted today, so this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine}`;
+		return `<@${slackId}> you've already posted today, so this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine(stats)}`;
 	},
 	/**
 	 * @param {string} slackId
@@ -81,7 +91,16 @@ export const messages = {
 	},
 	/** @param {number} milestone */
 	milestoneDm(milestone) {
-		return `You hit ${milestone} days! Fill out the fulfillment form to claim your reward.`;
+		const form = config.prizeFormUrl ? `the fulfillment form (${config.prizeFormUrl})` : 'the fulfillment form';
+		return `You hit ${milestone} days! Fill out ${form} to claim your reward.`;
+	},
+	/**
+	 * @param {string} slackId
+	 * @param {string} url
+	 * @param {number} milestone
+	 */
+	viewMilestoneAnnounce(slackId, url, milestone) {
+		return `<@${slackId}>'s video just passed ${milestone.toLocaleString('en-US')} views! 🎉 ${url}`;
 	},
 	reminder() {
 		return "Haven't seen today's video yet. Post it before 3am your time to keep your streak alive.";

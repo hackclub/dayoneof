@@ -6,9 +6,9 @@ import { tablesFor } from './schema.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import * as unified from './unified.js';
-import { messages } from './messages.js';
+import { messages, statsLine } from './messages.js';
 import { serialize } from './queue.js';
-import { streakDay, addDays, settleMissedDays, compareStreaks } from './streak.js';
+import { streakDay, addDays, settleMissedDays, compareStreaks, viewMilestoneCrossed } from './streak.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 
@@ -116,29 +116,58 @@ export async function runReconcile() {
 	return { processed: participants.length, frozen, broken };
 }
 
+const UNIFIED_READ_CONCURRENCY = 5;
+
+/**
+ * @template T, R
+ * @param {T[]} items
+ * @param {number} limit
+ * @param {(item: T) => Promise<R>} fn
+ * @returns {Promise<R[]>}
+ */
+async function mapPool(items, limit, fn) {
+	/** @type {R[]} */
+	const results = new Array(items.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const i = next++;
+			results[i] = await fn(items[i]);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+	return results;
+}
+
+// Reads run in parallel; Airtable writes and Slack posts stay sequential for their rate limits.
 /** @returns {Promise<{ viewsChecked: number, submissions: AirtableRecord[] }>} */
 async function refreshViews() {
 	const submissions = await airtable.list(TABLES.submissions);
 	let viewsChecked = 0;
 
-	for (const submission of submissions) {
+	const posts = await mapPool(submissions, UNIFIED_READ_CONCURRENCY, async (submission) => {
 		const platform = submission.fields[F.submissions.platform];
 		const videoId = submission.fields[F.submissions.videoId];
-		if (!platform || !videoId) continue;
-
-		let post;
+		if (!platform || !videoId) return null;
 		try {
-			post = await unified.fetchPostByPlatformId(platform, videoId);
+			return await unified.fetchPostByPlatformId(platform, videoId);
 		} catch (err) {
 			console.error('unified-socials views fetch failed', err);
-			continue;
+			return null;
 		}
+	});
+
+	for (const [i, submission] of submissions.entries()) {
+		const post = posts[i];
 		if (!post) continue;
 		viewsChecked++;
 
 		const fields = submission.fields;
+		const viewsBefore = fields[F.submissions.views];
+		const replyStats = statsLine(post);
 		if (
-			fields[F.submissions.views] === post.views &&
+			viewsBefore === post.views &&
+			(fields[F.submissions.replyStats] ?? '') === replyStats &&
 			fields[F.submissions.title] === post.title &&
 			(fields[F.submissions.thumbnailUrl] ?? '') === post.thumbnailUrl &&
 			(fields[F.submissions.archiveUrl] ?? '') === post.archiveUrl
@@ -151,27 +180,56 @@ async function refreshViews() {
 			[F.submissions.title]: post.title,
 			[F.submissions.thumbnailUrl]: post.thumbnailUrl,
 			[F.submissions.archiveUrl]: post.archiveUrl,
-			[F.submissions.unifiedId]: String(post.id)
+			[F.submissions.unifiedId]: String(post.id),
+			[F.submissions.replyStats]: replyStats
 		});
 		submission.fields = updated.fields;
 
-		// Edits the original confirmation reply in place instead of spamming a new one nightly.
+		// Edits the original confirmation reply in place instead of spamming a new one each refresh.
 		const replyMessageTs = submission.fields[F.submissions.replyMessageTs];
-		if (replyMessageTs) {
+		if (replyMessageTs && fields[F.submissions.replyStats] !== replyStats) {
 			try {
 				const text = messages.streakUpdate(
 					submission.fields[F.submissions.streakAtPost] ?? 0,
 					submission.fields[F.submissions.freezesAtPost] ?? 0,
-					{ views: post.views, likes: post.likes }
+					post
 				);
 				await slack.updateMessage(submission.fields[F.submissions.channelId], replyMessageTs, text);
 			} catch (err) {
 				console.error('failed to update submission reply with fresh stats', err);
 			}
 		}
+
+		const milestone = viewMilestoneCrossed(viewsBefore, post.views);
+		if (milestone) {
+			try {
+				const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
+				await slack.postMessage(
+					announceChannelId,
+					messages.viewMilestoneAnnounce(
+						submission.fields[F.submissions.slackId],
+						submission.fields[F.submissions.url],
+						milestone
+					)
+				);
+			} catch (err) {
+				console.error('view milestone announce failed', err);
+			}
+		}
 	}
 
 	return { viewsChecked, submissions };
+}
+
+// Hourly, matching how often unified-socials captures new counts. Totals are resynced so the
+// site's view boards move between nightly leaderboards too.
+export async function runViews() {
+	const { viewsChecked, submissions } = await refreshViews();
+	const participants = await airtable.list(TABLES.participants, {
+		filterByFormula: PARTICIPANT_HAS_SLACK_ID
+	});
+	await syncTotalViews(participants, submissions);
+	return { viewsChecked };
 }
 
 const BOARD_SIZE = 10;

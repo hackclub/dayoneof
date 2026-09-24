@@ -56,6 +56,7 @@ export const F = {
 		archiveUrl: 'archive_url',
 		unifiedId: 'unified_id',
 		replyMessageTs: 'reply_message_ts',
+		replyStats: 'reply_stats',
 		streakAtPost: 'streak_at_post',
 		freezesAtPost: 'freezes_at_post'
 	}

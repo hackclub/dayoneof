@@ -77,6 +77,7 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.archiveUrl, ...text },
 				{ name: F.submissions.unifiedId, ...text },
 				{ name: F.submissions.replyMessageTs, ...text },
+				{ name: F.submissions.replyStats, ...text },
 				{ name: F.submissions.streakAtPost, ...int },
 				{ name: F.submissions.freezesAtPost, ...int }
 			]

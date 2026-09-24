@@ -4,7 +4,7 @@ import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
-import { messages } from '$lib/server/messages.js';
+import { messages, statsLine } from '$lib/server/messages.js';
 import { isYswsEligible } from '$lib/server/verification.js';
 import { syncParticipantTotalViews, settleParticipant } from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
@@ -194,7 +194,10 @@ async function handleSubmission(event) {
 		await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 		const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
 		// Lets the leaderboard job edit this reply with fresh stats instead of posting a new one.
-		await airtable.update(TABLES.submissions, submission.id, { [F.submissions.replyMessageTs]: reply.ts });
+		await airtable.update(TABLES.submissions, submission.id, {
+			[F.submissions.replyMessageTs]: reply.ts,
+			[F.submissions.replyStats]: statsLine(stats)
+		});
 	} catch (err) {
 		console.error('react/reply to submission failed', event.channel, event.ts, err);
 	}
