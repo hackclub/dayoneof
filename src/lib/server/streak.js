@@ -2,9 +2,9 @@
 
 export const MILESTONES = [2, 7, 15, 25];
 export const MAX_STREAK_FREEZES = 3;
-const DEADLINE_HOUR = 1;
+const DEADLINE_HOUR = 3;
 
-// A day runs until 1am in the participant's own timezone, so a post at 00:30 still counts for the
+// A day runs until 3am in the participant's own timezone, so a post at 02:30 still counts for the
 // day before.
 /**
  * @param {string | undefined} tz
@@ -13,7 +13,7 @@ const DEADLINE_HOUR = 1;
 export function streakDay(tz, now = new Date()) {
 	const shifted = new Date(now.getTime() - DEADLINE_HOUR * 60 * 60 * 1000);
 	return new Intl.DateTimeFormat('en-CA', {
-		timeZone: tz || 'UTC',
+		timeZone: tz || 'America/New_York',
 		year: 'numeric',
 		month: '2-digit',
 		day: '2-digit'
@@ -63,7 +63,7 @@ export function freezesAfterPost(freezes, daysCompleted) {
 }
 
 // Each day after lastDay through throughDay went unposted: a freeze covers it and keeps the streak
-// growing, and the first one without a freeze breaks the streak and ends the walk.
+// alive without growing it, and the first one without a freeze breaks the streak and ends the walk.
 /**
  * @param {{ lastDay: string, freezes: number, streak: number }} state
  * @param {string} throughDay
@@ -77,7 +77,6 @@ export function settleMissedDays({ lastDay, freezes, streak }, throughDay) {
 			return { days, freezes, streak: 0, broke: true };
 		}
 		freezes--;
-		streak++;
 		days.push({ date: day, status: 'frozen' });
 	}
 	return { days, freezes, streak, broke: false };

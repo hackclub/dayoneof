@@ -27,35 +27,39 @@ export async function GET({ url, cookies }) {
 		);
 	}
 
-	let tz;
-	let slackName;
-	let avatar;
-	try {
-		const slackUser = await slack.usersInfo(slackId);
-		tz = slackUser?.tz;
-		slackName = slackUser?.profile?.display_name || slackUser?.profile?.real_name;
-		avatar = slackUser?.profile?.image_192 || slackUser?.profile?.image_72;
-	} catch (err) {
-		console.error('users.info failed during sign-in, continuing without tz', err);
-	}
+	const [slackUser, existing] = await Promise.all([
+		slack.usersInfo(slackId).catch((err) => {
+			console.error('users.info failed during sign-in, continuing without tz', err);
+			return null;
+		}),
+		airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, slackId))
+	]);
+	const tz = slackUser?.tz;
+	const slackName = slackUser?.profile?.display_name || slackUser?.profile?.real_name;
+	const avatar = slackUser?.profile?.image_192 || slackUser?.profile?.image_72;
 
-	await airtable.upsert(TABLES.participants, airtable.eq(F.participants.slackId, slackId), {
+	const fields = {
 		[F.participants.slackId]: slackId,
 		[F.participants.name]:
 			slackName || [identity.first_name, identity.last_name].filter(Boolean).join(' '),
 		[F.participants.email]: String(identity.primary_email ?? '').toLowerCase(),
 		[F.participants.verificationStatus]: identity.verification_status ?? 'needs_submission',
+		[F.participants.yswsEligible]: identity.ysws_eligible === true,
 		...(tz ? { [F.participants.tz]: tz } : {}),
 		...(avatar ? { [F.participants.avatar]: avatar } : {})
-	});
+	};
+	if (existing) await airtable.update(TABLES.participants, existing.id, fields);
+	else await airtable.create(TABLES.participants, fields);
 
 	try {
 		const submissionChannelId = requireEnv('SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId);
-		await slack.inviteToChannel(submissionChannelId, [slackId]);
+		slack
+			.inviteToChannel(submissionChannelId, [slackId])
+			.catch((err) => console.error('channel invite failed', err));
 	} catch (err) {
 		console.error('channel invite failed', err);
 	}
 
 	setSessionCookie(cookies, slackId);
-	redirect(302, '/');
+	redirect(302, '/home');
 }

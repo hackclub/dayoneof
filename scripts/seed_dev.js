@@ -259,8 +259,8 @@ async function main() {
 			[F.participants.currentStreak]: streak,
 			[F.participants.streakFreezes]: freezes,
 			[F.participants.lastDay]: dates[0],
-			[F.participants.verificationStatus]: 'verified_eligible',
-			[F.participants.reminderHour]: 18,
+			[F.participants.verificationStatus]: 'verified',
+			[F.participants.yswsEligible]: true,
 			[F.participants.totalViews]: views
 		});
 	});

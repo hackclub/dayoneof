@@ -11,6 +11,7 @@
 
 <svelte:head>
 	<title>Admin · Day One Of</title>
+	<meta name="robots" content="noindex" />
 </svelte:head>
 
 <div class="day-one">
@@ -26,20 +27,20 @@
 			<h2>Jobs</h2>
 			<ul>
 				<li>
-					<strong>reconcile</strong>: for anyone active/frozen whose day ended (1am their time)
+					<strong>reconcile</strong>: for anyone active/frozen whose day ended (3am their time)
 					without a post, spends a freeze (or breaks their streak if they have none left). Runs
 					hourly.
 				</li>
 				<li>
 					<strong>leaderboard</strong>: refreshes view counts from unified-socials for every
 					submission (editing each submission's original reply in place with the fresh numbers),
-					then posts the streak, views, and top-videos boards to the announce channel. Runs
-					nightly at 00:15 UTC.
+					then posts the streak, views, and top-videos boards to the announce channel. The cron
+					only posts at 9pm Eastern once submissions open; the button below always posts.
 				</li>
 				<li>
-					<strong>remind</strong>: the real hourly cron DMs anyone whose reminder hour matches
-					right now (their local time) and who hasn't posted today. The button below is a pure
-					test blast. It DMs <em>everyone</em>, ignoring reminder hour, whether they've posted
+					<strong>remind</strong>: once submissions open, the hourly cron DMs anyone with a streak
+					of 1+ who hasn't posted today and hasn't turned reminders off, at 8pm their time. The
+					button below is a pure test blast. It DMs <em>everyone</em>, ignoring the hour, whether they've posted
 					today, and whether they were already reminded, and it doesn't mark anyone as reminded,
 					so it can't suppress a real reminder later today.
 				</li>
@@ -155,8 +156,6 @@
 	h2 {
 		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
 		font-weight: 700;
-		text-decoration: underline wavy var(--accent) 2px;
-		text-underline-offset: 7px;
 	}
 
 	h1 {
@@ -205,24 +204,27 @@
 		color: var(--bg);
 		background: var(--ink);
 		border: 2px solid var(--ink);
-		border-radius: 10px;
-		padding: 8px 14px;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		padding: 5px 14px 11px;
 		margin: 4px 6px 4px 0;
 		cursor: var(--cursor-pointer);
-		box-shadow: 3px 3px 0 var(--accent);
+		box-shadow: inset 0 -5px 0 var(--accent);
+		transform: rotate(-1deg);
 		transition:
-			transform 0.12s ease,
-			box-shadow 0.12s ease;
+			transform 0.15s ease,
+			padding 0.15s ease,
+			box-shadow 0.15s ease,
+			filter 0.15s ease;
 	}
 
 	button:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 5px 5px 0 var(--accent);
+		filter: brightness(1.08);
 	}
 
 	button:active {
-		transform: translate(0, 0);
-		box-shadow: 1px 1px 0 var(--accent);
+		padding: 8px 14px;
+		box-shadow: none;
+		transform: none;
 	}
 
 	input[type='text'] {
@@ -270,7 +272,11 @@
 
 	td button {
 		margin: 0;
-		padding: 4px 10px;
+		padding: 2px 10px 8px;
 		font-size: 0.8rem;
+	}
+
+	td button:active {
+		padding: 5px 10px;
 	}
 </style>

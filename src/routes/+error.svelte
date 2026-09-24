@@ -4,6 +4,7 @@
 
 <svelte:head>
 	<title>{page.status} · Day One Of</title>
+	<meta name="robots" content="noindex" />
 </svelte:head>
 
 <div class="day-one">
@@ -44,8 +45,6 @@
 		font-weight: 700;
 		font-size: clamp(1.6rem, 2vw + 1rem, 2.2rem);
 		margin: 0 0 4px;
-		text-decoration: underline wavy var(--accent) 2px;
-		text-underline-offset: 7px;
 	}
 
 	p {
@@ -64,17 +63,25 @@
 		color: var(--bg);
 		background: var(--ink);
 		border: 2px solid var(--ink);
-		border-radius: 10px;
-		padding: 10px 18px;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		padding: 7px 18px 13px;
 		text-decoration: none;
-		box-shadow: 3px 3px 0 var(--accent);
+		box-shadow: inset 0 -5px 0 var(--accent);
+		transform: rotate(-1deg);
 		transition:
-			transform 0.12s ease,
-			box-shadow 0.12s ease;
+			transform 0.15s ease,
+			padding 0.15s ease,
+			box-shadow 0.15s ease,
+			filter 0.15s ease;
 	}
 
 	a:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 5px 5px 0 var(--accent);
+		filter: brightness(1.08);
+	}
+
+	a:active {
+		padding: 10px 18px;
+		box-shadow: none;
+		transform: none;
 	}
 </style>

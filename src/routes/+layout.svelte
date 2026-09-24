@@ -1,6 +1,17 @@
 <script lang="ts">
 	import { afterNavigate } from '$app/navigation';
-	import favicon from '$lib/assets/favicon.svg';
+	import '@fontsource/figtree/latin-400.css';
+	import '@fontsource/figtree/latin-500.css';
+	import '@fontsource/figtree/latin-600.css';
+	import '@fontsource/figtree/latin-700.css';
+	import '@fontsource/figtree/latin-800.css';
+	import '@fontsource/shantell-sans/latin-400.css';
+	import '@fontsource/shantell-sans/latin-500.css';
+	import '@fontsource/shantell-sans/latin-600.css';
+	import '@fontsource/shantell-sans/latin-700.css';
+	import figtree400 from '@fontsource/figtree/files/figtree-latin-400-normal.woff2?url';
+	import figtree600 from '@fontsource/figtree/files/figtree-latin-600-normal.woff2?url';
+	import shantell600 from '@fontsource/shantell-sans/files/shantell-sans-latin-600-normal.woff2?url';
 
 	let { children, data } = $props();
 
@@ -35,13 +46,13 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-	<link
-		href="https://fonts.googleapis.com/css2?family=Shantell+Sans:wght@400;500;600;700&family=Figtree:wght@400;500;600;700;800&display=swap"
-		rel="stylesheet"
-	/>
+	<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+	<link rel="preload" href={figtree400} as="font" type="font/woff2" crossorigin="anonymous" />
+	<link rel="preload" href={figtree600} as="font" type="font/woff2" crossorigin="anonymous" />
+	<link rel="preload" href={shantell600} as="font" type="font/woff2" crossorigin="anonymous" />
+	<meta name="theme-color" content="#f0dfae" />
+	<meta property="og:site_name" content="Day One Of" />
+	<meta property="og:locale" content="en_US" />
 </svelte:head>
 
 {@render children()}
@@ -60,7 +71,7 @@
 		--ink: #2b2216;
 		--ink-soft: #75603f;
 		--line: rgba(43, 34, 22, 0.3);
-		--accent: #dd3b2c;
+		--accent: #c4301f;
 		--accent-ink: #fff7e8;
 		--tape: #eec13e;
 		--tape-2: #9bc59b;
@@ -102,6 +113,37 @@
 
 	:global(.day-one *) {
 		box-sizing: border-box;
+	}
+
+	:global(::-webkit-scrollbar) {
+		width: 12px;
+		height: 12px;
+	}
+
+	:global(::-webkit-scrollbar-track) {
+		background: transparent;
+	}
+
+	:global(::-webkit-scrollbar-thumb) {
+		background: #eec13e;
+		border: 2px solid #2b2216;
+		border-radius: 999px;
+	}
+
+	:global(::-webkit-scrollbar-thumb:hover) {
+		background: #c4301f;
+	}
+
+	:global(::-webkit-scrollbar-corner) {
+		background: transparent;
+	}
+
+	@supports not selector(::-webkit-scrollbar) {
+		:global(html),
+		:global(.day-one *) {
+			scrollbar-width: thin;
+			scrollbar-color: #eec13e transparent;
+		}
 	}
 
 	:global(.day-one) {

@@ -27,8 +27,9 @@ export const F = {
 		streakFreezes: 'streak_freezes',
 		currentStreak: 'current_streak',
 		verificationStatus: 'verification_status',
+		yswsEligible: 'ysws_eligible',
 		lastMilestone: 'last_milestone',
-		reminderHour: 'reminder_hour',
+		remindersOff: 'reminders_off',
 		lastReminderDay: 'last_reminder_day',
 		lastDay: 'last_day',
 		totalViews: 'total_views'

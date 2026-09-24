@@ -9,11 +9,11 @@ import {
 	nextMilestone
 } from '../src/lib/server/streak.js';
 
-test('streakDay rolls over at 1am local time', () => {
-	assert.equal(streakDay('UTC', new Date('2026-01-10T00:59:00Z')), '2026-01-09');
-	assert.equal(streakDay('UTC', new Date('2026-01-10T01:00:00Z')), '2026-01-10');
-	assert.equal(streakDay('America/New_York', new Date('2026-01-10T05:30:00Z')), '2026-01-09');
-	assert.equal(streakDay('America/New_York', new Date('2026-01-10T06:00:00Z')), '2026-01-10');
+test('streakDay rolls over at 3am local time', () => {
+	assert.equal(streakDay('UTC', new Date('2026-01-10T02:59:00Z')), '2026-01-09');
+	assert.equal(streakDay('UTC', new Date('2026-01-10T03:00:00Z')), '2026-01-10');
+	assert.equal(streakDay('America/New_York', new Date('2026-01-10T07:30:00Z')), '2026-01-09');
+	assert.equal(streakDay('America/New_York', new Date('2026-01-10T08:00:00Z')), '2026-01-10');
 	assert.equal(streakDay(undefined, new Date('2026-01-10T12:00:00Z')), '2026-01-10');
 });
 
@@ -59,7 +59,7 @@ test('settleMissedDays spends a freeze per missed day', () => {
 			{ date: '2026-01-03', status: 'frozen' }
 		],
 		freezes: 0,
-		streak: 7,
+		streak: 5,
 		broke: false
 	});
 });

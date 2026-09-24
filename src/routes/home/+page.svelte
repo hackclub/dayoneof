@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
+	import { page } from '$app/state';
 
 	let { data } = $props();
 
@@ -29,6 +30,12 @@
 
 <svelte:head>
 	<title>Day One Of</title>
+	<meta
+		name="description"
+		content="Every video posted in Hack Club's Day One Of challenge, plus the longest streaks, top creators, and most-viewed videos."
+	/>
+	<link rel="canonical" href="{page.url.origin}/home" />
+	<link rel="preconnect" href="https://archive.hackclub.com" />
 </svelte:head>
 
 <div class="dash day-one">
@@ -53,6 +60,60 @@
 			{/if}
 		</div>
 	</header>
+
+	{#if data.session}
+		<details class="guide" open={!data.hasPosted}>
+			<summary>How to participate</summary>
+			{#if !data.submissionsOpen}
+				<p class="guide-alert">
+					The challenge hasn't started yet. Submissions open once 200 people have joined, so invite
+					your friends!
+				</p>
+			{/if}
+			{#if !data.verified}
+				<p class="guide-alert">
+					Your Hack Club account isn't verified as 13–18 yet, so your posts won't count until it is.
+				</p>
+			{/if}
+			<ol class="guide-steps">
+				<li>
+					<h2>Find the channel!</h2>
+					<p>
+						Post your links in
+						<a href="https://hackclub.enterprise.slack.com/archives/C0C2UM7UCUB" target="_blank" rel="noopener"
+							>#dayoneof-submissions</a
+						>. For chatting, questions, leaderboards, and announcements, use
+						<a href="https://hackclub.enterprise.slack.com/archives/C0C2U1ANNP7" target="_blank" rel="noopener"
+							>#dayoneof</a
+						>!
+					</p>
+				</li>
+				<li>
+					<h2>Post every day</h2>
+					<p>
+						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, that mentions Hack Club. Post it
+						before 3AM your time and the bot replies with your streak!
+					</p>
+				</li>
+				<li>
+					<h2>Keep your streak</h2>
+					<p>
+						Every 2 days you post earns a freeze (hold up to 3). A missed day uses one automatically, which saves
+						your streak but doesn't add to it. Miss a day with none left and your streak resets to 0 :(
+					</p>
+				</li>
+				<li>
+					<h2>Earn prizes</h2>
+					<p>
+						Stickers at 2 days, a t-shirt at 7,
+						socks and a pin at 15, and an Orpheus plushie at 25. Most
+						total views at the end wins $500, and giving feedback on others' videos earns bonus stickers!
+					</p>
+				</li>
+			</ol>
+			<p class="guide-foot">You'll be signed in automatically next time you visit.</p>
+		</details>
+	{/if}
 
 	<div class="columns">
 		<section class="feed">
@@ -88,12 +149,14 @@
 										src={video.thumbnail}
 										alt=""
 										loading={i < 12 ? 'eager' : 'lazy'}
+										fetchpriority={i < 4 ? 'high' : 'auto'}
 										decoding="async"
 									/>
 								{/if}
 								<span class="play" aria-hidden="true">
 									<svg viewBox="0 0 24 24">
-										<path d="M9.5 7.6l7.2 4.4-7.2 4.4z" />
+										<path d="M7.5 16.5 16 8" />
+										<path d="M9.5 7.5H16.5V14.5" />
 									</svg>
 								</span>
 								<span class="tile-foot">
@@ -237,8 +300,7 @@
 		font-weight: 700;
 		font-size: clamp(1.6rem, 2.2vw, 2.4rem);
 		color: var(--ink);
-		text-decoration: underline wavy var(--accent) 2px;
-		text-underline-offset: 7px;
+		text-decoration: none;
 		white-space: nowrap;
 	}
 
@@ -308,24 +370,113 @@
 		color: var(--bg);
 		background: var(--ink);
 		border: 2px solid var(--ink);
-		border-radius: 10px;
-		padding: 0.5rem 1.2rem;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		padding: calc(0.5rem - 3px) 1.2rem calc(0.5rem + 3px);
 		text-decoration: none;
 		white-space: nowrap;
-		box-shadow: 3px 3px 0 var(--accent);
+		box-shadow: inset 0 -5px 0 var(--accent);
+		transform: rotate(-1deg);
 		transition:
-			transform 0.12s ease,
-			box-shadow 0.12s ease;
+			transform 0.15s ease,
+			padding 0.15s ease,
+			box-shadow 0.15s ease,
+			filter 0.15s ease;
 	}
 
 	.ghost-btn:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 5px 5px 0 var(--accent);
+		filter: brightness(1.08);
 	}
 
 	.ghost-btn:active {
-		transform: translate(0, 0);
-		box-shadow: 1px 1px 0 var(--accent);
+		padding: 0.5rem 1.2rem;
+		box-shadow: none;
+		transform: none;
+	}
+
+	.guide {
+		margin: clamp(1rem, 2.2vh, 1.75rem) var(--frame) 0;
+		background: var(--bg-2);
+		border: 2px solid var(--ink);
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		box-shadow: 4px 5px 0 var(--shadow);
+		padding: 1rem 1.25rem;
+	}
+
+	.guide summary {
+		font-family: 'Shantell Sans', 'Comic Sans MS', cursive;
+		font-weight: 700;
+		font-size: 1.2rem;
+	}
+
+	.guide p {
+		margin: 0;
+		line-height: 1.45;
+	}
+
+	.guide-alert {
+		margin-top: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--note);
+		border: 2px solid var(--ink);
+		border-radius: 8px;
+		font-weight: 600;
+	}
+
+	.guide-steps {
+		list-style: none;
+		counter-reset: step;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+		gap: 1rem 1.5rem;
+		margin: 0.75rem 0 0;
+		padding: 0;
+	}
+
+	.guide-steps li {
+		counter-increment: step;
+	}
+
+	.guide-steps h2 {
+		font-size: 1rem;
+		margin: 0 0 0.25rem;
+	}
+
+	.guide-steps h2::before {
+		content: counter(step) '. ';
+		color: var(--accent);
+	}
+
+	.guide-steps p,
+	.guide-foot {
+		font-size: 0.92rem;
+		color: var(--ink-soft);
+	}
+
+	.guide a {
+		color: var(--ink);
+		font-weight: 700;
+		background-image: linear-gradient(var(--tape), var(--tape));
+		background-repeat: no-repeat;
+		background-position: 0 88%;
+		background-size: 0% 45%;
+		-webkit-box-decoration-break: clone;
+		box-decoration-break: clone;
+		transition:
+			background-size 0.25s ease,
+			color 0.15s ease;
+	}
+
+	.guide a:hover {
+		background-size: 100% 45%;
+	}
+
+	.guide-foot {
+		margin-top: 0.75rem;
+		font-style: italic;
+	}
+
+	.guide + .columns {
+		padding-top: clamp(1rem, 2.2vh, 1.75rem);
 	}
 
 	.columns {
@@ -445,8 +596,23 @@
 	}
 
 	.card .tile:hover {
-		transform: translate(-2px, -3px);
+		animation: flutter 0.6s ease forwards;
 		box-shadow: 7px 8px 0 var(--shadow);
+	}
+
+	@keyframes flutter {
+		30% {
+			transform: rotate(-3deg) scale(1.02);
+		}
+		55% {
+			transform: rotate(2deg) scale(1.03);
+		}
+		80% {
+			transform: rotate(-0.8deg) scale(1.03);
+		}
+		100% {
+			transform: rotate(0) scale(1.03);
+		}
 	}
 
 	.thumb {
@@ -477,17 +643,17 @@
 	}
 
 	.play svg {
-		width: 55%;
-		height: 55%;
-		margin-left: 6%;
-		fill: var(--accent);
+		width: 58%;
+		height: 58%;
+		fill: none;
 		stroke: var(--accent);
-		stroke-width: 2.4;
+		stroke-width: 2.6;
+		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
 
 	.tile:hover .play {
-		transform: translate(-50%, -50%) scale(1.1);
+		transform: translate(-50%, -50%) rotate(-12deg) scale(1.1);
 		opacity: 1;
 	}
 
@@ -700,6 +866,7 @@
 		}
 
 		.card .tile:hover {
+			animation: none;
 			transform: none;
 		}
 

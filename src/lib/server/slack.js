@@ -1,4 +1,5 @@
-import { config } from './config.js';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { config, requireEnv } from './config.js';
 
 // Form-encoded, not JSON: Slack only accepts a JSON body on some write methods, and answers the
 // rest as if the body were empty — users.info with a JSON body returns user_not_found for a user
@@ -30,30 +31,49 @@ async function call(method, params) {
 }
 
 /**
+ * @param {string} rawBody
+ * @param {string | null} timestamp
+ * @param {string | null} signature
+ */
+export function verifySignature(rawBody, timestamp, signature) {
+	if (!timestamp || !signature) return false;
+	if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 60 * 5) return false;
+	const base = `v0:${timestamp}:${rawBody}`;
+	const secret = requireEnv('SLACK_SIGNING_SECRET', config.slackSigningSecret);
+	const expected = `v0=${createHmac('sha256', secret).update(base).digest('hex')}`;
+	const a = Buffer.from(signature);
+	const b = Buffer.from(expected);
+	return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
  * @param {string} channel
  * @param {string} text
  * @param {string} [thread_ts]
+ * @param {unknown[]} [blocks]
  */
-export function postMessage(channel, text, thread_ts) {
-	return call('chat.postMessage', { channel, text, thread_ts });
+export function postMessage(channel, text, thread_ts, blocks) {
+	return call('chat.postMessage', { channel, text, thread_ts, blocks });
 }
 
 /**
  * @param {string} channel
  * @param {string} ts
  * @param {string} text
+ * @param {unknown[]} [blocks]
  */
-export function updateMessage(channel, ts, text) {
-	return call('chat.update', { channel, ts, text });
+export function updateMessage(channel, ts, text, blocks) {
+	return call('chat.update', { channel, ts, text, blocks });
 }
 
 /**
  * @param {string} user
  * @param {string} text
+ * @param {unknown[]} [blocks]
  */
-export async function dm(user, text) {
+export async function dm(user, text, blocks) {
 	const { channel } = await call('conversations.open', { users: user });
-	return postMessage(channel.id, text);
+	return postMessage(channel.id, text, undefined, blocks);
 }
 
 /**

@@ -1,9 +1,7 @@
 node_modules
 .vscode
 
-# superseded by INFRASTRUCTURE.md
-RUN.md
-IMPLEMENTATION.md
+INFRASTRUCTURE.md
 
 
 # Output

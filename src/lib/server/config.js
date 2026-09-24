@@ -57,7 +57,9 @@ export const config = {
 	unifiedSocialsTrackPosts: priv('UNIFIED_SOCIALS_TRACK_POSTS') === 'true',
 	// Falls back on anything unparseable rather than passing NaN on: every age comparison against
 	// NaN is false, which would let any old video through.
-	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 2,
+	// Flipped by hand once the channel reaches 200 members; until then only admins' posts count.
+	submissionsOpen: priv('SUBMISSIONS_OPEN') === 'true',
+	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 1,
 	minVideoSeconds: 15,
 	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
 		.split(',')

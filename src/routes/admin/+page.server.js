@@ -4,7 +4,7 @@ import * as airtable from '$lib/server/airtable.js';
 import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
-import { isHcaVerified } from '$lib/server/verification.js';
+import { isYswsEligible } from '$lib/server/verification.js';
 
 /** @param {import('./$types').RequestEvent['locals']} locals */
 function requireAdmin(locals) {
@@ -54,7 +54,7 @@ export async function load({ locals }) {
 			name: p.fields[F.participants.name],
 			status: p.fields[F.participants.status] ?? 'notStarted',
 			verificationStatus: p.fields[F.participants.verificationStatus] ?? '',
-			verified: isHcaVerified(p.fields[F.participants.verificationStatus]),
+			verified: isYswsEligible(p.fields[F.participants.yswsEligible]),
 			currentStreak: p.fields[F.participants.currentStreak] ?? 0,
 			streakFreezes: p.fields[F.participants.streakFreezes] ?? 0,
 			daysCompleted: p.fields[F.participants.daysCompleted] ?? 0,
@@ -71,7 +71,7 @@ export const actions = {
 	},
 	runLeaderboard: async ({ locals }) => {
 		requireAdmin(locals);
-		return runJob('leaderboard', runLeaderboard);
+		return runJob('leaderboard', () => runLeaderboard({ force: true }));
 	},
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
@@ -82,7 +82,8 @@ export const actions = {
 		const data = await request.formData();
 		const id = String(data.get('id'));
 		await airtable.update(TABLES.participants, id, {
-			[F.participants.verificationStatus]: 'verified_eligible'
+			[F.participants.verificationStatus]: 'verified',
+			[F.participants.yswsEligible]: true
 		});
 		return { verified: id };
 	},

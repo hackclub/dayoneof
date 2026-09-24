@@ -72,7 +72,7 @@ export async function settleParticipant(participant, throughDay) {
 	return { record, daysSettled: days.length, broke };
 }
 
-// Hourly, so each participant is settled within the hour after their own 1am deadline.
+// Hourly, so each participant is settled within the hour after their own 3am deadline.
 export async function runReconcile() {
 	const participants = await airtable.list(TABLES.participants, {
 		filterByFormula: `AND(${PARTICIPANT_HAS_SLACK_ID}, OR({${F.participants.status}} = "active", {${F.participants.status}} = "frozen"))`
@@ -181,8 +181,17 @@ function numbered(records, line) {
 	return records.map((record, i) => `${i + 1}. ${line(record)}`).join('\n');
 }
 
-// Refreshes every submission's stats first so the boards reflect tonight's numbers.
-export async function runLeaderboard() {
+const REMINDER_HOUR = 20;
+const LEADERBOARD_HOUR = 21;
+const LEADERBOARD_TZ = 'America/New_York';
+
+// Refreshes every submission's stats first so the boards reflect tonight's numbers. The cron can
+// fire more often than daily: without force it only posts at 9pm Eastern once submissions open.
+/** @param {{ force?: boolean }} [options] */
+export async function runLeaderboard({ force = false } = {}) {
+	if (!force && (!config.submissionsOpen || localHour(LEADERBOARD_TZ) !== LEADERBOARD_HOUR)) {
+		return { skipped: true };
+	}
 	const views = await refreshViews();
 
 	const [participants, submissions] = await Promise.all([
@@ -235,19 +244,21 @@ export async function runLeaderboard() {
 /** @param {string | undefined} tz */
 function localHour(tz) {
 	return Number(
-		new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz ?? 'UTC' }).format(new Date())
+		new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: tz || 'America/New_York' }).format(new Date())
 	);
 }
 
-// force reminds everyone with a slack_id regardless of hour/posted-today/already-reminded, and
-// never writes last_reminder_day — for the admin panel's test button. The real hourly cron
+// force reminds everyone with a slack_id regardless of hour/streak/posted-today/already-reminded,
+// and never writes last_reminder_day — for the admin panel's test button. The real hourly cron
 // always calls this with no args.
 /** @param {{ force?: boolean }} [options] */
 export async function runRemind({ force = false } = {}) {
+	if (!force && !config.submissionsOpen) return { sent: 0 };
+
 	const participants = await airtable.list(TABLES.participants, {
 		filterByFormula: force
 			? PARTICIPANT_HAS_SLACK_ID
-			: `AND(${PARTICIPANT_HAS_SLACK_ID}, NOT({${F.participants.reminderHour}} = ""))`
+			: `AND(${PARTICIPANT_HAS_SLACK_ID}, {${F.participants.currentStreak}} >= 1, NOT({${F.participants.remindersOff}}))`
 	});
 
 	let sent = 0;
@@ -256,9 +267,10 @@ export async function runRemind({ force = false } = {}) {
 		const today = streakDay(participant.fields[F.participants.tz]);
 		if (!force && participant.fields[F.participants.lastDay] === today) continue;
 		if (!force && participant.fields[F.participants.lastReminderDay] === today) continue;
-		if (!force && localHour(participant.fields[F.participants.tz]) !== participant.fields[F.participants.reminderHour]) continue;
+		if (!force && localHour(participant.fields[F.participants.tz]) !== REMINDER_HOUR) continue;
 
-		await slack.dm(slackId, messages.reminder());
+		const text = messages.reminder();
+		await slack.dm(slackId, text, messages.reminderBlocks(text, true));
 		if (!force) {
 			await airtable.update(TABLES.participants, participant.id, {
 				[F.participants.lastReminderDay]: today

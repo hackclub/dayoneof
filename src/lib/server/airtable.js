@@ -63,13 +63,61 @@ async function request(url, init, attempt = 0) {
 }
 
 const CACHE_TTL_MS = 60_000;
-/** @type {Map<string, { expires: number, records: Promise<AirtableRecord[]> }>} */
+/** @typedef {Map<string, AirtableRecord | null>} Writes */
+/**
+ * @typedef {{ expires: number, gen: number, refreshing: boolean, options: { filterByFormula?: string, sort?: SortRule[] },
+ *   writes: Writes, records: Promise<AirtableRecord[]> }} CacheEntry
+ */
+/** @type {Map<string, CacheEntry>} */
 const cache = new Map();
 
-/** @param {string} table */
-function forget(table) {
-	for (const key of cache.keys()) {
-		if (key.startsWith(`${table}:`)) cache.delete(key);
+/** @param {SortRule[]} sort */
+function compareBy(sort) {
+	/** @param {AirtableRecord} a @param {AirtableRecord} b */
+	return (a, b) => {
+		for (const { field, direction } of sort) {
+			const x = a.fields[field];
+			const y = b.fields[field];
+			if (x === y) continue;
+			if (x == null) return 1;
+			if (y == null) return -1;
+			return (x < y ? -1 : 1) * (direction === 'desc' ? -1 : 1);
+		}
+		return 0;
+	};
+}
+
+/**
+ * @param {AirtableRecord[]} records
+ * @param {Writes} writes
+ * @param {SortRule[]} [sort]
+ */
+function applyWrites(records, writes, sort) {
+	if (!writes.size) return records;
+	const byId = new Map(records.map((r) => [r.id, r]));
+	for (const [id, record] of writes) {
+		if (record) byId.set(id, record);
+		else byId.delete(id);
+	}
+	const next = [...byId.values()];
+	return sort ? next.sort(compareBy(sort)) : next;
+}
+
+// Unfiltered lists take the written records right away; a filtered one can't evaluate its formula
+// here, so it only goes stale. Either way a background refresh picks up computed fields.
+/**
+ * @param {string} table
+ * @param {Writes} writes
+ */
+function remember(table, writes) {
+	for (const [key, entry] of cache) {
+		if (!key.startsWith(`${table}:`)) continue;
+		entry.expires = 0;
+		entry.gen++;
+		if (entry.options.filterByFormula) continue;
+		for (const [id, record] of writes) entry.writes.set(id, record);
+		entry.records = entry.records.then((r) => applyWrites(r, writes, entry.options.sort));
+		entry.records.catch(() => {});
 	}
 }
 
@@ -108,8 +156,8 @@ export async function list(table, { filterByFormula, sort } = {}) {
 	return records;
 }
 
-// For the public pages: every visitor inside the window shares one fetch, and any write to the
-// table drops it so a new post shows up on the next load.
+// For the public pages: every visitor shares one fetch. Once it expires or a write marks it stale,
+// visitors get the last good list while a single refresh runs, so only a cold start waits.
 /**
  * @param {string} table
  * @param {{ filterByFormula?: string, sort?: SortRule[] }} [options]
@@ -118,11 +166,34 @@ export async function list(table, { filterByFormula, sort } = {}) {
 export function listCached(table, options = {}) {
 	const key = `${table}:${JSON.stringify(options)}`;
 	const hit = cache.get(key);
-	if (hit && hit.expires > Date.now()) return hit.records;
+	if (hit && (hit.expires > Date.now() || hit.refreshing)) return hit.records;
 	const records = list(table, options);
-	cache.set(key, { expires: Date.now() + CACHE_TTL_MS, records });
-	records.catch(() => cache.delete(key));
-	return records;
+	if (!hit) {
+		const entry = {
+			expires: Date.now() + CACHE_TTL_MS,
+			gen: 0,
+			refreshing: false,
+			options,
+			writes: new Map(),
+			records
+		};
+		cache.set(key, entry);
+		records.catch(() => cache.delete(key));
+		return entry.records;
+	}
+	const gen = hit.gen;
+	const writes = (hit.writes = new Map());
+	hit.refreshing = true;
+	records
+		.then((fresh) => {
+			hit.records = Promise.resolve(applyWrites(fresh, writes, options.sort));
+			if (hit.gen === gen) hit.expires = Date.now() + CACHE_TTL_MS;
+		})
+		.catch((err) => console.error('airtable cache refresh failed', table, err))
+		.finally(() => {
+			hit.refreshing = false;
+		});
+	return hit.records;
 }
 
 /**
@@ -139,13 +210,14 @@ export function get(table, recordId) {
  * @param {Record<string, any>} fields
  * @returns {Promise<AirtableRecord>}
  */
-export function create(table, fields) {
-	forget(table);
-	return request(baseUrl(table), {
+export async function create(table, fields) {
+	const record = await request(baseUrl(table), {
 		method: 'POST',
 		headers: headers(),
 		body: JSON.stringify({ fields })
 	});
+	remember(table, new Map([[record.id, record]]));
+	return record;
 }
 
 /**
@@ -154,13 +226,14 @@ export function create(table, fields) {
  * @param {Record<string, any>} fields
  * @returns {Promise<AirtableRecord>}
  */
-export function update(table, recordId, fields) {
-	forget(table);
-	return request(`${baseUrl(table)}/${recordId}`, {
+export async function update(table, recordId, fields) {
+	const record = await request(`${baseUrl(table)}/${recordId}`, {
 		method: 'PATCH',
 		headers: headers(),
 		body: JSON.stringify({ fields })
 	});
+	remember(table, new Map([[record.id, record]]));
+	return record;
 }
 
 /**
@@ -169,12 +242,12 @@ export function update(table, recordId, fields) {
  * @param {string[]} recordIds
  */
 export async function remove(table, recordIds) {
-	forget(table);
 	for (let i = 0; i < recordIds.length; i += 10) {
 		const batch = recordIds.slice(i, i + 10);
 		const params = new URLSearchParams();
 		batch.forEach((id) => params.append('records[]', id));
 		await request(`${baseUrl(table)}?${params}`, { method: 'DELETE', headers: headers() });
+		remember(table, new Map(batch.map((id) => [id, null])));
 	}
 }
 

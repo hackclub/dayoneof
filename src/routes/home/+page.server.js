@@ -1,4 +1,5 @@
-import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { config, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { isYswsEligible } from '$lib/server/verification.js';
 import * as airtable from '$lib/server/airtable.js';
 
 const BOARD_SIZE = 10;
@@ -78,14 +79,19 @@ export async function load({ locals }) {
 	const byVideo = [...videos].sort((a, b) => b.views - a.views).slice(0, BOARD_SIZE);
 
 	const session = locals.session;
+	// A first sign-in lands before the stale participant list has refreshed to include them.
 	const me = session
-		? participants.find((p) => p.fields[F.participants.slackId] === session.slackId)
+		? (participants.find((p) => p.fields[F.participants.slackId] === session.slackId) ??
+			(await airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, session.slackId))))
 		: null;
 
 	return {
 		session,
-		name: me ? (nameBySlackId.get(me.fields[F.participants.slackId]) ?? null) : null,
+		name: me ? cap(me.fields[F.participants.name], NAME_MAX) || null : null,
 		avatar: me?.fields[F.participants.avatar] || '',
+		verified: isYswsEligible(me?.fields[F.participants.yswsEligible]),
+		hasPosted: !!session && videos.some((v) => v.slackId === session.slackId),
+		submissionsOpen: config.submissionsOpen || isAdmin(session?.slackId),
 		videosPosted: submissions.length,
 		videos,
 		byStreak,

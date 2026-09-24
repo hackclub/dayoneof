@@ -1,12 +1,11 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { json } from '@sveltejs/kit';
-import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
+import { config, requireEnv, isAdmin, TABLES, F } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { messages } from '$lib/server/messages.js';
-import { isHcaVerified } from '$lib/server/verification.js';
+import { isYswsEligible } from '$lib/server/verification.js';
 import { syncParticipantTotalViews, settleParticipant } from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
 import {
@@ -30,22 +29,6 @@ import {
  *   thread_ts?: string
  * }} SlackEvent
  */
-
-/**
- * @param {string} rawBody
- * @param {string | null} timestamp
- * @param {string | null} signature
- */
-function verifySignature(rawBody, timestamp, signature) {
-	if (!timestamp || !signature) return false;
-	if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 60 * 5) return false;
-	const base = `v0:${timestamp}:${rawBody}`;
-	const secret = requireEnv('SLACK_SIGNING_SECRET', config.slackSigningSecret);
-	const expected = `v0=${createHmac('sha256', secret).update(base).digest('hex')}`;
-	const a = Buffer.from(signature);
-	const b = Buffer.from(expected);
-	return a.length === b.length && timingSafeEqual(a, b);
-}
 
 // Participants only exist once they've signed in via HCA (src/routes/api/auth/callback) — never
 // auto-created here.
@@ -76,13 +59,19 @@ async function handleSubmission(event) {
 		return;
 	}
 
+	if (!config.submissionsOpen && !isAdmin(event.user)) {
+		await slack.addReaction(event.channel, event.ts, 'hourglass');
+		await slack.postMessage(event.channel, messages.notLaunched(event.user), event.ts);
+		return;
+	}
+
 	const participant = await getParticipant(event.user);
 	if (!participant) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
 		return;
 	}
-	if (!isHcaVerified(participant.fields[F.participants.verificationStatus])) {
+	if (!isYswsEligible(participant.fields[F.participants.yswsEligible])) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(
 			event.channel,
@@ -236,38 +225,6 @@ async function handleSubmission(event) {
 	}
 }
 
-/** @param {SlackEvent} event */
-async function handleAppMention(event) {
-	const text = event.text.replace(/<@\w+>/, '').trim();
-	const [command, arg] = text.split(/\s+/);
-
-	if (command === 'status') {
-		const participant = await getParticipant(event.user);
-		const streak = participant?.fields[F.participants.currentStreak] ?? 0;
-		const freezes = participant?.fields[F.participants.streakFreezes] ?? 0;
-		const completed = participant?.fields[F.participants.daysCompleted] ?? 0;
-		await slack.postMessage(event.channel, messages.status(streak, freezes, completed), event.ts);
-		return;
-	}
-
-	if (command === 'remind') {
-		const hour = Number(arg);
-		if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-			await slack.postMessage(event.channel, messages.remindUsage(), event.ts);
-			return;
-		}
-		const participant = await getParticipant(event.user);
-		if (!participant) {
-			await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
-			return;
-		}
-		await airtable.update(TABLES.participants, participant.id, {
-			[F.participants.reminderHour]: hour
-		});
-		await slack.postMessage(event.channel, messages.remindSet(hour), event.ts);
-	}
-}
-
 // Cached across requests — the bot's own id never changes for a given token.
 /** @type {string | undefined} */
 let botUserId;
@@ -287,7 +244,6 @@ async function handleMemberJoined(event) {
 async function handleEvent(event) {
 	if (!event) return;
 
-	if (event.type === 'app_mention') return handleAppMention(event);
 	if (event.type === 'member_joined_channel') return handleMemberJoined(event);
 
 	if (event.type === 'message') {
@@ -319,7 +275,7 @@ export async function POST({ request }) {
 	const signature = request.headers.get('x-slack-signature');
 	const timestamp = request.headers.get('x-slack-request-timestamp');
 
-	if (!verifySignature(rawBody, timestamp, signature)) {
+	if (!slack.verifySignature(rawBody, timestamp, signature)) {
 		return json({ error: 'invalid signature' }, { status: 401 });
 	}
 

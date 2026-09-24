@@ -8,6 +8,10 @@ export const messages = {
 		return `<@${slackId}> that doesn't look like a YouTube, TikTok, or Instagram link. Post a link to today's video to keep your streak going.`;
 	},
 	/** @param {string} slackId */
+	notLaunched(slackId) {
+		return `<@${slackId}> the challenge hasn't started yet. Submissions open once 200 people have joined this channel, so invite your friends!`;
+	},
+	/** @param {string} slackId */
 	notSignedIn(slackId) {
 		return `<@${slackId}> you need to sign in with Hack Club Auth before your posts count. Sign in at ${config.siteUrl}/api/auth/login, then post your link again.`;
 	},
@@ -16,7 +20,7 @@ export const messages = {
 	 * @param {string | undefined} status
 	 */
 	notVerified(slackId, status) {
-		return `<@${slackId}> your Hack Club Auth account isn't verified yet (status: ${status ?? 'unknown'}), so posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
+		return `<@${slackId}> your Hack Club Auth account isn't verified as eligible yet (status: ${status ?? 'unknown'}). Only verified teens aged 13–18 can take part, so posts won't count until it is. Check ${config.siteUrl}/api/auth/login once you're verified.`;
 	},
 	// The post may or may not have been recorded when this fires, so it deliberately doesn't
 	// promise either way — reconcile is what actually settles the day.
@@ -30,7 +34,8 @@ export const messages = {
 	 * @param {number} maxAgeDays
 	 */
 	postTooOld(slackId, maxAgeDays) {
-		return `<@${slackId}> that video was published more than ${maxAgeDays} days ago, so it can't count toward your streak. Post something you've made in the last ${maxAgeDays} days!`;
+		const days = maxAgeDays === 1 ? 'day' : `${maxAgeDays} days`;
+		return `<@${slackId}> that video was published more than ${maxAgeDays === 1 ? 'a day' : days} ago, so it can't count toward your streak. Post something you've made in the last ${days}!`;
 	},
 	/**
 	 * @param {string} slackId
@@ -78,28 +83,39 @@ export const messages = {
 		return `You hit ${milestone} days! Fill out the fulfillment form to claim your reward.`;
 	},
 	reminder() {
-		return "Haven't seen today's video yet. Post it before 1am your time to keep your streak alive.";
+		return "Haven't seen today's video yet. Post it before 3am your time to keep your streak alive.";
 	},
 	/** @param {number} freezesRemaining */
 	dayFrozen(freezesRemaining) {
-		return `You missed yesterday, so a freeze covered it. ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} left.`;
+		return `You missed yesterday, so a freeze saved your streak (frozen days don't add to it). ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} left.`;
 	},
 	streakBroken() {
 		return 'You missed yesterday and had no freezes left, so your streak reset. Post today to start a new one.';
 	},
+	/** @param {boolean} remindersOn */
+	reminderToggled(remindersOn) {
+		return remindersOn
+			? "Reminders are back on. I'll nudge you at 8pm your time if you haven't posted."
+			: "Reminders are off. I won't nudge you anymore.";
+	},
 	/**
-	 * @param {number} streak
-	 * @param {number} freezesRemaining
-	 * @param {number} daysCompleted
+	 * @param {string} text
+	 * @param {boolean} remindersOn
 	 */
-	status(streak, freezesRemaining, daysCompleted) {
-		return `Current streak: ${streak} days · ${freezesRemaining} freezes remaining · ${daysCompleted} days completed total.`;
-	},
-	/** @param {number} hour */
-	remindSet(hour) {
-		return `Got it! I'll remind you at ${hour}:00 your time if you haven't posted yet.`;
-	},
-	remindUsage() {
-		return 'Usage: `@dayoneof remind <hour>` where hour is 0-23 in your local time.';
+	reminderBlocks(text, remindersOn) {
+		return [
+			{ type: 'section', text: { type: 'mrkdwn', text } },
+			{
+				type: 'actions',
+				elements: [
+					{
+						type: 'button',
+						action_id: 'toggle_reminders',
+						text: { type: 'plain_text', text: remindersOn ? 'Turn off reminders' : 'Turn reminders back on' },
+						value: remindersOn ? 'off' : 'on'
+					}
+				]
+			}
+		];
 	}
 };

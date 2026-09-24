@@ -39,11 +39,12 @@ function schemaFor(appEnv) {
 				{ name: F.participants.tz, ...text },
 				{ name: F.participants.status, ...select(PARTICIPANT_STATUSES) },
 				{ name: F.participants.verificationStatus, ...text },
+				{ name: F.participants.yswsEligible, ...check },
 				{ name: F.participants.daysCompleted, ...int },
 				{ name: F.participants.streakFreezes, ...int },
 				{ name: F.participants.currentStreak, ...int },
 				{ name: F.participants.lastMilestone, ...int },
-				{ name: F.participants.reminderHour, ...int },
+				{ name: F.participants.remindersOff, ...check },
 				{ name: F.participants.lastReminderDay, ...text },
 				{ name: F.participants.lastDay, ...text },
 				{ name: F.participants.totalViews, ...int }

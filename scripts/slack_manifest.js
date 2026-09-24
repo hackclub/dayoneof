@@ -23,7 +23,6 @@ function envVar(name, appEnv) {
 // channels:read / groups:read are what member_joined_channel is gated on — the :history scopes
 // cover message.* but not membership events, and Slack rejects the manifest without them.
 const BOT_SCOPES = [
-	'app_mentions:read',
 	'channels:history',
 	'channels:manage',
 	'channels:read',
@@ -37,7 +36,7 @@ const BOT_SCOPES = [
 	'users:read.email'
 ];
 
-const BOT_EVENTS = ['app_mention', 'member_joined_channel', 'message.channels', 'message.groups'];
+const BOT_EVENTS = ['member_joined_channel', 'message.channels', 'message.groups'];
 
 /**
  * @param {string} name
@@ -59,6 +58,10 @@ function manifest(name, siteUrl) {
 			event_subscriptions: {
 				request_url: `${siteUrl.replace(/\/$/, '')}/api/slack/events`,
 				bot_events: BOT_EVENTS
+			},
+			interactivity: {
+				is_enabled: true,
+				request_url: `${siteUrl.replace(/\/$/, '')}/api/slack/interactions`
 			},
 			org_deploy_enabled: false,
 			socket_mode_enabled: false,

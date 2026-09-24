@@ -5,11 +5,24 @@
 	import reelmidThumb from '$lib/assets/reelmid_thumb.jpg';
 	import reelbot from '$lib/assets/reelbot.mp4';
 	import reelbotThumb from '$lib/assets/reelbot_thumb.jpg';
-	import tshirtimage from '$lib/assets/tshirtimage.png';
-	import orpheusplushie from '$lib/assets/orpheusplushie.png';
+	import tshirtimage from '$lib/assets/tshirtimage.webp';
+	import orpheusplushie from '$lib/assets/orpheusplushie.webp';
+	import socks from '$lib/assets/socks.webp';
 	import heidisticker from '$lib/assets/heidisticker.webp';
+	import { page } from '$app/state';
 
 	let { data } = $props();
+
+	const description =
+		'Post a short-form video every day for a month and earn free prizes. A Hack Club challenge for teens 13–18.';
+	const structuredData = $derived({
+		'@context': 'https://schema.org',
+		'@type': 'WebSite',
+		name: 'Day One Of',
+		url: `${page.url.origin}/`,
+		description,
+		publisher: { '@type': 'Organization', name: 'Hack Club', url: 'https://hackclub.com' }
+	});
 
 	function formatCount(n: number) {
 		if (n >= 1000) return `${Math.round(n / 1000)}k`;
@@ -51,56 +64,61 @@
 	const prizeItems = [
 		{ img: heidisticker, name: 'Stickers', label: '2-day prize' },
 		{ img: tshirtimage, name: 'T-shirt', label: '7-day prize' },
+		{ img: socks, name: 'Socks + pin', label: '15-day prize' },
 		{ img: orpheusplushie, name: 'Plushie', label: '25-day prize' },
 		{ img: null, name: '$500 fund', label: 'most-viewed creator' }
 	];
 	const prizeLoop = [...prizeItems, ...prizeItems];
 
 	const reelIdeas = [
-		'A 30 day series of learning piano from scratch',
-		'A 30 day series of soldering your first PCB',
-		'A 30 day series of drawing one portrait a day',
-		'A 30 day series of learning to skateboard',
-		'A 30 day series of building a game in Godot',
-		'A 30 day series of cooking a new dish every night',
-		'A 30 day series of running a mile before school',
-		'A 30 day series of learning Japanese out loud',
-		'A 30 day series of editing one video effect a day',
-		'A 30 day series of making a 3D print that fixes something'
+		'Day one of learning piano from scratch',
+		'Day one of learning to solder your first PCB',
+		'Day one of learning to draw portraits',
+		'Day one of learning to skateboard',
+		'Day one of learning to build a game in Godot',
+		'Day one of learning to cook',
+		'Day one of learning to run a mile',
+		'Day one of learning Japanese out loud',
+		'Day one of learning video editing one effect at a time',
+		'Day one of learning 3D printing by fixing things around the house',
+		'Day one of learning to fix every squeaky door in my house',
+		'Day one of learning to build a mechanical keyboard from parts',
+		'Day one of learning to film cinematic shots on my phone',
+		'Day one of learning to code a Discord bot for my friends',
+		'Day one of learning latte art with a cheap milk frother',
+		'Day one of learning to repair old electronics from the thrift store',
+		'Day one of learning to grow vegetables on my windowsill',
+		'Day one of learning to solve a Rubik\'s cube under a minute',
+		'Day one of learning to make a soundtrack for an indie game',
+		'Day one of learning to bind a notebook by hand'
+	];
+
+	const milestonePrizes = [
+		{ mark: '2 days', text: '5 random Hack Club stickers' },
+		{ mark: '7 days', text: 'a Hack Club t-shirt' },
+		{ mark: '15 days', text: 'a pair of Hack Club socks and a Hack Club enamel pin' },
+		{ mark: '25 days', text: 'one of the very rare Orpheus plushies' }
 	];
 
 	let ideaIndex = $state(0);
+	let scrollY = $state(0);
 
 	const faqItems = [
 		{
-			q: 'What is the Day One Of Challenge?',
-			a: 'A Hack Club YSWS (you-ship-we-ship) where you post a short-form video on YouTube Shorts, TikTok, or Instagram and earn prizes for keeping your streak alive.'
+			q: 'What is Day One Of?',
+			a: "A Hack Club YSWS (you-ship-we-ship) where you post a short-form video every day on YouTube Shorts, TikTok, or Instagram and earn prizes for keeping your streak alive. Hack Club is a 501(c)(3) nonprofit and a worldwide community of 100k+ teen hackers that's been running programs like this for years, including Arcade, High Seas, and Summer of Making."
 		},
 		{
-			q: 'What is Hack Club?',
-			a: "We're a worldwide community of 100k+ teen hackers, and a nonprofit that funds programs like this one, plus hackathons and online social events all year round."
+			q: 'Who can join, and does it cost anything?',
+			a: "Any teen aged 13–18 with a verified Hack Club account, which signing in checks for you. It's 100% free: every prize is paid for by Hack Club and ships from Hack Club HQ. If you live outside the USA, you're responsible for any customs fees your country charges."
 		},
 		{
 			q: 'What are the rules?',
-			a: 'Learn or make anything you want. A series on learning piano, building hardware, or whatever you\'re already into all count. Just mention Hack Club somewhere in the video, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify it. Videos must be at least 15 seconds long.'
+			a: 'Learn or make anything you want, like learning piano, building hardware, or whatever you\'re already into. Videos must be at least 15 seconds long, published in the last day, and mention Hack Club somewhere, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify you made it. Please don\'t use generative AI anywhere in your videos.'
 		},
 		{
 			q: 'How do streaks and freezes work?',
-			a: 'Post a video every day to keep your streak going. Your day ends at 1am your local time. Every 2 days you post, you bank a streak freeze, and a freeze automatically covers a day you miss. Run out of freezes and miss a day, and the streak breaks.'
-		},
-		{
-			q: 'What prizes can I earn?',
-			prizes: [
-				{ mark: '2 days', text: '5 random Hack Club stickers' },
-				{ mark: '7 days', text: 'a Hack Club t-shirt' },
-				{ mark: '15 days', text: 'socks and an enamel pin' },
-				{ mark: '25 days', text: 'a legendary Orpheus Plushie' }
-			],
-			note: 'The most-viewed creator overall also gets $500 towards their setup.'
-		},
-		{
-			q: 'Anything else I should know?',
-			a: "Please don't use generative AI anywhere in your videos. Prizes ship from Hack Club HQ, so if you're outside the USA, you're responsible for any customs fees your country charges. Giving feedback on other people's reels may be rewarded with extra stickers!"
+			a: "Your streak is how many days in a row you've posted. Your day ends at 3am your local time, so a video posted at 2am still counts for the day before, and posting twice in one day doesn't add an extra day. For every 2 days you post, you earn a streak freeze, and you can hold up to 3. If a day ends without a post, a freeze is used automatically so your streak survives, but frozen days don't add to it. Miss a day with no freezes left and your streak goes back to 0."
 		},
 		{
 			q: 'I have more questions!',
@@ -120,43 +138,75 @@
 
 <svelte:head>
 	<title>Day One Of</title>
+	<meta name="description" content={description} />
+	<link rel="canonical" href="{page.url.origin}/" />
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="{page.url.origin}/" />
+	<meta property="og:title" content="Day One Of" />
+	<meta property="og:description" content={description} />
+	<meta property="og:image" content="{page.url.origin}/og-image.png" />
+	<meta property="og:image:alt" content="Day One Of logo" />
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content="Day One Of" />
+	<meta name="twitter:description" content={description} />
+	<meta name="twitter:image" content="{page.url.origin}/og-image.png" />
+	{@html `<script type="application/ld+json">${JSON.stringify(structuredData)}</script>`}
 </svelte:head>
 
+<svelte:window bind:scrollY />
+
 <div class="day-one">
+	<svg class="scroll-hint" class:hidden={scrollY > 40} viewBox="0 0 24 24" aria-hidden="true">
+		<path d="M6 9l6 6 6-6" />
+	</svg>
 	<div class="page">
 		<div class="topbar">
-			<span class="badge torn-tape">a Hack Club YSWS</span>
+			<a class="flag" href="https://hackclub.com/"><img src="/flag-orpheus-top.svg" alt="Hack Club" width="180" height="102" /></a>
 		</div>
 
 		<main>
 			<section class="hero">
 				<div class="hero-copy">
 					<h1>Day one of <em>anything</em> you want.</h1>
-					<svg class="wavy" viewBox="0 0 240 10" preserveAspectRatio="none" aria-hidden="true">
-						<path d="M2 6 Q 30 -1, 60 6 T 118 6 T 176 6 T 234 6" />
-					</svg>
 					<p class="sub">
 						Most people spend too much time scrolling. Post content instead, and get prizes for it.
 					</p>
 					<p class="desc">
 						Post a shortform video every day for a month, about anything at all. Get feedback from
-						others to improve your content every day.
+						others to improve your content every day, and earn bonus stickers for giving feedback on
+						theirs.
 					</p>
 
 					<form class="signup" action="/api/auth/login" method="GET">
 						<input
 							type="email"
 							name="email"
-							placeholder="you@school.edu"
+							placeholder="you@example.com"
 							required
 							aria-label="Email address"
 						/>
 						<button type="submit">Start day one</button>
-						<svg class="cta-arrow" viewBox="0 0 52 34" aria-hidden="true">
-							<path d="M4 4 Q 20 2, 30 16 Q 34 22, 44 24" />
-							<path d="M35 20 L45 25 L38 30" />
-						</svg>
 					</form>
+					<p class="signup-note">
+						{#if !data.submissionsOpen}
+							<strong>The program launches at 200 sign-ups!</strong>
+						{/if}
+						Not on the Hack Club Slack yet?
+						<a href="https://slack.hackclub.com" target="_blank" rel="noopener">Join the Slack today</a>.
+					</p>
+					<p class="signup-note">
+						By <a href="https://hackclub.com" target="_blank" rel="noopener">Hack Club</a>, for teens
+						13–18. Run by
+						<a href="https://hackclub.enterprise.slack.com/team/U0795SNGE9L" target="_blank" rel="noopener"
+							>@Darsh</a
+						>,
+						<a href="https://hackclub.enterprise.slack.com/team/U0793HPEX6V" target="_blank" rel="noopener"
+							>@Celestial</a
+						>, and
+						<a href="https://hackclub.enterprise.slack.com/team/U09UE480JHH" target="_blank" rel="noopener"
+							>@Zach Latta</a
+						>.
+					</p>
 				</div>
 
 				<div class="reel-stack">
@@ -258,7 +308,7 @@
 				</div>
 			</section>
 
-			<section>
+			<section class="tight">
 				<div class="prizes-and-stats">
 					<div class="prize-block">
 						<h2 class="eyebrow">You could get:</h2>
@@ -269,7 +319,7 @@
 										<span class="icon-badge">
 											<span class="tape-strip torn-tape"></span>
 											{#if prize.img}
-												<img src={prize.img} alt="" />
+												<img src={prize.img} alt="" loading="lazy" decoding="async" />
 											{:else}
 												<svg viewBox="0 0 24 24">
 													<circle cx="12" cy="12" r="9" />
@@ -312,10 +362,52 @@
 						<ol class="steps">
 							<li>Sign in with your email</li>
 							<li>Post a short-form video (15 seconds or longer) every day and mention Hack Club</li>
-							<li>Drop the link in #dayoneof on Slack</li>
+							<li>
+								<span>
+									Drop the link in
+									<a href="https://hackclub.enterprise.slack.com/archives/C0C2UM7UCUB" target="_blank" rel="noopener"
+										>#dayoneof-submissions</a
+									>
+								</span>
+							</li>
 							<li>Keep your streak alive to unlock prizes</li>
+							<li>
+								<span>
+									Chat and ask questions in
+									<a href="https://hackclub.enterprise.slack.com/archives/C0C2U1ANNP7" target="_blank" rel="noopener"
+										>#dayoneof</a
+									>
+								</span>
+							</li>
 						</ol>
 					</div>
+				</div>
+			</section>
+
+			<section>
+				<h2 class="eyebrow">How prizes work</h2>
+				<div class="prize-box">
+					<p>
+						Prizes go by your streak. The first time it reaches each number below, we ship you that
+						prize, and they stack, so reaching 25 days gets you all four.
+					</p>
+					<ul class="prize-list">
+						{#each milestonePrizes as row}
+							<li class="prize-row">
+								<span class="prize-mark">{row.mark}</span>
+								<span>{row.text}</span>
+							</li>
+						{/each}
+					</ul>
+					<p>
+						<strong class="grand">Grand prize:</strong> whoever has the most views across all of their
+						videos combined at the end gets $500 USD for their setup, like a camera, a mic, or funds
+						for their projects.
+					</p>
+					<p class="bonus">
+						<strong class="grand">Sticker bonus:</strong> give helpful feedback on other people's videos
+						and you can earn extra stickers on top of your streak prizes.
+					</p>
 				</div>
 			</section>
 
@@ -332,17 +424,7 @@
 									</svg>
 								</summary>
 								<div class="faq-body">
-									{#if item.prizes}
-										<ul class="prize-list">
-											{#each item.prizes as row}
-												<li class="prize-row">
-													<span class="prize-mark">{row.mark}</span>
-													<span>{row.text}</span>
-												</li>
-											{/each}
-										</ul>
-										<p class="faq-note"><strong>Grand prize:</strong> {item.note}</p>
-									{:else if item.contact}
+									{#if item.contact}
 										<p>
 											Reach out at <a href="mailto:darshg321@gmail.com">darshg321@gmail.com</a>,
 											message
@@ -388,7 +470,7 @@
 		</main>
 
 		<footer>
-			<span>made for <strong>hack clubbers</strong>, one reel a day.</span>
+			<span>made for <strong>hack clubbers</strong>, one reel a day. Hack Club is a 501(c)(3) nonprofit.</span>
 			<nav class="footer-links" aria-label="Hack Club">
 				<a href="https://hackclub.com" target="_blank" rel="noopener">hack club</a>
 				<span aria-hidden="true">·</span>
@@ -430,20 +512,6 @@
 		text-align: inherit;
 	}
 
-	.wavy {
-		display: block;
-		width: 100%;
-		height: 10px;
-		overflow: visible;
-	}
-
-	.wavy path {
-		fill: none;
-		stroke: var(--accent);
-		stroke-width: 3;
-		stroke-linecap: round;
-	}
-
 	.torn-tape {
 		position: relative;
 		clip-path: polygon(
@@ -465,24 +533,49 @@
 		box-shadow: 1px 3px 0 rgba(43, 34, 22, 0.18);
 	}
 
+	.scroll-hint {
+		position: fixed;
+		left: 50%;
+		bottom: 14px;
+		width: 28px;
+		height: 28px;
+		margin-left: -14px;
+		fill: none;
+		stroke: var(--ink-soft);
+		stroke-width: 2.2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		opacity: 0.55;
+		pointer-events: none;
+		z-index: 5;
+		transition: opacity 0.3s ease;
+		animation: bob 1.8s ease-in-out infinite;
+	}
+
+	.scroll-hint.hidden {
+		opacity: 0;
+	}
+
+	@keyframes bob {
+		50% {
+			transform: translateY(4px);
+		}
+	}
+
 	.topbar {
 		display: flex;
-		justify-content: flex-end;
+		justify-content: flex-start;
 		align-items: center;
 		margin-bottom: 38px;
 	}
 
-	.badge {
-		font-size: 0.75rem;
-		font-weight: 700;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		background-color: var(--bg-2);
-		border: 1.5px solid var(--line);
-		color: var(--ink-soft);
-		padding: 6px 12px;
-		border-radius: 999px;
-		transform: rotate(-2deg);
+	.flag {
+		margin-top: -28px;
+	}
+
+	.flag img {
+		display: block;
+		width: 180px;
 	}
 
 	.hero {
@@ -547,47 +640,86 @@
 	.roll-btn {
 		font-weight: 700;
 		font-size: 0.95rem;
-		border-radius: 10px;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
 		border: 2px solid var(--ink);
 		cursor: var(--cursor-pointer);
 		white-space: nowrap;
+		transform: rotate(-1deg);
 		transition:
-			transform 0.12s ease,
-			box-shadow 0.12s ease;
+			transform 0.15s ease,
+			padding 0.15s ease,
+			box-shadow 0.15s ease,
+			filter 0.15s ease;
 	}
 
 	.signup button {
-		padding: 13px 22px;
+		padding: 10px 22px 16px;
 		background: var(--accent);
 		color: var(--accent-ink);
-		box-shadow: 3px 3px 0 var(--ink);
+		box-shadow: inset 0 -5px 0 var(--ink);
 	}
 
 	.signup button:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 5px 5px 0 var(--ink);
+		filter: brightness(1.08);
 	}
 
 	.signup button:active {
-		transform: translate(0, 0);
-		box-shadow: 1px 1px 0 var(--ink);
+		padding: 13px 22px;
+		box-shadow: none;
+		transform: none;
 	}
 
-	.cta-arrow {
-		position: absolute;
-		top: -30px;
-		left: 225px;
-		width: 52px;
-		height: 34px;
-		pointer-events: none;
+	.signup-note {
+		margin-top: 12px;
+		font-size: 0.95rem;
+		line-height: 1.5;
+		color: var(--ink-soft);
+		max-width: 46ch;
 	}
 
-	.cta-arrow path {
-		fill: none;
-		stroke: var(--accent);
-		stroke-width: 2.2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+	.signup-note strong {
+		color: var(--ink);
+	}
+
+	.signup-note a,
+	.steps a,
+	.footer-links a {
+		background-image: linear-gradient(var(--tape), var(--tape));
+		background-repeat: no-repeat;
+		background-position: 0 88%;
+		background-size: 0% 45%;
+		-webkit-box-decoration-break: clone;
+		box-decoration-break: clone;
+		transition:
+			background-size 0.25s ease,
+			color 0.15s ease;
+	}
+
+	.signup-note a {
+		color: var(--ink);
+		font-weight: 700;
+	}
+
+	.signup-note a:hover,
+	.steps a:hover,
+	.footer-links a:hover {
+		background-size: 100% 45%;
+	}
+
+	.signup-note a:hover {
+		color: var(--accent);
+	}
+
+	.steps a {
+		font-size: 1.05rem;
+		font-weight: 800;
+		color: var(--accent);
+		text-decoration-thickness: 2px;
+		text-underline-offset: 3px;
+	}
+
+	.steps a:hover {
+		color: var(--ink);
 	}
 
 	.reel-stack {
@@ -605,7 +737,7 @@
 		border: 2px solid var(--ink);
 		border-radius: 15px 8px 12px 9px/9px 13px 8px 15px;
 		padding: 10px 10px 34px;
-		box-shadow: 5px 6px 0 var(--shadow);
+		box-shadow: 4px 5px 0 var(--shadow);
 		transition:
 			transform 0.22s ease,
 			box-shadow 0.22s ease;
@@ -805,16 +937,19 @@
 		margin-bottom: 50px;
 	}
 
+	section.tight {
+		margin-bottom: 24px;
+	}
+
 	.eyebrow {
 		font-weight: 700;
 		font-size: 1.5rem;
 		margin-bottom: 18px;
 		display: inline-block;
-		text-decoration: underline wavy var(--accent) 2px;
-		text-underline-offset: 7px;
 	}
 
 	.idea-box,
+	.prize-box,
 	.faq-item {
 		background: var(--bg-2);
 		border: 2px solid var(--ink);
@@ -829,6 +964,29 @@
 		justify-content: space-between;
 		gap: 20px;
 		flex-wrap: wrap;
+	}
+
+	.prize-box {
+		padding: 24px 26px;
+		color: var(--ink-soft);
+		line-height: 1.55;
+	}
+
+	.prize-box > p {
+		margin: 0;
+		max-width: 70ch;
+	}
+
+	.prize-box .prize-list {
+		margin: 14px 0;
+	}
+
+	.prize-box .bonus {
+		margin-top: 10px;
+	}
+
+	.grand {
+		color: var(--accent);
 	}
 
 	.idea-text {
@@ -861,20 +1019,21 @@
 	}
 
 	.roll-btn {
-		padding: 12px 20px;
+		padding: 9px 20px 15px;
 		background: var(--ink);
 		color: var(--bg);
-		box-shadow: 3px 3px 0 var(--accent);
+		box-shadow: inset 0 -5px 0 var(--accent);
+		transform: rotate(1deg);
 	}
 
 	.roll-btn:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 5px 5px 0 var(--accent);
+		filter: brightness(1.08);
 	}
 
 	.roll-btn:active {
-		transform: translate(0, 0);
-		box-shadow: 1px 1px 0 var(--accent);
+		padding: 12px 20px;
+		box-shadow: none;
+		transform: none;
 	}
 
 	.prizes-and-stats {
@@ -1019,7 +1178,7 @@
 		position: relative;
 		flex: 0 0 260px;
 		max-width: 100%;
-		aspect-ratio: 1 / 1;
+		min-height: 260px;
 		background: var(--note);
 		border: 2px solid var(--ink);
 		border-radius: 4px 10px 6px 12px/10px 4px 12px 6px;
@@ -1190,7 +1349,7 @@
 
 	.prize-list {
 		list-style: none;
-		margin: 0;
+		margin: 12px 0 0;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
@@ -1208,14 +1367,6 @@
 		font-family: 'Shantell Sans', cursive;
 		font-weight: 700;
 		color: var(--ink);
-	}
-
-	.faq-note {
-		margin-top: 12px;
-	}
-
-	.faq-note strong {
-		color: var(--accent);
 	}
 
 	.board {
@@ -1297,16 +1448,12 @@
 		}
 	}
 
-	@media (max-width: 520px) {
-		.cta-arrow {
-			display: none;
-		}
-	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.blip,
 		.prize-cluster,
-		.idea-text {
+		.idea-text,
+		.scroll-hint {
 			animation: none;
 		}
 

@@ -21,6 +21,7 @@
 
 <svelte:head>
 	<title>{data.name} · Day One Of</title>
+	<meta name="robots" content="noindex" />
 </svelte:head>
 
 <div class="dash day-one">
@@ -96,7 +97,8 @@
 							{/if}
 							<span class="play" aria-hidden="true">
 								<svg viewBox="0 0 24 24">
-									<path d="M9.5 7.6l7.2 4.4-7.2 4.4z" />
+									<path d="M7.5 16.5 16 8" />
+									<path d="M9.5 7.5H16.5V14.5" />
 								</svg>
 							</span>
 							<span class="tile-foot">
@@ -148,8 +150,7 @@
 		font-weight: 700;
 		font-size: clamp(1.6rem, 2.2vw, 2.4rem);
 		color: var(--ink);
-		text-decoration: underline wavy var(--accent) 2px;
-		text-underline-offset: 7px;
+		text-decoration: none;
 		white-space: nowrap;
 	}
 
@@ -165,24 +166,27 @@
 		color: var(--bg);
 		background: var(--ink);
 		border: 2px solid var(--ink);
-		border-radius: 10px;
-		padding: 0.5rem 1.2rem;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		padding: calc(0.5rem - 3px) 1.2rem calc(0.5rem + 3px);
 		text-decoration: none;
 		white-space: nowrap;
-		box-shadow: 3px 3px 0 var(--accent);
+		box-shadow: inset 0 -5px 0 var(--accent);
+		transform: rotate(-1deg);
 		transition:
-			transform 0.12s ease,
-			box-shadow 0.12s ease;
+			transform 0.15s ease,
+			padding 0.15s ease,
+			box-shadow 0.15s ease,
+			filter 0.15s ease;
 	}
 
 	.ghost-btn:hover {
-		transform: translate(-2px, -2px);
-		box-shadow: 5px 5px 0 var(--accent);
+		filter: brightness(1.08);
 	}
 
 	.ghost-btn:active {
-		transform: translate(0, 0);
-		box-shadow: 1px 1px 0 var(--accent);
+		padding: 0.5rem 1.2rem;
+		box-shadow: none;
+		transform: none;
 	}
 
 	.frame {
@@ -275,8 +279,6 @@
 
 	.feed-head h2 {
 		font-size: clamp(1.3rem, 1vh + 1vw, 1.9rem);
-		text-decoration: underline wavy var(--accent) 2px;
-		text-underline-offset: 7px;
 	}
 
 	.segmented {
@@ -352,8 +354,23 @@
 	}
 
 	.card .tile:hover {
-		transform: translate(-2px, -3px);
+		animation: flutter 0.6s ease forwards;
 		box-shadow: 7px 8px 0 var(--shadow);
+	}
+
+	@keyframes flutter {
+		30% {
+			transform: rotate(-3deg) scale(1.02);
+		}
+		55% {
+			transform: rotate(2deg) scale(1.03);
+		}
+		80% {
+			transform: rotate(-0.8deg) scale(1.03);
+		}
+		100% {
+			transform: rotate(0) scale(1.03);
+		}
 	}
 
 	.thumb {
@@ -384,17 +401,17 @@
 	}
 
 	.play svg {
-		width: 55%;
-		height: 55%;
-		margin-left: 6%;
-		fill: var(--accent);
+		width: 58%;
+		height: 58%;
+		fill: none;
 		stroke: var(--accent);
-		stroke-width: 2.4;
+		stroke-width: 2.6;
+		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
 
 	.tile:hover .play {
-		transform: translate(-50%, -50%) scale(1.1);
+		transform: translate(-50%, -50%) rotate(-12deg) scale(1.1);
 		opacity: 1;
 	}
 
@@ -480,6 +497,7 @@
 		}
 
 		.card .tile:hover {
+			animation: none;
 			transform: none;
 		}
 	}
