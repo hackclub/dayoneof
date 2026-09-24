@@ -10,8 +10,10 @@ export async function GET({ url, cookies }) {
 	const state = url.searchParams.get('state');
 	const expectedState = cookies.get('hca_state');
 	const expectedEmail = cookies.get('hca_email');
+	const reauthed = cookies.get('hca_reauth') === '1';
 	cookies.delete('hca_state', { path: '/' });
 	cookies.delete('hca_email', { path: '/' });
+	cookies.delete('hca_reauth', { path: '/' });
 
 	if (!code || !state || state !== expectedState) {
 		error(400, 'That sign-in link expired or was already used. Head back and sign in again.');
@@ -23,10 +25,11 @@ export async function GET({ url, cookies }) {
 
 	const email = String(identity.primary_email ?? '').toLowerCase();
 	if (expectedEmail && email !== expectedEmail) {
-		error(
-			403,
-			`You're signed into Hack Club Auth as ${email}, not ${expectedEmail}. Sign out at auth.hackclub.com, then try again.`
-		);
+		// HCA reused a different signed-in account, so send them back to sign in as the one they typed.
+		if (!reauthed) {
+			redirect(302, `/api/auth/login?${new URLSearchParams({ email: expectedEmail, reauth: '1' })}`);
+		}
+		error(403, `You signed in as ${email}, not ${expectedEmail}. Head back and try again.`);
 	}
 
 	const slackId = identity.slack_id;

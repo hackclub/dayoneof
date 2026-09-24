@@ -1,7 +1,7 @@
 import { config, requireEnv } from './config.js';
 
-/** @param {{ redirectUri: string, state: string, loginHint?: string }} params */
-export function authorizeUrl({ redirectUri, state, loginHint }) {
+/** @param {{ redirectUri: string, state: string, loginHint?: string, forceLogin?: boolean }} params */
+export function authorizeUrl({ redirectUri, state, loginHint, forceLogin }) {
 	const params = new URLSearchParams({
 		client_id: requireEnv('HCA_CLIENT_ID', config.hcaClientId),
 		redirect_uri: redirectUri,
@@ -9,11 +9,9 @@ export function authorizeUrl({ redirectUri, state, loginHint }) {
 		scope: config.hcaScope,
 		state
 	});
+	if (loginHint) params.set('login_hint', loginHint);
 	// prompt=login asks HCA to re-authenticate instead of reusing whoever is already signed in.
-	if (loginHint) {
-		params.set('login_hint', loginHint);
-		params.set('prompt', 'login');
-	}
+	if (forceLogin) params.set('prompt', 'login');
 	return `${config.hcaIssuer}/oauth/authorize?${params}`;
 }
 
