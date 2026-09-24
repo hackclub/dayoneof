@@ -2,12 +2,10 @@
 	import { afterNavigate } from '$app/navigation';
 	import { assetSheet } from '$lib/asset_sheet';
 	import '@fontsource/figtree/latin-400.css';
-	import '@fontsource/figtree/latin-500.css';
 	import '@fontsource/figtree/latin-600.css';
 	import '@fontsource/figtree/latin-700.css';
 	import '@fontsource/figtree/latin-800.css';
 	import '@fontsource/shantell-sans/latin-400.css';
-	import '@fontsource/shantell-sans/latin-500.css';
 	import '@fontsource/shantell-sans/latin-600.css';
 	import '@fontsource/shantell-sans/latin-700.css';
 	import figtree400 from '@fontsource/figtree/files/figtree-latin-400-normal.woff2?url';
@@ -16,17 +14,13 @@
 
 	let { children, data } = $props();
 
-	// /user/[slackId] puts a Slack id in the path and /admin isn't a public page, so neither is
-	// reported as it stands: returning null from the callback drops the pageview altogether.
+	// Collapses Slack ids out of /user paths and drops /admin, which isn't a public page.
 	function reportedPath(path: string) {
 		if (path.startsWith('/admin')) return null;
 		return path.replace(/^\/user\/[^/?#]+/, '/user/:slackId');
 	}
 
-	// An effect rather than a top-level branch so `data` is read reactively, and idempotent because
-	// it reruns on every navigation. Effects don't run on the server, so no `browser` guard.
-	// static/count.js is GoatCounter's own script, vendored so it loads same-origin — gc.zgo.at is
-	// on the usual tracker blocklists and a third-party fetch of it is silently dropped.
+	// count.js is vendored so it loads same-origin; gc.zgo.at is on tracker blocklists.
 	$effect(() => {
 		if (!data.goatcounterUrl || window.goatcounter) return;
 		window.goatcounter = { endpoint: `${data.goatcounterUrl}/count`, path: reportedPath };
@@ -37,9 +31,7 @@
 		document.head.append(script);
 	});
 
-	// count.js only counts the load it arrived on, so client-side navigation has to report itself.
-	// Blanking the referrer stops an internal hop from re-crediting whatever external link brought
-	// the visitor to the site in the first place.
+	// count.js only counts the first load; a blank referrer keeps internal hops uncredited.
 	afterNavigate(({ type }) => {
 		if (type === 'enter') return;
 		window.goatcounter?.count?.({ referrer: '' });

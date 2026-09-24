@@ -2,22 +2,12 @@ import { config, requireEnv } from './config.js';
 
 function headers() {
 	return {
-		Authorization: `Bearer ${config.unifiedSocialsToken}`,
-		'Content-Type': 'application/json'
+		Authorization: `Bearer ${requireEnv('UNIFIED_SOCIALS_TOKEN', config.unifiedSocialsToken)}`
 	};
 }
 
-// Read-only: unified-socials-db exposes SQL views over api.posts and has no write endpoint.
-// GET /api/v1/<relation> filters rows by column names as equality query params and answers
-// `{ rows, count, limit, offset }` — an untracked post is 200 with `rows: []`, not a 404.
-// (platform, platform_post_id) is unique on api.posts, so there is at most one row.
-// views/likes are null until some source reports them; title is the full caption, '' if none.
-// preview_thumbnail_url is the archive's own thumbnail (archive.hackclub.com/thumb/<id>) and is
-// set for ~99% of tracked posts on every platform — some rows store it as http, which the site
-// can't embed over https, and the same path answers over https.
-// video_url is the post's video on file: Arker's copy at archive.hackclub.com/archive/<id>/yt-dlp,
-// or a cdn.hackclub.com render when the pipeline built one from a gallery. Null until the archive
-// step has run, which is why reconcile keeps re-reading it rather than writing it once.
+// An untracked post is a 200 with `rows: []`. Some thumbnails are stored as http, so they're
+// upgraded to embed over https. video_url stays null until archiving runs, so it's re-read nightly.
 /**
  * @param {string} platform
  * @param {string} platformPostId
@@ -52,7 +42,7 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 // - Idempotent by contract: 201 for a new post, 200 if it was already tracked, same
 //   tracked_post_id either way and nothing re-run. So a repeat costs nothing but a request.
 // - Never retried. A retry of a paid endpoint that failed halfway is the one thing that could
-//   double-charge, and the nightly reconcile re-reads every submission anyway.
+//   double-charge, and the nightly leaderboard re-reads every submission anyway.
 // - Never throws. A tracking failure must not cost the poster their streak, so the caller gets
 //   null and carries on.
 // - Callers must only reach this after a read returned no row: see the submission handler.
@@ -64,10 +54,9 @@ export async function trackPost(url) {
 	if (!config.unifiedSocialsTrackPosts) return null;
 
 	try {
-		const token = requireEnv('UNIFIED_SOCIALS_TOKEN', config.unifiedSocialsToken);
 		const res = await fetch(`${config.unifiedSocialsApiUrl}/tracked-posts`, {
 			method: 'POST',
-			headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+			headers: { ...headers(), 'Content-Type': 'application/json' },
 			body: JSON.stringify({ url })
 		});
 

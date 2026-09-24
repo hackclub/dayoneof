@@ -1,26 +1,47 @@
 // Shared job bodies behind /api/cron/* — one implementation per job, reused by the admin panel.
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { config, requireEnv, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from './config.js';
+import { tablesFor } from './schema.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import * as unified from './unified.js';
 import { messages } from './messages.js';
 import { serialize } from './queue.js';
-import { streakDay, addDays, settleMissedDays } from './streak.js';
+import { streakDay, addDays, settleMissedDays, compareStreaks } from './streak.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 
-// Sums a participant's stored submissions.views fresh from Airtable, rather than incrementing,
-// so it stays correct regardless of which fetches succeed on any given run.
-/** @param {string} slackId */
-export async function syncParticipantTotalViews(slackId) {
+// Re-sums stored submission views rather than incrementing, so a failed fetch never skews totals.
+/** @param {AirtableRecord} participant */
+export async function syncParticipantTotalViews(participant) {
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: airtable.eq(F.submissions.slackId, slackId)
+		filterByFormula: airtable.eq(F.submissions.slackId, participant.fields[F.participants.slackId])
 	});
 	const total = submissions.reduce((sum, s) => sum + (s.fields[F.submissions.views] ?? 0), 0);
-	await airtable.upsert(TABLES.participants, airtable.eq(F.participants.slackId, slackId), {
-		[F.participants.totalViews]: total
-	});
+	await airtable.update(TABLES.participants, participant.id, { [F.participants.totalViews]: total });
 	return total;
+}
+
+/**
+ * @param {AirtableRecord[]} participants
+ * @param {AirtableRecord[]} submissions
+ */
+async function syncTotalViews(participants, submissions) {
+	/** @type {Map<string, number>} */
+	const totals = new Map();
+	for (const s of submissions) {
+		const slackId = s.fields[F.submissions.slackId];
+		totals.set(slackId, (totals.get(slackId) ?? 0) + (s.fields[F.submissions.views] ?? 0));
+	}
+	for (const participant of participants) {
+		const total = totals.get(participant.fields[F.participants.slackId]) ?? 0;
+		if (participant.fields[F.participants.totalViews] === total) continue;
+		const updated = await airtable.update(TABLES.participants, participant.id, {
+			[F.participants.totalViews]: total
+		});
+		participant.fields = updated.fields;
+	}
 }
 
 // Writes a day row for every unposted day since the participant's last one through throughDay,
@@ -95,20 +116,15 @@ export async function runReconcile() {
 	return { processed: participants.length, frozen, broken };
 }
 
+/** @returns {Promise<{ viewsChecked: number, submissions: AirtableRecord[] }>} */
 async function refreshViews() {
-	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `NOT({${F.submissions.videoId}} = "")`
-	});
-	if (submissions.length === 0) return { viewsChecked: 0 };
-
+	const submissions = await airtable.list(TABLES.submissions);
 	let viewsChecked = 0;
-	const slackIds = new Set();
 
 	for (const submission of submissions) {
 		const platform = submission.fields[F.submissions.platform];
 		const videoId = submission.fields[F.submissions.videoId];
 		if (!platform || !videoId) continue;
-		slackIds.add(submission.fields[F.submissions.slackId]);
 
 		let post;
 		try {
@@ -130,13 +146,14 @@ async function refreshViews() {
 			continue;
 		}
 
-		await airtable.update(TABLES.submissions, submission.id, {
+		const updated = await airtable.update(TABLES.submissions, submission.id, {
 			[F.submissions.views]: post.views,
 			[F.submissions.title]: post.title,
 			[F.submissions.thumbnailUrl]: post.thumbnailUrl,
 			[F.submissions.archiveUrl]: post.archiveUrl,
 			[F.submissions.unifiedId]: String(post.id)
 		});
+		submission.fields = updated.fields;
 
 		// Edits the original confirmation reply in place instead of spamming a new one nightly.
 		const replyMessageTs = submission.fields[F.submissions.replyMessageTs];
@@ -154,11 +171,7 @@ async function refreshViews() {
 		}
 	}
 
-	for (const slackId of slackIds) {
-		await syncParticipantTotalViews(slackId);
-	}
-
-	return { viewsChecked };
+	return { viewsChecked, submissions };
 }
 
 const BOARD_SIZE = 10;
@@ -192,22 +205,13 @@ export async function runLeaderboard({ force = false } = {}) {
 	if (!force && (!config.submissionsOpen || localHour(LEADERBOARD_TZ) !== LEADERBOARD_HOUR)) {
 		return { skipped: true };
 	}
-	const views = await refreshViews();
+	const { viewsChecked, submissions } = await refreshViews();
+	const participants = await airtable.list(TABLES.participants, {
+		filterByFormula: PARTICIPANT_HAS_SLACK_ID
+	});
+	await syncTotalViews(participants, submissions);
 
-	const [participants, submissions] = await Promise.all([
-		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
-		airtable.list(TABLES.submissions)
-	]);
-
-	// Fewer freezes banked wins the tie: the same streak kept with less cover is the better run.
-	const byStreak = [...participants]
-		.sort(
-			(a, b) =>
-				(b.fields[F.participants.currentStreak] ?? 0) -
-					(a.fields[F.participants.currentStreak] ?? 0) ||
-				(a.fields[F.participants.streakFreezes] ?? 0) - (b.fields[F.participants.streakFreezes] ?? 0)
-		)
-		.slice(0, BOARD_SIZE);
+	const byStreak = [...participants].sort(compareStreaks).slice(0, BOARD_SIZE);
 	const byViews = topBy(participants, F.participants.totalViews);
 	const byVideo = topBy(submissions, F.submissions.views);
 
@@ -234,7 +238,7 @@ export async function runLeaderboard({ force = false } = {}) {
 	await slack.postMessage(announceChannelId, `*Highest viewed videos*\n${videoLines}`);
 
 	return {
-		...views,
+		viewsChecked,
 		streakEntries: byStreak.length,
 		viewEntries: byViews.length,
 		videoEntries: byVideo.length
@@ -280,4 +284,34 @@ export async function runRemind({ force = false } = {}) {
 	}
 
 	return { sent };
+}
+
+const BACKUPS_KEPT = 24 * 30;
+
+// Snapshots every table of both environments into one timestamped JSON file, keeping 30 days.
+export async function runBackup() {
+	const tables = [...Object.values(tablesFor('prod')), ...Object.values(tablesFor('dev'))];
+	/** @type {Record<string, AirtableRecord[]>} */
+	const snapshot = {};
+	for (const table of tables) snapshot[table] = await airtable.list(table);
+
+	const now = new Date().toISOString();
+	const file = `airtable_${now.slice(2, 10)}_${now.slice(11, 13)}${now.slice(14, 16)}.json`;
+	await mkdir(config.backupDir, { recursive: true });
+	await writeFile(
+		path.join(config.backupDir, file),
+		JSON.stringify({ takenAt: now, tables: snapshot })
+	);
+
+	const backups = (await readdir(config.backupDir))
+		.filter((name) => /^airtable_.*\.json$/.test(name))
+		.sort();
+	const stale = backups.slice(0, Math.max(0, backups.length - BACKUPS_KEPT));
+	for (const name of stale) await rm(path.join(config.backupDir, name));
+
+	return {
+		file,
+		records: Object.values(snapshot).reduce((sum, records) => sum + records.length, 0),
+		pruned: stale.length
+	};
 }

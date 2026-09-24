@@ -1,16 +1,18 @@
 import { redirect } from '@sveltejs/kit';
 import { config, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
+import { count } from '$lib/format';
+import { hasSignedInBefore, rememberSignIn } from '$lib/server/session.js';
+import { compareStreaks } from '$lib/server/streak.js';
 
 const LEADERBOARD_SIZE = 8;
 
-/** @param {unknown} value */
-function count(value) {
-	return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
-}
-
-export async function load({ locals }) {
-	if (locals.session) redirect(302, '/home');
+export async function load({ locals, cookies }) {
+	if (locals.session) {
+		rememberSignIn(cookies);
+		redirect(302, '/home');
+	}
+	if (hasSignedInBefore(cookies)) redirect(302, '/api/auth/login');
 
 	const [submissions, participants] = await Promise.all([
 		airtable.listCached(TABLES.submissions, {
@@ -22,10 +24,7 @@ export async function load({ locals }) {
 	const views = submissions.map((s) => s.fields[F.submissions.views] ?? 0);
 
 	const leaderboard = [...participants]
-		.sort(
-			(a, b) =>
-				count(b.fields[F.participants.currentStreak]) - count(a.fields[F.participants.currentStreak])
-		)
+		.sort(compareStreaks)
 		.slice(0, LEADERBOARD_SIZE)
 		.map((p) => ({
 			slackId: p.fields[F.participants.slackId],

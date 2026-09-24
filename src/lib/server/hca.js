@@ -9,7 +9,11 @@ export function authorizeUrl({ redirectUri, state, loginHint }) {
 		scope: config.hcaScope,
 		state
 	});
-	if (loginHint) params.set('login_hint', loginHint);
+	// prompt=login asks HCA to re-authenticate instead of reusing whoever is already signed in.
+	if (loginHint) {
+		params.set('login_hint', loginHint);
+		params.set('prompt', 'login');
+	}
 	return `${config.hcaIssuer}/oauth/authorize?${params}`;
 }
 
@@ -27,7 +31,7 @@ export async function exchangeCode({ code, redirectUri }) {
 		})
 	});
 	if (!res.ok) throw new Error(`hca token exchange failed: ${res.status} ${await res.text()}`);
-	return res.json(); // { access_token, id_token, ... }
+	return res.json();
 }
 
 // An HCA account is a Hack Club Slack account, so slack_id is reliably present here.

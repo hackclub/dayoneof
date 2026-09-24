@@ -1,6 +1,8 @@
 import { config, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import { isYswsEligible } from '$lib/server/verification.js';
 import * as airtable from '$lib/server/airtable.js';
+import { count } from '$lib/format';
+import { compareStreaks } from '$lib/server/streak.js';
 
 const BOARD_SIZE = 10;
 
@@ -17,11 +19,6 @@ const TITLE_MAX = 90;
 function cap(value, max) {
 	const text = String(value ?? '').trim();
 	return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
-}
-
-/** @param {unknown} value */
-function count(value) {
-	return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 export async function load({ locals }) {
@@ -51,11 +48,7 @@ export async function load({ locals }) {
 	}));
 
 	const byStreak = [...participants]
-		.sort(
-			(a, b) =>
-				count(b.fields[F.participants.currentStreak]) -
-				count(a.fields[F.participants.currentStreak])
-		)
+		.sort(compareStreaks)
 		.slice(0, BOARD_SIZE)
 		.map((p) => ({
 			slackId: p.fields[F.participants.slackId],

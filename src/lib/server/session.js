@@ -3,6 +3,9 @@ import { config, requireEnv } from './config.js';
 
 const COOKIE_NAME = 'session';
 const MAX_AGE = 60 * 60 * 24 * 30;
+// Outlives the session so a returning participant is sent back through HCA instead of the landing.
+const RETURNING_COOKIE = 'returning';
+const RETURNING_MAX_AGE = 60 * 60 * 24 * 30;
 
 /** @param {string} payload */
 function sign(payload) {
@@ -43,11 +46,29 @@ export function setSessionCookie(cookies, slackId) {
 		sameSite: 'lax',
 		maxAge: MAX_AGE
 	});
+	rememberSignIn(cookies);
+}
+
+/** @param {import('@sveltejs/kit').Cookies} cookies */
+export function rememberSignIn(cookies) {
+	cookies.set(RETURNING_COOKIE, '1', {
+		path: '/',
+		httpOnly: true,
+		secure: true,
+		sameSite: 'lax',
+		maxAge: RETURNING_MAX_AGE
+	});
+}
+
+/** @param {import('@sveltejs/kit').Cookies} cookies */
+export function hasSignedInBefore(cookies) {
+	return cookies.get(RETURNING_COOKIE) === '1';
 }
 
 /** @param {import('@sveltejs/kit').Cookies} cookies */
 export function clearSessionCookie(cookies) {
 	cookies.delete(COOKIE_NAME, { path: '/' });
+	cookies.delete(RETURNING_COOKIE, { path: '/' });
 }
 
 /** @param {import('@sveltejs/kit').Cookies} cookies */

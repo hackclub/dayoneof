@@ -250,15 +250,3 @@ export async function remove(table, recordIds) {
 		remember(table, new Map(batch.map((id) => [id, null])));
 	}
 }
-
-/**
- * @param {string} table
- * @param {string} filterByFormula
- * @param {Record<string, any>} fields
- * @returns {Promise<AirtableRecord>}
- */
-export async function upsert(table, filterByFormula, fields) {
-	const existing = await find(table, filterByFormula);
-	if (existing) return update(table, existing.id, fields);
-	return create(table, fields);
-}

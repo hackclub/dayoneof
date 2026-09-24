@@ -2,6 +2,11 @@
 const viewFormatter = new Intl.NumberFormat('en-US', { notation: 'compact' });
 const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 
+/** A non-negative whole number, or 0 for anything Airtable left blank or malformed. */
+export function count(value: unknown) {
+	return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
 export function formatViews(views: number) {
 	return viewFormatter.format(views);
 }

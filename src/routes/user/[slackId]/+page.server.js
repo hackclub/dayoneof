@@ -25,7 +25,6 @@ export async function load({ params, locals }) {
 		slackId: params.slackId,
 		avatar: participant.fields[F.participants.avatar] || '',
 		currentStreak: participant.fields[F.participants.currentStreak] ?? 0,
-		streakFreezes: participant.fields[F.participants.streakFreezes] ?? 0,
 		totalViews: participant.fields[F.participants.totalViews] ?? 0,
 		videosPosted: submissions.length,
 		videos: submissions.map((s) => ({

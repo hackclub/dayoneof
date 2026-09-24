@@ -34,8 +34,9 @@ export const messages = {
 	 * @param {number} maxAgeDays
 	 */
 	postTooOld(slackId, maxAgeDays) {
-		const days = maxAgeDays === 1 ? 'day' : `${maxAgeDays} days`;
-		return `<@${slackId}> that video was published more than ${maxAgeDays === 1 ? 'a day' : days} ago, so it can't count toward your streak. Post something you've made in the last ${days}!`;
+		const ago = maxAgeDays === 1 ? 'a day' : `${maxAgeDays} days`;
+		const span = maxAgeDays === 1 ? 'day' : `${maxAgeDays} days`;
+		return `<@${slackId}> that video was published more than ${ago} ago, so it can't count toward your streak. Post something you've made in the last ${span}!`;
 	},
 	/**
 	 * @param {string} slackId
@@ -48,7 +49,7 @@ export const messages = {
 	// be sorted out by a human looking at the earlier submission.
 	/** @param {string} slackId */
 	duplicateVideo(slackId) {
-		return `<@${slackId}> error: that video has already been posted, so it can't count toward your streak. Post a different video, and if you think this is a mistake, send a message in #dayoneof on Slack!`;
+		return `<@${slackId}> that video has already been posted, so it can't count toward your streak. Post a different video, and if you think this is a mistake, send a message in #dayoneof on Slack!`;
 	},
 	/**
 	 * @param {number} streak

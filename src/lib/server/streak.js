@@ -1,7 +1,9 @@
+import { F } from './schema.js';
+
 /** @typedef {{ date: string, status: 'frozen' | 'missed' }} MissedDay */
 
-export const MILESTONES = [2, 7, 15, 25];
-export const MAX_STREAK_FREEZES = 3;
+const MILESTONES = [2, 7, 15, 25];
+const MAX_STREAK_FREEZES = 3;
 const DEADLINE_HOUR = 3;
 
 // A day runs until 3am in the participant's own timezone, so a post at 02:30 still counts for the
@@ -88,4 +90,16 @@ export function settleMissedDays({ lastDay, freezes, streak }, throughDay) {
  */
 export function nextMilestone(streak, lastMilestone) {
 	return MILESTONES.find((m) => streak >= m && m > (lastMilestone ?? 0)) ?? null;
+}
+
+// Fewer freezes banked wins a tie: the same streak kept with less cover is the better run.
+/**
+ * @param {{ fields: Record<string, any> }} a
+ * @param {{ fields: Record<string, any> }} b
+ */
+export function compareStreaks(a, b) {
+	return (
+		(b.fields[F.participants.currentStreak] ?? 0) - (a.fields[F.participants.currentStreak] ?? 0) ||
+		(a.fields[F.participants.streakFreezes] ?? 0) - (b.fields[F.participants.streakFreezes] ?? 0)
+	);
 }

@@ -49,6 +49,7 @@ export const config = {
 	hcaScope: priv('HCA_SCOPE') || 'openid email name slack_id verification_status',
 	sessionSecret: priv('SESSION_SECRET'),
 	cronSecret: priv('CRON_SECRET'),
+	backupDir: priv('BACKUP_DIR') || 'backups',
 	unifiedSocialsToken: priv('UNIFIED_SOCIALS_TOKEN'),
 	unifiedSocialsApiUrl:
 		priv('UNIFIED_SOCIALS_API_URL') || 'https://unified-socials-db.hackclub.com/api/v1',

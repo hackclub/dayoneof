@@ -1,7 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { appEnv, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
-import { runReconcile, runLeaderboard, runRemind } from '$lib/server/jobs.js';
+import { runReconcile, runLeaderboard, runRemind, runBackup } from '$lib/server/jobs.js';
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { isYswsEligible } from '$lib/server/verification.js';
@@ -76,6 +76,10 @@ export const actions = {
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
 		return runJob('remind', () => runRemind({ force: true }));
+	},
+	runBackup: async ({ locals }) => {
+		requireAdmin(locals);
+		return runJob('backup', runBackup);
 	},
 	forceVerify: async ({ request, locals }) => {
 		requireAdmin(locals);

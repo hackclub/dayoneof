@@ -12,6 +12,7 @@
 	import sticker2 from '$lib/assets/sticker2.webp';
 	import wordmark from '$lib/assets/wordmark.webp';
 	import { sprite, tape } from '$lib/asset_sheet';
+	import { formatViews } from '$lib/format';
 	import { page } from '$app/state';
 
 	let { data } = $props();
@@ -27,11 +28,6 @@
 		publisher: { '@type': 'Organization', name: 'Hack Club', url: 'https://hackclub.com' }
 	});
 
-	function formatCount(n: number) {
-		if (n >= 1000) return `${Math.round(n / 1000)}k`;
-		return String(n);
-	}
-
 	// The posters are frames pulled out of each video with ffmpeg.
 	const reels = [
 		{ src: reeltop, poster: reeltopThumb },
@@ -42,8 +38,7 @@
 	const prevIndex = $derived((reelIndex - 1 + reels.length) % reels.length);
 	const nextIndex = $derived((reelIndex + 1) % reels.length);
 
-	// Muted and paused to start: sound only ever arrives because someone asked for it. Swapping
-	// reels resets both, so the next one can't inherit the last one's playhead or start itself.
+	// Starts muted and paused; swapping reels resets both.
 	let paused = $state(true);
 	let muted = $state(true);
 	let currentTime = $state(0);
@@ -334,10 +329,10 @@
 						<div class="receipt">
 							<p class="receipt-title">So far…</p>
 							<div class="stat-line">
-								<span>total views</span><span class="num taped" style={tape('receipt', 0)}>{formatCount(data.totalViews)}</span>
+								<span>total views</span><span class="num taped" style={tape('receipt', 0)}>{formatViews(data.totalViews)}</span>
 							</div>
 							<div class="stat-line">
-								<span>most viewed reel</span><span class="num taped" style={tape('receipt', 1)}>{formatCount(data.mostViewedVideo)}</span>
+								<span>most viewed reel</span><span class="num taped" style={tape('receipt', 1)}>{formatViews(data.mostViewedVideo)}</span>
 							</div>
 							<div class="stat-line">
 								<span>participants</span><span class="num taped" style={tape('receipt', 2)}>{data.participants}</span>
@@ -783,8 +778,9 @@
 		font-weight: 800;
 		letter-spacing: 0.03em;
 		text-transform: uppercase;
-		padding: 4px 8px 4px 6px;
-		border-radius: 999px;
+		padding: 3px 7px 3px 5px;
+		border: 2px solid var(--ink);
+		border-radius: 6px 3px 5px 3px/3px 6px 3px 5px;
 		display: flex;
 		align-items: center;
 		gap: 4px;
@@ -794,19 +790,7 @@
 	.blip {
 		width: 6px;
 		height: 6px;
-		border-radius: 50%;
 		background: var(--accent-ink);
-		animation: blip 1.4s ease-in-out infinite;
-	}
-
-	@keyframes blip {
-		0%,
-		100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: 0.35;
-		}
 	}
 
 	.reel-bar {
@@ -1467,7 +1451,6 @@
 
 
 	@media (prefers-reduced-motion: reduce) {
-		.blip,
 		.prize-cluster,
 		.idea-text,
 		.scroll-hint,

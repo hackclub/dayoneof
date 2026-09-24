@@ -30,13 +30,6 @@ import {
  * }} SlackEvent
  */
 
-// Participants only exist once they've signed in via HCA (src/routes/api/auth/callback) — never
-// auto-created here.
-/** @param {string} slackId */
-async function getParticipant(slackId) {
-	return airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, slackId));
-}
-
 // Matched on platform + video id rather than url so a repost of the same video under a different
 // link shape still lands on the row already stored.
 /**
@@ -65,7 +58,11 @@ async function handleSubmission(event) {
 		return;
 	}
 
-	const participant = await getParticipant(event.user);
+	// Participants are only created at HCA sign-in, never here.
+	const participant = await airtable.find(
+		TABLES.participants,
+		airtable.eq(F.participants.slackId, event.user)
+	);
 	if (!participant) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
@@ -140,24 +137,25 @@ async function handleSubmission(event) {
 	const streakBefore = record.fields[F.participants.currentStreak] ?? 0;
 	const freezesBefore = record.fields[F.participants.streakFreezes] ?? 0;
 
+	const submissionFields = {
+		[F.submissions.slackId]: event.user,
+		[F.submissions.url]: link.url,
+		[F.submissions.platform]: link.platform,
+		[F.submissions.videoId]: link.videoId,
+		[F.submissions.postedAt]: new Date().toISOString(),
+		[F.submissions.day]: today,
+		[F.submissions.channelId]: event.channel,
+		[F.submissions.messageTs]: event.ts,
+		...statsFields
+	};
+
 	if (record.fields[F.participants.lastDay] >= today) {
 		await slack.addReaction(event.channel, event.ts, 'repeat');
-		const duplicateSubmission = await airtable.create(TABLES.submissions, {
-			[F.submissions.slackId]: event.user,
-			[F.submissions.url]: link.url,
-			[F.submissions.platform]: link.platform,
-			[F.submissions.videoId]: link.videoId,
-			[F.submissions.postedAt]: new Date().toISOString(),
-			[F.submissions.day]: today,
-			[F.submissions.countedTowardStreak]: false,
-			[F.submissions.channelId]: event.channel,
-			[F.submissions.messageTs]: event.ts
+		await airtable.create(TABLES.submissions, {
+			...submissionFields,
+			[F.submissions.countedTowardStreak]: false
 		});
-
-		if (Object.keys(statsFields).length) {
-			await airtable.update(TABLES.submissions, duplicateSubmission.id, statsFields);
-		}
-		if (stats) await syncParticipantTotalViews(event.user);
+		if (stats) await syncParticipantTotalViews(record);
 		await slack.postMessage(
 			event.channel,
 			messages.duplicatePost(event.user, streakBefore, freezesBefore, stats),
@@ -172,43 +170,30 @@ async function handleSubmission(event) {
 		[F.days.status]: 'posted'
 	});
 
-	const submission = await airtable.create(TABLES.submissions, {
-		[F.submissions.slackId]: event.user,
-		[F.submissions.url]: link.url,
-		[F.submissions.platform]: link.platform,
-		[F.submissions.videoId]: link.videoId,
-		[F.submissions.postedAt]: new Date().toISOString(),
-		[F.submissions.day]: today,
-		[F.submissions.countedTowardStreak]: true,
-		[F.submissions.channelId]: event.channel,
-		[F.submissions.messageTs]: event.ts
-	});
-
 	const streak = streakBefore + 1;
 	const completed = (record.fields[F.participants.daysCompleted] ?? 0) + 1;
 	const freezes = freezesAfterPost(freezesBefore, completed);
 
-	await airtable.update(TABLES.participants, participant.id, {
+	const submission = await airtable.create(TABLES.submissions, {
+		...submissionFields,
+		[F.submissions.countedTowardStreak]: true,
+		[F.submissions.streakAtPost]: streak,
+		[F.submissions.freezesAtPost]: freezes
+	});
+
+	const updated = await airtable.update(TABLES.participants, participant.id, {
 		[F.participants.daysCompleted]: completed,
 		[F.participants.streakFreezes]: freezes,
 		[F.participants.currentStreak]: streak,
 		[F.participants.status]: 'active',
 		[F.participants.lastDay]: today
 	});
-
-	// Written before attempting to react/reply so a Slack API failure below (rate limit, etc.)
-	// can never leave the streak recorded but views/site data missing.
-	await airtable.update(TABLES.submissions, submission.id, {
-		[F.submissions.streakAtPost]: streak,
-		[F.submissions.freezesAtPost]: freezes,
-		...statsFields
-	});
-	if (stats) await syncParticipantTotalViews(event.user);
+	if (stats) await syncParticipantTotalViews(updated);
 
 	try {
 		await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 		const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
-		// Lets reconcile edit this same message with fresh stats later instead of posting a new one.
+		// Lets the leaderboard job edit this reply with fresh stats instead of posting a new one.
 		await airtable.update(TABLES.submissions, submission.id, { [F.submissions.replyMessageTs]: reply.ts });
 	} catch (err) {
 		console.error('react/reply to submission failed', event.channel, event.ts, err);

@@ -7,6 +7,11 @@ export function GET({ cookies, url }) {
 	const state = randomBytes(16).toString('hex');
 	cookies.set('hca_state', state, { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: 600 });
 	const redirectUri = `${config.siteUrl}/api/auth/callback`;
-	const loginHint = url.searchParams.get('email')?.trim() || undefined;
+	const loginHint = url.searchParams.get('email')?.trim().toLowerCase() || undefined;
+	if (loginHint) {
+		cookies.set('hca_email', loginHint, { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: 600 });
+	} else {
+		cookies.delete('hca_email', { path: '/' });
+	}
 	redirect(302, authorizeUrl({ redirectUri, state, loginHint }));
 }

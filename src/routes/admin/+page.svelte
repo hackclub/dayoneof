@@ -44,6 +44,10 @@
 					today, and whether they were already reminded, and it doesn't mark anyone as reminded,
 					so it can't suppress a real reminder later today.
 				</li>
+				<li>
+					<strong>backup</strong>: hourly, writes every Airtable table (prod and dev) to one JSON
+					file on the server's backup volume, keeping the last 30 days.
+				</li>
 			</ul>
 
 			<form class="inline" method="POST" action="?/runReconcile">
@@ -54,6 +58,9 @@
 			</form>
 			<form class="inline" method="POST" action="?/runRemind">
 				<button type="submit">Run remind</button>
+			</form>
+			<form class="inline" method="POST" action="?/runBackup">
+				<button type="submit">Run backup</button>
 			</form>
 
 			{#if form?.error}
