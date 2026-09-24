@@ -32,8 +32,8 @@
 		align-items: flex-start;
 		gap: 12px;
 		max-width: 32rem;
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 22px 10px 18px 12px/12px 20px 10px 24px;
 		box-shadow: 4px 5px 0 var(--shadow);
 		padding: 28px 30px;

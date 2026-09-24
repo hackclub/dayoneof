@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
-	import { sprite, tape } from '$lib/asset_sheet';
+	import { numberTape, sprite } from '$lib/asset_sheet';
 
 	let { data } = $props();
 
@@ -48,15 +48,15 @@
 				<h1>{data.name}</h1>
 				<div class="stats">
 					<div class="stat">
-						<span class="stat-value taped" style={tape('stat', 0)}>{data.currentStreak}</span>
+						<span class="stat-value taped" style={numberTape('stat', 0)}>{data.currentStreak}</span>
 						<span class="stat-label">day streak</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value taped" style={tape('stat', 1)}>{formatViews(data.totalViews)}</span>
+						<span class="stat-value taped" style={numberTape('stat', 1)}>{formatViews(data.totalViews)}</span>
 						<span class="stat-label">views</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value taped" style={tape('stat', 2)}>{data.videosPosted}</span>
+						<span class="stat-value taped" style={numberTape('stat', 2)}>{data.videosPosted}</span>
 						<span class="stat-label">video{data.videosPosted === 1 ? '' : 's'}</span>
 					</div>
 				</div>
@@ -204,10 +204,10 @@
 		width: clamp(4.25rem, 6vw, 5.5rem);
 		height: clamp(4.25rem, 6vw, 5.5rem);
 		border-radius: 50%;
-		border: 2.5px solid var(--ink);
+		border: 3.5px solid transparent;
 		box-shadow: 4px 5px 0 var(--shadow);
 		object-fit: cover;
-		background: var(--bg-2);
+		background: var(--paper), var(--pencil);
 	}
 
 	.avatar-fallback {
@@ -243,8 +243,8 @@
 	.stat {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		background: var(--bg-2);
+		gap: 14px;
+		background: var(--grain), var(--bg-2);
 		border: 1.5px solid var(--line);
 		border-radius: 999px;
 		padding: 4px 12px 4px 4px;
@@ -254,7 +254,7 @@
 		font-weight: 800;
 		font-variant-numeric: tabular-nums;
 		font-size: 0.95rem;
-		color: var(--ink);
+		color: var(--accent-ink);
 		padding: 3px 12px;
 	}
 
@@ -279,8 +279,8 @@
 		display: flex;
 		gap: 3px;
 		padding: 3px;
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 10px;
 		box-shadow: 3px 3px 0 var(--shadow);
 	}
@@ -328,10 +328,10 @@
 		display: block;
 		width: 100%;
 		aspect-ratio: 9 / 16;
-		border: 2px solid var(--ink);
+		border: 3px solid transparent;
 		border-radius: 15px 8px 12px 9px/9px 13px 8px 15px;
 		overflow: hidden;
-		background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%);
+		background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%) padding-box, var(--pencil);
 		box-shadow: 4px 5px 0 var(--shadow);
 		text-decoration: none;
 		transition:
@@ -386,7 +386,7 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: 50%;
-		background: var(--bg-2);
+		background: var(--grain), var(--bg-2);
 		opacity: 0.9;
 		transition:
 			transform 0.12s ease,

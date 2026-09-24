@@ -191,8 +191,8 @@
 	}
 
 	section {
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
 		box-shadow: 4px 5px 0 var(--shadow);
 		padding: 20px 24px;
@@ -237,9 +237,9 @@
 	input[type='text'] {
 		font: inherit;
 		padding: 8px 12px;
-		border: 2px solid var(--ink);
+		border: 3px solid transparent;
 		border-radius: 10px;
-		background: var(--bg-2);
+		background: var(--paper), var(--pencil);
 		color: var(--ink);
 		max-width: 100%;
 	}
@@ -269,6 +269,7 @@
 		font-family: var(--font-hand);
 		padding: 8px;
 		border-bottom: 2px solid var(--ink);
+		border-image: url('/pencil.svg') 40 / 0 0 2px / 0 repeat;
 	}
 
 	td {

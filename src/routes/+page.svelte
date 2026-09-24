@@ -11,7 +11,7 @@
 	import heidisticker from '$lib/assets/heidisticker.webp';
 	import sticker2 from '$lib/assets/sticker2.webp';
 	import wordmark from '$lib/assets/wordmark.webp';
-	import { sprite, tape } from '$lib/asset_sheet';
+	import { holdingTape, numberTape, sprite, tape } from '$lib/asset_sheet';
 	import { formatViews } from '$lib/format';
 	import { page } from '$app/state';
 
@@ -210,6 +210,7 @@
 
 				<div class="reel-stack">
 					<button type="button" class="reel-card back-a" onclick={nextReel} aria-label="Play the next reel">
+						<span class="tape-strip holding" style={holdingTape('reel', 0)}></span>
 						<span class="screen">
 							<img src={reels[nextIndex].poster} alt="" />
 						</span>
@@ -220,11 +221,13 @@
 						onclick={prevReel}
 						aria-label="Play the previous reel"
 					>
+						<span class="tape-strip holding" style={holdingTape('reel', 1)}></span>
 						<span class="screen">
 							<img src={reels[prevIndex].poster} alt="" />
 						</span>
 					</button>
 					<div class="reel-card front">
+						<span class="tape-strip holding" style={holdingTape('reel', 2)}></span>
 						<div class="screen">
 							{#key reelIndex}
 								<!-- svelte-ignore a11y_media_has_caption -->
@@ -327,15 +330,16 @@
 
 					<div class="stats-wrap">
 						<div class="receipt">
+							<span class="tape-strip holding" style={holdingTape('card', 0)}></span>
 							<p class="receipt-title">So far…</p>
 							<div class="stat-line">
-								<span>total views</span><span class="num taped" style={tape('receipt', 0)}>{formatViews(data.totalViews)}</span>
+								<span>total views</span><span class="num taped" style={numberTape('receipt', 0)}>{formatViews(data.totalViews)}</span>
 							</div>
 							<div class="stat-line">
-								<span>most viewed reel</span><span class="num taped" style={tape('receipt', 1)}>{formatViews(data.mostViewedVideo)}</span>
+								<span>most viewed reel</span><span class="num taped" style={numberTape('receipt', 1)}>{formatViews(data.mostViewedVideo)}</span>
 							</div>
 							<div class="stat-line">
-								<span>participants</span><span class="num taped" style={tape('receipt', 2)}>{data.participants}</span>
+								<span>participants</span><span class="num taped" style={numberTape('receipt', 2)}>{data.participants}</span>
 							</div>
 						</div>
 					</div>
@@ -437,6 +441,7 @@
 				</div>
 
 				<aside class="receipt board">
+					<span class="tape-strip holding" style={holdingTape('card', 1)}></span>
 					<p class="receipt-title">Leaderboard</p>
 					<ol class="rows">
 						{#each data.leaderboard as person, i}
@@ -447,7 +452,7 @@
 								{:else}
 									<span class="row-name">{person.name}</span>
 								{/if}
-								<span class="num taped" style={tape('board', i)}>{person.streak}d</span>
+								<span class="num taped" style={numberTape('board', i)}>{person.streak}d</span>
 							</li>
 						{:else}
 							<li class="empty-row">Nobody's started a streak yet. Be the first!</li>
@@ -585,9 +590,9 @@
 		font: inherit;
 		font-size: 0.95em;
 		padding: 0.8em 1em;
-		border: 2px solid var(--ink);
+		border: 3px solid transparent;
 		border-radius: 10px;
-		background: var(--bg-2);
+		background: var(--paper), var(--pencil);
 		color: var(--ink);
 		flex: 1 1 220px;
 		min-width: 0;
@@ -615,8 +620,9 @@
 	}
 
 	.signup button {
+		border: 3px solid transparent;
 		padding: 10px 22px 16px;
-		background: var(--accent);
+		background: linear-gradient(var(--accent), var(--accent)) padding-box, var(--pencil);
 		color: var(--accent-ink);
 		box-shadow: inset 0 -5px 0 var(--ink);
 	}
@@ -696,8 +702,8 @@
 	.reel-card {
 		position: absolute;
 		display: block;
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 15px 8px 12px 9px/9px 13px 8px 15px;
 		padding: 0.6em 0.6em 2.1em;
 		box-shadow: 4px 5px 0 var(--shadow);
@@ -772,14 +778,14 @@
 		position: absolute;
 		top: 7px;
 		right: 7px;
-		background: var(--accent);
+		background: linear-gradient(var(--accent), var(--accent)) padding-box, var(--pencil);
 		color: var(--accent-ink);
 		font-size: 0.6rem;
 		font-weight: 800;
 		letter-spacing: 0.03em;
 		text-transform: uppercase;
 		padding: 3px 7px 3px 5px;
-		border: 2px solid var(--ink);
+		border: 3px solid transparent;
 		border-radius: 6px 3px 5px 3px/3px 6px 3px 5px;
 		display: flex;
 		align-items: center;
@@ -802,7 +808,7 @@
 		align-items: center;
 		gap: 6px;
 		padding: 4px 6px;
-		background: var(--bg-2);
+		background: var(--grain), var(--bg-2);
 		border: 1px solid var(--line);
 		border-radius: 6px;
 	}
@@ -913,8 +919,8 @@
 	.idea-box,
 	.prize-box,
 	.faq-item {
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 22px 10px 18px 12px/12px 20px 10px 24px;
 		box-shadow: 4px 5px 0 var(--shadow);
 	}
@@ -1125,8 +1131,8 @@
 		width: 128px;
 		height: 128px;
 		border-radius: 50%;
-		border: 2.5px solid var(--ink);
-		background: var(--bg-2);
+		border: 3.5px solid transparent;
+		background: var(--paper), var(--pencil);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1154,6 +1160,15 @@
 		background: var(--tape-bg);
 	}
 
+	.tape-strip.holding {
+		top: -11px;
+		z-index: 1;
+		transform: translateX(calc(-50% + var(--shift))) rotate(var(--tilt));
+		width: calc(64px + var(--grow) * 3);
+		height: calc(20px + var(--grow));
+		opacity: 0.82;
+	}
+
 	.prize-name {
 		font-family: var(--font-hand);
 		font-weight: 700;
@@ -1176,8 +1191,8 @@
 		flex: 0 0 260px;
 		max-width: 100%;
 		min-height: 260px;
-		background: var(--note);
-		border: 2px solid var(--ink);
+		background: var(--grain) padding-box, linear-gradient(var(--note), var(--note)) padding-box, var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 4px 10px 6px 12px/10px 4px 12px 6px;
 		padding: 24px 20px 18px;
 		transform: rotate(1.5deg);
@@ -1223,8 +1238,9 @@
 	}
 
 	.receipt {
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		position: relative;
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
 		padding: 20px 24px;
 		width: 100%;
@@ -1258,7 +1274,7 @@
 	.num {
 		font-variant-numeric: tabular-nums;
 		font-weight: 800;
-		color: var(--ink);
+		color: var(--accent-ink);
 		padding: 3px 12px;
 		font-size: 0.9rem;
 	}
@@ -1394,15 +1410,26 @@
 	}
 
 	footer {
+		position: relative;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 10px;
-		padding-top: 20px;
-		border-top: 2px solid var(--line);
+		margin: 40px calc(50% - 50vw) -60px;
+		padding: 28px max(20px, 50vw - 50%) 44px;
+		background: var(--grain), #e6cf92;
 		color: var(--ink-soft);
 		font-size: 0.85rem;
+	}
+
+	footer::before {
+		content: '';
+		position: absolute;
+		inset: -14px 0 auto;
+		height: 15px;
+		background: inherit;
+		mask: url('/torn_edge.svg') 0 0 / 240px 100% repeat-x;
 	}
 
 	footer strong {

@@ -14,11 +14,14 @@ const sprites = {
 	badge_pause: { x: 640, y: 0, w: 160, h: 160 },
 	badge_dollar: { x: 800, y: 0, w: 160, h: 160 },
 	pin: { x: 0, y: 160, w: 160, h: 160 },
-	tape_yellow_botanical: { x: 0, y: 320, w: 320, h: 80 },
+	tape_pink_swirls: { x: 320, y: 160, w: 320, h: 80 },
+	tape_purple_flowers: { x: 640, y: 160, w: 320, h: 80 },
+	tape_blue_waves: { x: 0, y: 320, w: 320, h: 80 },
 	tape_mint_waves: { x: 320, y: 320, w: 320, h: 80 },
 	tape_lavender_grid: { x: 640, y: 320, w: 320, h: 80 },
 	tape_sky_confetti: { x: 0, y: 400, w: 320, h: 80 },
 	tape_teal_swirls: { x: 320, y: 400, w: 320, h: 80 },
+	tape_red_plaid: { x: 640, y: 400, w: 320, h: 80 },
 } as const;
 
 type SpriteName = keyof typeof sprites;
@@ -35,14 +38,9 @@ function background(name: SpriteName) {
 	return `url(${assetSheet}) ${pos} / ${size} no-repeat`;
 }
 
-// Ordered so neighbours always change colour: warm, cool, green, purple, deep blue.
-const TAPES: SpriteName[] = [
-	'tape_yellow_botanical',
-	'tape_sky_confetti',
-	'tape_mint_waves',
-	'tape_lavender_grid',
-	'tape_teal_swirls'
-];
+// Ordered so neighbours always change colour: light blue, purple, deep blue, green.
+const TAPES: SpriteName[] = ['tape_sky_confetti', 'tape_lavender_grid', 'tape_teal_swirls', 'tape_mint_waves'];
+const HOLDING_TAPES: SpriteName[] = ['tape_blue_waves', 'tape_purple_flowers', 'tape_pink_swirls'];
 
 /** Seeded so server and client agree; the same seed always gets the same strip. */
 function random(seed: string) {
@@ -60,12 +58,27 @@ function random(seed: string) {
  * Vars for `.taped`: a strip behind the element, tilted and a little oversized. Lists pass `index`,
  * which walks the colours in order and alternates the tilt so neighbours never match.
  */
-export function tape(seed: string, index = 0) {
+export function tape(seed: string, index = 0, name?: SpriteName) {
 	const next = random(seed);
 	const start = Math.floor(next() * TAPES.length);
 	const side = (next() < 0.5 ? -1 : 1) * (index % 2 ? -1 : 1);
 	const nextItem = random(`${seed}${index}`);
 	const tilt = side * (1 + nextItem() * 3);
 	const grow = 1 + nextItem() * 4;
-	return `--tape-bg: ${background(TAPES[(start + index) % TAPES.length])}; --tilt: ${tilt.toFixed(1)}deg; --grow: ${grow.toFixed(1)}px`;
+	return `--tape-bg: ${background(name ?? TAPES[(start + index) % TAPES.length])}; --tilt: ${tilt.toFixed(1)}deg; --grow: ${grow.toFixed(1)}px`;
+}
+
+/** `tape`, but always the red strip that sits behind numbers. */
+export function numberTape(seed: string, index = 0) {
+	return tape(seed, index, 'tape_red_plaid');
+}
+
+/** Vars for `.tape-strip.holding`: a skewed, off-centre strip pinning a card up, in blue, purple or pink. */
+export function holdingTape(seed: string, index = 0) {
+	const start = Math.floor(random(seed)() * HOLDING_TAPES.length);
+	const next = random(`${seed}${index}`);
+	const tilt = (next() < 0.5 ? -1 : 1) * (4 + next() * 6);
+	const shift = (next() - 0.5) * 30;
+	const grow = 1 + next() * 4;
+	return `--tape-bg: ${background(HOLDING_TAPES[(start + index) % HOLDING_TAPES.length])}; --tilt: ${tilt.toFixed(1)}deg; --shift: ${shift.toFixed(1)}px; --grow: ${grow.toFixed(1)}px`;
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
 	import { page } from '$app/state';
-	import { sprite, tape } from '$lib/asset_sheet';
+	import { numberTape, sprite } from '$lib/asset_sheet';
 
 	let { data } = $props();
 
@@ -43,7 +43,7 @@
 	<header class="bar">
 		<a class="brand" href="/home">Day One Of</a>
 		<div class="bar-right">
-			<span class="posted taped" style={tape('videos posted')}>{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
+			<span class="posted taped" style={numberTape('videos posted')}>{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
 			{#if data.session}
 				{#if data.name}
 					<a class="who" href="/user/{data.session.slackId}">
@@ -196,7 +196,7 @@
 									<span class="row-sub">{person.freezes} freeze{person.freezes === 1 ? '' : 's'} left</span>
 								{/if}
 							</a>
-							<span class="row-value" class:taped={i === 0} style={i === 0 ? tape('streak') : undefined}
+							<span class="row-value" class:taped={i === 0} style={i === 0 ? numberTape('streak') : undefined}
 								>{person.streak}d</span
 							>
 						</li>
@@ -212,7 +212,7 @@
 							<a class="row-name" href="/user/{person.slackId}">
 								<span class="row-title">{person.name}</span>
 							</a>
-							<span class="row-value" class:taped={i === 0} style={i === 0 ? tape('people') : undefined}
+							<span class="row-value" class:taped={i === 0} style={i === 0 ? numberTape('people') : undefined}
 								>{formatViews(person.views)}</span
 							>
 						</li>
@@ -229,7 +229,7 @@
 								<span class="row-title">{video.title || video.platform}</span>
 								<span class="row-sub">{video.name}</span>
 							</a>
-							<span class="row-value" class:taped={i === 0} style={i === 0 ? tape('videos') : undefined}
+							<span class="row-value" class:taped={i === 0} style={i === 0 ? numberTape('videos') : undefined}
 								>{formatViews(video.views)}</span
 							>
 						</li>
@@ -299,7 +299,7 @@
 		font-weight: 700;
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
-		color: var(--ink);
+		color: var(--accent-ink);
 		padding: 6px 14px;
 		transform: rotate(-2deg);
 		white-space: nowrap;
@@ -328,9 +328,9 @@
 		width: clamp(1.9rem, 2.2vw, 2.4rem);
 		height: clamp(1.9rem, 2.2vw, 2.4rem);
 		border-radius: 50%;
-		border: 2px solid var(--ink);
+		border: 3px solid transparent;
 		object-fit: cover;
-		background: var(--bg-2);
+		background: var(--paper), var(--pencil);
 	}
 
 	.avatar-fallback {
@@ -377,8 +377,8 @@
 
 	.guide {
 		margin: clamp(1rem, 2.2vh, 1.75rem) var(--frame) 0;
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
 		box-shadow: 4px 5px 0 var(--shadow);
 		padding: 1rem 1.25rem;
@@ -398,8 +398,8 @@
 	.guide-alert {
 		margin-top: 0.75rem;
 		padding: 0.5rem 0.75rem;
-		background: var(--note);
-		border: 2px solid var(--ink);
+		background: var(--grain) padding-box, linear-gradient(var(--note), var(--note)) padding-box, var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 8px;
 		font-weight: 600;
 	}
@@ -495,8 +495,8 @@
 		display: flex;
 		gap: 3px;
 		padding: 3px;
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 10px;
 		box-shadow: 3px 3px 0 var(--shadow);
 	}
@@ -558,10 +558,10 @@
 		display: block;
 		width: 100%;
 		aspect-ratio: 9 / 16;
-		border: 2px solid var(--ink);
+		border: 3px solid transparent;
 		border-radius: 15px 8px 12px 9px/9px 13px 8px 15px;
 		overflow: hidden;
-		background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%);
+		background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%) padding-box, var(--pencil);
 		box-shadow: 4px 5px 0 var(--shadow);
 		text-decoration: none;
 		transition:
@@ -616,7 +616,7 @@
 		align-items: center;
 		justify-content: center;
 		border-radius: 50%;
-		background: var(--bg-2);
+		background: var(--grain), var(--bg-2);
 		opacity: 0.9;
 		transition:
 			transform 0.12s ease,
@@ -712,8 +712,8 @@
 		flex-direction: column;
 		min-height: 0;
 		gap: clamp(0.6rem, 1.4vh, 1.1rem);
-		background: var(--bg-2);
-		border: 2px solid var(--ink);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
 		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
 		box-shadow: 4px 5px 0 var(--shadow);
 		padding: clamp(0.75rem, 1.6vh, 1.25rem);
@@ -761,6 +761,7 @@
 
 	.row-1 .row-value {
 		padding: 3px 12px;
+		color: var(--accent-ink);
 	}
 
 	.rank {

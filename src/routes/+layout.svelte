@@ -68,6 +68,9 @@
 		--accent: #c4301f;
 		--accent-ink: #fff7e8;
 		--tape: #eec13e;
+		--grain: url('/paper.webp');
+		--paper: var(--grain) padding-box, linear-gradient(var(--bg-2), var(--bg-2)) padding-box;
+		--pencil: url('/pencil.svg') border-box;
 		--wash-1: 196, 108, 54;
 		--wash-2: 139, 158, 110;
 		--shadow: rgba(43, 34, 22, 0.24);
