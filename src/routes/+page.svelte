@@ -189,6 +189,8 @@
 					<p class="signup-note">
 						{#if !data.submissionsOpen}
 							<strong>The program launches at 200 sign-ups!</strong>
+							<span class="signup-count">{data.participants} / 200 signed up</span>
+							<br />
 						{/if}
 						Not on the Hack Club Slack yet?
 						<a href="https://slack.hackclub.com" target="_blank" rel="noopener">Join the Slack today</a>.
@@ -395,6 +397,11 @@
 					<p class="bonus">
 						<strong class="grand">Sticker bonus:</strong> give helpful feedback on other people's videos
 						and you can earn extra stickers on top of your streak prizes.
+					</p>
+					<p class="customs">
+						<strong>Note:</strong> All of the prizes will ship from Hack Club HQ. If you are outside of the
+						USA, you are responsible for any customs fees your country charges you to receive packages
+						from the USA.
 					</p>
 					<span class="sticker" style="--sticker: url({sticker2})">
 						<img src={sticker2} alt="Hack Club sticker" width="440" height="271" loading="lazy" decoding="async" />
@@ -647,6 +654,20 @@
 
 	.signup-note strong {
 		color: var(--ink);
+	}
+
+	.signup-count {
+		display: inline-block;
+		margin: 2px 0.3em 4px;
+		padding: 1px 10px 2px;
+		border: 2px solid transparent;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		background: linear-gradient(var(--accent), var(--accent)) padding-box, var(--pencil);
+		font-variant-numeric: tabular-nums;
+		font-weight: 800;
+		color: var(--accent-ink);
+		white-space: nowrap;
+		transform: rotate(-1deg);
 	}
 
 	.signup-note a,
@@ -952,6 +973,11 @@
 
 	.prize-box .bonus {
 		margin-top: 10px;
+	}
+
+	.prize-box .customs {
+		margin-top: 10px;
+		font-size: 0.9em;
 	}
 
 	.grand {

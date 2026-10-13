@@ -16,6 +16,8 @@ File names should follow the following guidelines:
 - `-` as a space separator for dates in file names
 - Dates in `YY-MM-DD` format
 
+Do not touch production data.
+
 Do not ever write to unified-socials-db yourself for tests etc., and do not touch any code related to actually writing to unified-socials-db without explicit instruction.
 
 Do not leave dev servers running after prompt completion.

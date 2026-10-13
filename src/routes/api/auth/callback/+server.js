@@ -24,14 +24,6 @@ export async function GET({ url, cookies }) {
 	const identity = await fetchMe(tokens.access_token);
 
 	const email = String(identity.primary_email ?? '').toLowerCase();
-	if (expectedEmail && email !== expectedEmail) {
-		// HCA reused a different signed-in account, so send them back to sign in as the one they typed.
-		if (!reauthed) {
-			redirect(302, `/api/auth/login?${new URLSearchParams({ email: expectedEmail, reauth: '1' })}`);
-		}
-		error(403, `You signed in as ${email}, not ${expectedEmail}. Head back and try again.`);
-	}
-
 	const slackId = identity.slack_id;
 	if (!slackId) {
 		error(
@@ -47,6 +39,17 @@ export async function GET({ url, cookies }) {
 		}),
 		airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, slackId))
 	]);
+
+	// The typed email may be their Slack email rather than their HCA one, so either is accepted.
+	const slackEmail = String(slackUser?.profile?.email ?? '').toLowerCase();
+	if (expectedEmail && email !== expectedEmail && slackEmail !== expectedEmail) {
+		// HCA reused a different signed-in account, so send them back to sign in as the one they typed.
+		if (!reauthed) {
+			redirect(302, `/api/auth/login?${new URLSearchParams({ email: expectedEmail, reauth: '1' })}`);
+		}
+		error(403, `You signed in as ${email}, not ${expectedEmail}. Head back and try again.`);
+	}
+
 	const tz = slackUser?.tz;
 	const slackName = slackUser?.profile?.display_name || slackUser?.profile?.real_name;
 	const avatar = slackUser?.profile?.image_192 || slackUser?.profile?.image_72;
