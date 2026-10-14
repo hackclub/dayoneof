@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { config, requireEnv, isAdmin, TABLES, F } from '$lib/server/config.js';
+import { config, requireEnv, isAdmin, TABLES, F, SUBMISSION_NOT_DELETED } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
@@ -8,6 +8,7 @@ import { messages, statsLine } from '$lib/server/messages.js';
 import { isYswsEligible } from '$lib/server/verification.js';
 import { syncParticipantTotalViews, settleParticipant } from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
+import { markMessageDeleted } from '$lib/server/deletion.js';
 import {
 	streakDay,
 	addDays,
@@ -26,12 +27,14 @@ import {
  *   user: string,
  *   text: string,
  *   ts: string,
- *   thread_ts?: string
+ *   thread_ts?: string,
+ *   deleted_ts?: string,
+ *   previous_message?: { user?: string, bot_id?: string }
  * }} SlackEvent
  */
 
 // Matched on platform + video id rather than url so a repost of the same video under a different
-// link shape still lands on the row already stored.
+// link shape still lands on the row already stored. Deleted rows don't block a repost.
 /**
  * @param {string} platform
  * @param {string} videoId
@@ -39,7 +42,7 @@ import {
 async function findSubmissionByVideo(platform, videoId) {
 	return airtable.find(
 		TABLES.submissions,
-		`AND(${airtable.eq(F.submissions.platform, platform)}, ${airtable.eq(F.submissions.videoId, videoId)})`
+		`AND(${airtable.eq(F.submissions.platform, platform)}, ${airtable.eq(F.submissions.videoId, videoId)}, ${SUBMISSION_NOT_DELETED})`
 	);
 }
 
@@ -151,16 +154,20 @@ async function handleSubmission(event) {
 
 	if (record.fields[F.participants.lastDay] >= today) {
 		await slack.addReaction(event.channel, event.ts, 'repeat');
-		await airtable.create(TABLES.submissions, {
+		const duplicate = await airtable.create(TABLES.submissions, {
 			...submissionFields,
 			[F.submissions.countedTowardStreak]: false
 		});
 		if (stats) await syncParticipantTotalViews(record);
-		await slack.postMessage(
+		const reply = await slack.postMessage(
 			event.channel,
 			messages.duplicatePost(event.user, streakBefore, freezesBefore, stats),
 			event.ts
 		);
+		// Kept so deleting this video can delete the reply too.
+		await airtable.update(TABLES.submissions, duplicate.id, {
+			[F.submissions.replyMessageTs]: reply.ts
+		});
 		return;
 	}
 
@@ -206,9 +213,13 @@ async function handleSubmission(event) {
 	if (milestone) {
 		const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
 		await slack.postMessage(announceChannelId, messages.milestoneAnnounce(event.user, milestone));
+		await slack
+			.postMessage(event.channel, messages.milestoneThread(event.user, milestone), event.ts)
+			.catch((err) => console.error('milestone thread reply failed', err));
 		await slack.dm(event.user, messages.milestoneDm(milestone));
 		await airtable.update(TABLES.participants, participant.id, {
-			[F.participants.lastMilestone]: milestone
+			[F.participants.lastMilestone]: milestone,
+			[F.participants.lastMilestoneAt]: new Date().toISOString()
 		});
 	}
 }
@@ -228,6 +239,19 @@ async function handleMemberJoined(event) {
 	await slack.postMessage(event.channel, 'dayoneof bot is here!');
 }
 
+// A deleted submission message is flagged for the admin page and its bot reply deleted.
+/** @param {SlackEvent} event */
+async function handleMessageDeleted(event) {
+	const previous = event.previous_message;
+	if (!previous?.user || previous.bot_id || !event.deleted_ts) return;
+
+	const submission = await airtable.find(
+		TABLES.submissions,
+		airtable.eq(F.submissions.messageTs, event.deleted_ts)
+	);
+	if (submission) await markMessageDeleted(submission);
+}
+
 /** @param {SlackEvent} [event] */
 async function handleEvent(event) {
 	if (!event) return;
@@ -236,6 +260,7 @@ async function handleEvent(event) {
 
 	if (event.type === 'message') {
 		if (event.channel !== config.submissionChannelId) return;
+		if (event.subtype === 'message_deleted') return handleMessageDeleted(event);
 		// Edits, joins, thread replies and the bot's own replies all arrive here as message events.
 		if (event.subtype || event.bot_id) return;
 		if (event.thread_ts && event.thread_ts !== event.ts) return;

@@ -3,7 +3,18 @@
 
 	function confirmNuke(event: SubmitEvent) {
 		const ok = confirm(
-			'This permanently deletes every row in every dev Airtable table (participants, days, submissions). There is no undo. Are you sure?'
+			'This permanently deletes every row in every dev Airtable table (participants, days, submissions, shipping). There is no undo. Are you sure?'
+		);
+		if (!ok) event.preventDefault();
+	}
+
+	function confirmShipped(event: SubmitEvent) {
+		if (!confirm('Mark every prize this person has unlocked as shipped?')) event.preventDefault();
+	}
+
+	function confirmRestore(event: SubmitEvent) {
+		const ok = confirm(
+			"Restores the video and resets this participant's streak, freezes, days and status to what they were just before the delete, overwriting anything since. Continue?"
 		);
 		if (!ok) event.preventDefault();
 	}
@@ -38,7 +49,8 @@
 				<li>
 					<strong>leaderboard</strong>: refreshes view counts from unified-socials for every
 					submission (editing each submission's original reply in place with the fresh numbers),
-					then posts the streak, views, and top-videos boards to the announce channel. The cron
+					then posts the streak, views, and top-videos boards to the announce channel, plus a message
+					mentioning anyone who unlocked a prize in the last 24 hours (skipped if nobody did). The cron
 					only posts at 9pm Eastern once submissions open; the button below always posts.
 				</li>
 				<li>
@@ -51,6 +63,11 @@
 				<li>
 					<strong>backup</strong>: hourly, writes every Airtable table (prod and dev) to one JSON
 					file on the server's backup volume, keeping the last 30 days.
+				</li>
+				<li>
+					<strong>sweep deleted messages</strong>: manual only. Checks every submission's Slack
+					message and, for any the participant deleted, logs it below and deletes the bot's reply.
+					Catches deletions from before the bot listened for them.
 				</li>
 			</ul>
 
@@ -68,6 +85,9 @@
 			</form>
 			<form class="inline" method="POST" action="?/runBackup">
 				<button type="submit">Run backup</button>
+			</form>
+			<form class="inline" method="POST" action="?/runSweepDeleted">
+				<button type="submit">Sweep deleted messages</button>
 			</form>
 
 			{#if form?.error}
@@ -144,10 +164,160 @@
 			</table>
 		</section>
 
+		<section>
+			<h2>Prize shipping</h2>
+			<p>
+				From the <a href="/form">/form</a> submissions. Unlocked prizes come from each participant's
+				<code>last_milestone</code>; shipped ones from <code>shipped_prizes</code>, which you can
+				also edit in Airtable.
+			</p>
+			{#if form?.shipped}
+				<p>Marked {form.shipped} as shipped.</p>
+			{/if}
+			{#if data.shippingMissing}
+				<p><strong>No shipping table yet.</strong> Run <code>npm run setup:airtable</code>.</p>
+			{:else if data.shipping.length === 0}
+				<p>No addresses submitted yet.</p>
+			{:else}
+				<p>
+					{data.shipping.filter((s) => s.toShip.length).length} of {data.shipping.length} need something
+					shipped.
+				</p>
+				<table>
+					<thead>
+						<tr>
+							<th>Name</th>
+							<th>Slack</th>
+							<th>Email</th>
+							<th>Address</th>
+							<th>Birthday</th>
+							<th>Unlocked</th>
+							<th>Shipped</th>
+							<th>To ship</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.shipping as s}
+							<tr>
+								<td>{s.name}</td>
+								<td>
+									<a href="/user/{s.slackId}">{s.slackUsername || s.slackId}</a>
+								</td>
+								<td>{s.email}</td>
+								<td>
+									{#each s.address as line}<div>{line}</div>{/each}
+								</td>
+								<td>{s.birthday}</td>
+								<td>{s.eligible.join(', ') || 'none'}</td>
+								<td>{s.shipped.join(', ') || 'none'}</td>
+								<td><strong>{s.toShip.join(', ')}</strong></td>
+								<td>
+									{#if s.toShip.length}
+										<form class="inline" method="POST" action="?/markShipped" onsubmit={confirmShipped}>
+											<input type="hidden" name="id" value={s.id} />
+											<button type="submit">Mark shipped</button>
+										</form>
+									{/if}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+			{#if data.awaitingAddress.length}
+				<h3>Unlocked a prize, no address yet</h3>
+				<ul>
+					{#each data.awaitingAddress as p}
+						<li><a href="/user/{p.slackId}">{p.name}</a>: {p.prizes.join(', ')}</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Deleted videos</h2>
+			<p>
+				Deleted by participants from their profile. Rows stay in Airtable with
+				<code>deleted_at</code> set. Restoring doesn't re-post the bot's deleted Slack reply.
+			</p>
+			{#if form?.restored}
+				<p>Restored {form.restored}.</p>
+			{/if}
+			{#if data.deletedVideos.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Deleted</th>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Day</th>
+							<th>Counted</th>
+							<th>Reposted</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.deletedVideos as v}
+							<tr>
+								<td>{new Date(v.at).toLocaleString()}</td>
+								<td><a href="/user/{v.slackId}">{v.slackId}</a></td>
+								<td><a href={v.url} target="_blank" rel="noopener">{v.url}</a></td>
+								<td>{v.day}</td>
+								<td>{v.counted ? 'yes' : 'no'}</td>
+								<td>{v.reposted ? 'yes' : 'no'}</td>
+								<td>
+									<form class="inline" method="POST" action="?/restoreVideo" onsubmit={confirmRestore}>
+										<input type="hidden" name="id" value={v.id} />
+										<button type="submit">Restore</button>
+									</form>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Deleted Slack messages</h2>
+			<p>Submissions whose original Slack message the participant deleted themselves.</p>
+			{#if data.deletedMessages.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Deleted</th>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Day</th>
+							<th>Counted</th>
+							<th>Video deleted</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.deletedMessages as m}
+							<tr>
+								<td>{new Date(m.at).toLocaleString()}</td>
+								<td><a href="/user/{m.slackId}">{m.slackId}</a></td>
+								<td><a href={m.url} target="_blank" rel="noopener">{m.url}</a></td>
+								<td>{m.day}</td>
+								<td>{m.counted ? 'yes' : 'no'}</td>
+								<td>{m.deleted ? 'yes' : 'no'}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
 		{#if data.canNuke}
 			<section>
 				<h2>Danger zone</h2>
-				<p>Deletes every row in every Airtable table. Dev only, and there is no undo.</p>
+				<p>Deletes every row in every dev Airtable table, shipping included. Dev only, and there is no undo.</p>
 				{#if form?.nuked}
 					<p>Deleted {form.deleted} rows.</p>
 				{/if}
@@ -170,6 +340,11 @@
 	h2 {
 		font-family: var(--font-hand);
 		font-weight: 700;
+	}
+
+	h3 {
+		font-family: var(--font-hand);
+		margin: 20px 0 8px;
 	}
 
 	h1 {

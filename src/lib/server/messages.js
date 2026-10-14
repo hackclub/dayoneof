@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { HELP_CHANNEL_ID } from '../help.js';
 
 const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
 
@@ -39,9 +40,9 @@ export const messages = {
 	// promise either way — reconcile is what actually settles the day.
 	/** @param {string} slackId */
 	submissionFailed(slackId) {
-		return `<@${slackId}> something went wrong on our end handling that post, so it might not have counted. Try posting it again in a minute, and if it still doesn't work, ask for help in #dayoneof on Slack!`;
+		return `<@${slackId}> something went wrong on our end handling that post, so it might not have counted. Try posting it again in a minute, and if it still doesn't work, ask for help in <#${HELP_CHANNEL_ID}>!`;
 	},
-	// An old video is the rule working, not a failure, so this doesn't point at #dayoneof.
+	// An old video is the rule working, not a failure, so this doesn't point at #dayoneof-help.
 	/**
 	 * @param {string} slackId
 	 * @param {number} maxAgeDays
@@ -58,11 +59,10 @@ export const messages = {
 	videoTooShort(slackId, minSeconds) {
 		return `<@${slackId}> that video is shorter than ${minSeconds} seconds, so it can't count toward your streak. Post a video that's at least ${minSeconds} seconds long!`;
 	},
-	// Points at #dayoneof because, unlike an old video, a link the poster believes is new can only
-	// be sorted out by a human looking at the earlier submission.
+	// Points at #dayoneof-help since only a human can check a repost the poster believes is new.
 	/** @param {string} slackId */
 	duplicateVideo(slackId) {
-		return `<@${slackId}> that video has already been posted, so it can't count toward your streak. Post a different video, and if you think this is a mistake, send a message in #dayoneof on Slack!`;
+		return `<@${slackId}> that video has already been posted, so it can't count toward your streak. Post a different video, and if you think this is a mistake, send a message in <#${HELP_CHANNEL_ID}>!`;
 	},
 	/**
 	 * @param {number} streak
@@ -91,8 +91,16 @@ export const messages = {
 	},
 	/** @param {number} milestone */
 	milestoneDm(milestone) {
-		const form = config.prizeFormUrl ? `the fulfillment form (${config.prizeFormUrl})` : 'the fulfillment form';
+		const form = `the fulfillment form (${config.prizeFormUrl || `${config.siteUrl}/form`})`;
 		return `You hit ${milestone} days! Fill out ${form} to claim your reward.`;
+	},
+	/**
+	 * @param {string} slackId
+	 * @param {number} milestone
+	 */
+	milestoneThread(slackId, milestone) {
+		const form = config.prizeFormUrl || `${config.siteUrl}/form`;
+		return `<@${slackId}> you just unlocked the ${milestone}-day prize! 🎉 Fill out ${form} so we know where to ship it.`;
 	},
 	/**
 	 * @param {string} slackId

@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { randomBytes } from 'node:crypto';
 import { config } from '$lib/server/config.js';
 import { authorizeUrl } from '$lib/server/hca.js';
+import { safeNextPath } from '$lib/server/session.js';
 
 export function GET({ cookies, url }) {
 	const state = randomBytes(16).toString('hex');
@@ -9,6 +10,10 @@ export function GET({ cookies, url }) {
 	const redirectUri = `${config.siteUrl}/api/auth/callback`;
 	const loginHint = url.searchParams.get('email')?.trim().toLowerCase() || undefined;
 	const forceLogin = url.searchParams.has('reauth');
+	const next = safeNextPath(url.searchParams.get('next'));
+	if (next) {
+		cookies.set('hca_next', next, { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: 600 });
+	}
 	if (forceLogin) {
 		cookies.set('hca_reauth', '1', { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: 600 });
 	} else {

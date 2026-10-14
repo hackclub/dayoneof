@@ -7,7 +7,8 @@ import {
 	freezesAfterPost,
 	settleMissedDays,
 	nextMilestone,
-	viewMilestoneCrossed
+	viewMilestoneCrossed,
+	afterDeletingPost
 } from '../src/lib/server/streak.js';
 
 test('streakDay rolls over at 3am local time', () => {
@@ -98,4 +99,30 @@ test('viewMilestoneCrossed returns the highest threshold newly passed', () => {
 	assert.equal(viewMilestoneCrossed(10_000, 50_000), null);
 	assert.equal(viewMilestoneCrossed(undefined, 600_000), 500_000);
 	assert.equal(viewMilestoneCrossed(900_000, 2_000_000), 1_000_000);
+});
+
+test('afterDeletingPost rolls back a post from today', () => {
+	const next = afterDeletingPost({ streak: 4, freezes: 2, daysCompleted: 4 }, '2026-01-10', '2026-01-10');
+	assert.equal(next.impact, 'today');
+	assert.equal(next.dayStatus, null);
+	assert.deepEqual(next.fields, {
+		current_streak: 3,
+		streak_freezes: 1,
+		days_completed: 3,
+		status: 'active',
+		last_day: '2026-01-09'
+	});
+
+	const capped = afterDeletingPost({ streak: 4, freezes: 3, daysCompleted: 4 }, '2026-01-10', '2026-01-10');
+	assert.equal(capped.fields.streak_freezes, 3);
+});
+
+test('afterDeletingPost spends a freeze for an earlier day, or breaks without one', () => {
+	const frozen = afterDeletingPost({ streak: 4, freezes: 1, daysCompleted: 5 }, '2026-01-08', '2026-01-10');
+	assert.equal(frozen.dayStatus, 'frozen');
+	assert.deepEqual(frozen.fields, { current_streak: 3, streak_freezes: 0, days_completed: 4 });
+
+	const broke = afterDeletingPost({ streak: 4, freezes: 0, daysCompleted: 5 }, '2026-01-08', '2026-01-10');
+	assert.equal(broke.dayStatus, 'missed');
+	assert.deepEqual(broke.fields, { current_streak: 0, days_completed: 4, status: 'broken' });
 });

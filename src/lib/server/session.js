@@ -77,3 +77,9 @@ export function getSession(cookies) {
 	const payload = verifySessionValue(value);
 	return payload ? { slackId: payload.slackId } : null;
 }
+
+// Only same-site paths, so the redirect after sign-in can't be pointed at another site.
+/** @param {string | null | undefined} next */
+export function safeNextPath(next) {
+	return next && /^\/[\w/-]*$/.test(next) && !next.startsWith('//') ? next : null;
+}

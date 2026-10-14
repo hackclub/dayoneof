@@ -96,6 +96,41 @@ export function addReaction(channel, timestamp, name) {
 	return call('reactions.add', { channel, timestamp, name });
 }
 
+/**
+ * @param {string} channel
+ * @param {string} timestamp
+ * @param {string} name
+ */
+export function removeReaction(channel, timestamp, name) {
+	return call('reactions.remove', { channel, timestamp, name });
+}
+
+// The bot token can only delete the bot's own messages.
+/**
+ * @param {string} channel
+ * @param {string} ts
+ */
+export function deleteMessage(channel, ts) {
+	return call('chat.delete', { channel, ts });
+}
+
+// A deleted message is either gone or, if its thread still has replies, left as a tombstone.
+/**
+ * @param {string} channel
+ * @param {string} ts
+ */
+export async function messageExists(channel, ts) {
+	const { messages } = await call('conversations.history', {
+		channel,
+		latest: ts,
+		oldest: ts,
+		inclusive: true,
+		limit: 1
+	});
+	const message = messages?.[0];
+	return !!message && message.ts === ts && message.subtype !== 'tombstone';
+}
+
 /** @param {string} userId */
 export async function usersInfo(userId) {
 	const { user } = await call('users.info', { user: userId });

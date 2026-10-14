@@ -15,6 +15,12 @@ export function tablesFor(appEnv) {
 	};
 }
 
+// Not in tablesFor, so only code that names this table reads addresses.
+/** @param {'dev' | 'prod'} appEnv */
+export function shippingTableFor(appEnv) {
+	return appEnv === 'prod' ? 'shipping' : 'shipping_dev';
+}
+
 export const F = {
 	participants: {
 		slackId: 'slack_id',
@@ -29,6 +35,7 @@ export const F = {
 		verificationStatus: 'verification_status',
 		yswsEligible: 'ysws_eligible',
 		lastMilestone: 'last_milestone',
+		lastMilestoneAt: 'last_milestone_at',
 		remindersOff: 'reminders_off',
 		lastReminderDay: 'last_reminder_day',
 		lastDay: 'last_day',
@@ -37,7 +44,8 @@ export const F = {
 	days: {
 		slackId: 'slack_id',
 		date: 'date',
-		status: 'status'
+		status: 'status',
+		deletedAt: 'deleted_at'
 	},
 	submissions: {
 		submissionId: 'submission_id',
@@ -58,7 +66,26 @@ export const F = {
 		replyMessageTs: 'reply_message_ts',
 		replyStats: 'reply_stats',
 		streakAtPost: 'streak_at_post',
-		freezesAtPost: 'freezes_at_post'
+		freezesAtPost: 'freezes_at_post',
+		deletedAt: 'deleted_at',
+		preDeleteState: 'pre_delete_state',
+		messageDeletedAt: 'message_deleted_at'
+	},
+	shipping: {
+		slackId: 'slack_id',
+		firstName: 'first_name',
+		lastName: 'last_name',
+		email: 'email',
+		slackUsername: 'slack_username',
+		addressLine1: 'address_line_1',
+		addressLine2: 'address_line_2',
+		city: 'city',
+		state: 'state',
+		zip: 'zip',
+		country: 'country',
+		birthday: 'birthday',
+		shippedPrizes: 'shipped_prizes',
+		submittedAt: 'submitted_at'
 	}
 };
 
@@ -67,3 +94,6 @@ export const PARTICIPANT_STATUSES = ['notStarted', 'active', 'frozen', 'broken']
 
 // Excludes blank rows (e.g. added by hand in Airtable) from any full-table participant listing.
 export const PARTICIPANT_HAS_SLACK_ID = `NOT({${F.participants.slackId}} = "")`;
+
+// Deleted submissions stay in the table for review but are hidden everywhere else.
+export const SUBMISSION_NOT_DELETED = `{${F.submissions.deletedAt}} = BLANK()`;

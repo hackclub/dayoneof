@@ -9,7 +9,8 @@
 // Every row it writes is tagged by a `USEED..` slack id, and a run clears those first, so it is
 // idempotent and never touches a participant who signed in for real. Refuses to run against prod.
 
-import { tablesFor, F } from '../src/lib/server/schema.js';
+import { tablesFor, shippingTableFor, F } from '../src/lib/server/schema.js';
+import { MILESTONES, prizesUnlocked } from '../src/lib/server/streak.js';
 
 const API = 'https://api.airtable.com/v0';
 const PEOPLE_COUNT = 15;
@@ -17,6 +18,17 @@ const SEED_PREFIX = 'USEED';
 const MAX_POSTS_PER_PERSON = 9;
 // Shortform only: a reel, a Short or a TikTok, never a 40-minute upload that happens to be tracked.
 const MAX_DURATION_SECONDS = 180;
+
+// Made-up but well-formed, so the /form and admin shipping views have something to show.
+const ADDRESSES = [
+	{ line1: '15 Falls Rd', city: 'Shelburne', state: 'VT', zip: '05482', country: 'US' },
+	{ line1: '742 Evergreen Ter', city: 'Springfield', state: 'IL', zip: '62704', country: 'US' },
+	{ line1: '221B Baker St', city: 'London', state: '', zip: 'NW1 6XE', country: 'GB' },
+	{ line1: 'Unter den Linden 77', city: 'Berlin', state: '', zip: '10117', country: 'DE' },
+	{ line1: '12 MG Road', city: 'Bengaluru', state: 'Karnataka', zip: '560001', country: 'IN' },
+	{ line1: '100 Queen St W', city: 'Toronto', state: 'ON', zip: 'M5H 2N2', country: 'CA' },
+	{ line1: '1 Macquarie St', city: 'Sydney', state: 'NSW', zip: '2000', country: 'AU' }
+];
 
 const TIMEZONES = [
 	'America/New_York',
@@ -171,13 +183,14 @@ async function main() {
 	if (appEnv === 'prod') throw new Error('seed_dev.js only ever writes to the dev tables');
 
 	const TABLES = tablesFor(appEnv);
+	const SHIPPING = shippingTableFor(appEnv);
 	const token = envVar('AIRTABLE_TOKEN', appEnv);
 	const baseId = envVar('AIRTABLE_BASE_ID', appEnv);
 
 	// Wipe whatever a previous run left behind so re-running doesn't stack duplicates. Only rows
 	// carrying a seeded slack id are touched — a real signed-in participant is left alone.
 	const seeded = `LEFT({${F.participants.slackId}}, ${SEED_PREFIX.length}) = "${SEED_PREFIX}"`;
-	for (const table of [TABLES.submissions, TABLES.days, TABLES.participants]) {
+	for (const table of [TABLES.submissions, TABLES.days, TABLES.participants, SHIPPING]) {
 		const existing = await list(token, baseId, table, seeded);
 		if (existing.length) {
 			await remove(token, baseId, table, existing.map((r) => r.id));
@@ -198,6 +211,7 @@ async function main() {
 	const participants = [];
 	const submissions = [];
 	const days = [];
+	const shipping = [];
 	let counter = 0;
 
 	authors.forEach((author, i) => {
@@ -249,6 +263,29 @@ async function main() {
 			});
 		}
 
+		const lastMilestone = MILESTONES.findLast((m) => streak >= m) ?? null;
+		const prizes = prizesUnlocked(lastMilestone);
+		// Every other person with a prize has an address in, and some of those have had one shipped.
+		if (prizes.length && i % 2 === 0) {
+			const address = ADDRESSES[i % ADDRESSES.length];
+			const [firstName, ...rest] = author.name.split(/\s+/);
+			shipping.push({
+				[F.shipping.slackId]: slackId,
+				[F.shipping.firstName]: firstName,
+				[F.shipping.lastName]: rest.join(' ') || 'Seed',
+				[F.shipping.email]: `${slackId.toLowerCase()}@example.com`,
+				[F.shipping.slackUsername]: author.name,
+				[F.shipping.addressLine1]: address.line1,
+				[F.shipping.city]: address.city,
+				[F.shipping.state]: address.state,
+				[F.shipping.zip]: address.zip,
+				[F.shipping.country]: address.country,
+				[F.shipping.birthday]: `${2008 + (i % 5)}-0${1 + (i % 9)}-1${i % 10}`,
+				[F.shipping.shippedPrizes]: i % 4 === 0 ? prizes.slice(0, 1) : [],
+				[F.shipping.submittedAt]: new Date().toISOString()
+			});
+		}
+
 		participants.push({
 			[F.participants.slackId]: slackId,
 			[F.participants.name]: author.name,
@@ -261,16 +298,19 @@ async function main() {
 			[F.participants.lastDay]: dates[0],
 			[F.participants.verificationStatus]: 'verified',
 			[F.participants.yswsEligible]: true,
-			[F.participants.totalViews]: views
+			[F.participants.totalViews]: views,
+			...(lastMilestone ? { [F.participants.lastMilestone]: lastMilestone } : {})
 		});
 	});
 
 	await create(token, baseId, TABLES.participants, participants);
 	await create(token, baseId, TABLES.days, days);
 	await create(token, baseId, TABLES.submissions, submissions);
+	await create(token, baseId, SHIPPING, shipping);
 
 	console.log(
-		`seeded ${participants.length} participants and ${submissions.length} submissions into ${baseId}`
+		`seeded ${participants.length} participants, ${submissions.length} submissions and ` +
+			`${shipping.length} shipping addresses into ${baseId}`
 	);
 	console.log('done');
 }

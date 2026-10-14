@@ -14,12 +14,13 @@ export async function load({ locals, cookies }) {
 	}
 	if (hasSignedInBefore(cookies)) redirect(302, '/api/auth/login');
 
-	const [submissions, participants] = await Promise.all([
+	const [allSubmissions, participants] = await Promise.all([
 		airtable.listCached(TABLES.submissions, {
 			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
 		}),
 		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID })
 	]);
+	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
 
 	const views = submissions.map((s) => s.fields[F.submissions.views] ?? 0);
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { HELP_URL } from '$lib/help';
 	import reeltop from '$lib/assets/reeltop.mp4';
 	import reeltopThumb from '$lib/assets/reeltop_thumb.jpg';
 	import reelmid from '$lib/assets/reelmid.mp4';
@@ -363,10 +364,12 @@
 							<li>Keep your streak alive to unlock prizes</li>
 							<li>
 								<span>
-									Chat and ask questions in
+									Chat in
 									<a href="https://hackclub.enterprise.slack.com/archives/C0C2U1ANNP7" target="_blank" rel="noopener"
 										>#dayoneof</a
 									>
+									and ask questions in
+									<a href={HELP_URL} target="_blank" rel="noopener">#dayoneof-help</a>
 								</span>
 							</li>
 						</ol>
@@ -432,10 +435,8 @@
 												target="_blank"
 												rel="noopener">@darsh</a
 											>, or drop a note in
-											<a
-												href="https://hackclub.enterprise.slack.com/archives/C0C2U1ANNP7"
-												target="_blank"
-												rel="noopener">#dayoneof</a
+											<a href={HELP_URL} target="_blank" rel="noopener"
+												>#dayoneof-help</a
 											> on the Hack Club Slack.
 										</p>
 									{:else}

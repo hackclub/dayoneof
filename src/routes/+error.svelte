@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { HELP_URL } from '$lib/help';
 </script>
 
 <svelte:head>
@@ -11,10 +12,11 @@
 	<main class="card">
 		<h1>{page.status === 404 ? "That page doesn't exist" : 'Something went wrong'}</h1>
 		<p>{page.error?.message}</p>
-		{#if page.status >= 500}
-			<p>Ask for help in <strong>#dayoneof</strong> on Slack!</p>
-		{/if}
-		<a href="/">Back to the home page</a>
+		<p>
+			Ask for help in
+			<a href={HELP_URL} target="_blank" rel="noopener"><strong>#dayoneof-help</strong></a> on Slack!
+		</p>
+		<a class="back" href="/">Back to the home page</a>
 	</main>
 </div>
 
@@ -57,7 +59,7 @@
 		color: var(--ink);
 	}
 
-	a {
+	.back {
 		margin-top: 8px;
 		font-weight: 700;
 		color: var(--bg);
@@ -75,11 +77,11 @@
 			filter 0.15s ease;
 	}
 
-	a:hover {
+	.back:hover {
 		filter: brightness(1.08);
 	}
 
-	a:active {
+	.back:active {
 		padding: 10px 18px;
 		box-shadow: none;
 		transform: none;

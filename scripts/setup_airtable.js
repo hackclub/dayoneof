@@ -1,4 +1,4 @@
-// Creates (or tops up) the three tables this app needs in an Airtable base, so standing up a second
+// Creates (or tops up) the tables this app needs in an Airtable base, so standing up a second
 // base for testing is one command instead of a couple dozen clicks. Safe to re-run: existing
 // tables and fields are left alone, only missing ones are added.
 //
@@ -7,7 +7,14 @@
 //
 // Needs a token with schema.bases:write on top of the data scopes the app itself uses.
 
-import { tablesFor, F, DAY_STATUSES, PARTICIPANT_STATUSES } from '../src/lib/server/schema.js';
+import {
+	tablesFor,
+	shippingTableFor,
+	F,
+	DAY_STATUSES,
+	PARTICIPANT_STATUSES
+} from '../src/lib/server/schema.js';
+import { PRIZE_NAMES } from '../src/lib/server/streak.js';
 
 const META = 'https://api.airtable.com/v0/meta/bases';
 
@@ -21,6 +28,11 @@ const when = {
 /** @param {string[]} names */
 const select = (names) => ({
 	type: 'singleSelect',
+	options: { choices: names.map((name) => ({ name })) }
+});
+/** @param {string[]} names */
+const multiSelect = (names) => ({
+	type: 'multipleSelects',
 	options: { choices: names.map((name) => ({ name })) }
 });
 
@@ -44,6 +56,7 @@ function schemaFor(appEnv) {
 				{ name: F.participants.streakFreezes, ...int },
 				{ name: F.participants.currentStreak, ...int },
 				{ name: F.participants.lastMilestone, ...int },
+				{ name: F.participants.lastMilestoneAt, ...when },
 				{ name: F.participants.remindersOff, ...check },
 				{ name: F.participants.lastReminderDay, ...text },
 				{ name: F.participants.lastDay, ...text },
@@ -55,7 +68,8 @@ function schemaFor(appEnv) {
 			fields: [
 				{ name: F.days.slackId, ...text },
 				{ name: F.days.date, ...text },
-				{ name: F.days.status, ...select(DAY_STATUSES) }
+				{ name: F.days.status, ...select(DAY_STATUSES) },
+				{ name: F.days.deletedAt, ...when }
 			]
 		},
 		{
@@ -79,7 +93,29 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.replyMessageTs, ...text },
 				{ name: F.submissions.replyStats, ...text },
 				{ name: F.submissions.streakAtPost, ...int },
-				{ name: F.submissions.freezesAtPost, ...int }
+				{ name: F.submissions.freezesAtPost, ...int },
+				{ name: F.submissions.deletedAt, ...when },
+				{ name: F.submissions.preDeleteState, type: 'multilineText' },
+				{ name: F.submissions.messageDeletedAt, ...when }
+			]
+		},
+		{
+			name: shippingTableFor(appEnv),
+			fields: [
+				{ name: F.shipping.slackId, ...text },
+				{ name: F.shipping.firstName, ...text },
+				{ name: F.shipping.lastName, ...text },
+				{ name: F.shipping.email, type: 'email' },
+				{ name: F.shipping.slackUsername, ...text },
+				{ name: F.shipping.addressLine1, ...text },
+				{ name: F.shipping.addressLine2, ...text },
+				{ name: F.shipping.city, ...text },
+				{ name: F.shipping.state, ...text },
+				{ name: F.shipping.zip, ...text },
+				{ name: F.shipping.country, ...text },
+				{ name: F.shipping.birthday, type: 'date', options: { dateFormat: { name: 'iso' } } },
+				{ name: F.shipping.shippedPrizes, ...multiSelect(PRIZE_NAMES) },
+				{ name: F.shipping.submittedAt, ...when }
 			]
 		}
 	];

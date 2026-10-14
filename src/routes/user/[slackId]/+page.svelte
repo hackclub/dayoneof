@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
 	import { numberTape, sprite } from '$lib/asset_sheet';
+	import { HELP_URL } from '$lib/help';
 
-	let { data } = $props();
+	let { data, form } = $props();
 
 	type Sort = 'date' | 'views';
 
@@ -18,6 +19,34 @@
 	const videos = $derived(
 		sort === 'views' ? [...data.videos].sort((a, b) => b.views - a.views) : data.videos
 	);
+
+	type Video = (typeof data.videos)[number];
+
+	let dialog = $state<HTMLDialogElement>();
+	let pending = $state<Video | null>(null);
+	let typed = $state('');
+
+	function askDelete(video: Video) {
+		pending = video;
+		typed = '';
+		dialog?.showModal();
+	}
+
+	const impactText: Record<string, string> = $derived({
+		today: `This was today's video, so your streak goes back to ${Math.max(0, data.currentStreak - 1)}. You can still post another before 3am to keep it going.`,
+		freeze:
+			'This video kept your streak alive on a past day. Deleting it spends one of your streak freezes on that day and your streak drops by one.',
+		break:
+			'This video kept your streak alive on a past day and you have no freezes left. Deleting it BREAKS YOUR STREAK and resets it to 0.',
+		none: "This video didn't count toward your streak, so your streak won't change."
+	});
+
+	const deletedText: Record<string, string> = {
+		today: 'Video deleted. Post another before 3am to keep your streak going.',
+		freeze: 'Video deleted. A streak freeze covered that day.',
+		break: 'Video deleted. Your streak was reset.',
+		none: 'Video deleted.'
+	};
 </script>
 
 <svelte:head>
@@ -80,6 +109,14 @@
 			</div>
 		</div>
 
+		{#if form?.deleted}
+			<p class="notice">{deletedText[form.deleted]}</p>
+		{:else if form?.deleteError}
+			<p class="notice">
+				{form.deleteError} Stuck? Ask in <a href={HELP_URL} target="_blank" rel="noopener">#dayoneof-help</a>.
+			</p>
+		{/if}
+
 		{#if videos.length === 0}
 			<p class="empty">No videos yet.</p>
 		{:else}
@@ -109,12 +146,41 @@
 								{#if !video.countedTowardStreak}· didn't count{/if}
 							</span>
 						</div>
+						{#if isMe && video.id}
+							<button type="button" class="delete-btn" onclick={() => askDelete(video)}>Delete</button>
+						{/if}
 					</article>
 				{/each}
 			</div>
 		{/if}
 	</div>
 </div>
+
+{#if isMe}
+	<dialog class="confirm day-one" bind:this={dialog} onclose={() => (pending = null)}>
+		{#if pending}
+			<form method="POST" action="?/deleteVideo">
+				<h2>⚠️ Delete this video?</h2>
+				<p class="warn">{impactText[pending.deleteImpact]}</p>
+				<p>
+					It disappears from the site, its views stop counting, and the bot's reply in Slack is
+					deleted. You can't undo this yourself.
+				</p>
+				<input type="hidden" name="id" value={pending.id} />
+				<label>
+					Type <strong>DELETE</strong> to confirm
+					<input name="confirm" autocomplete="off" bind:value={typed} />
+				</label>
+				<div class="confirm-actions">
+					<button type="button" class="cancel-btn" onclick={() => dialog?.close()}>Keep it</button>
+					<button type="submit" class="danger-btn" disabled={typed.trim().toUpperCase() !== 'DELETE'}>
+						Delete video{pending.deleteImpact === 'break' ? ' and reset my streak' : ''}
+					</button>
+				</div>
+			</form>
+		{/if}
+	</dialog>
+{/if}
 
 <style>
 	.dash {
@@ -463,6 +529,109 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.delete-btn {
+		align-self: flex-start;
+		font: inherit;
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: var(--accent);
+		background: none;
+		border: none;
+		padding: 0;
+		cursor: var(--cursor-pointer);
+		text-decoration: underline;
+	}
+
+	.notice {
+		margin: 0;
+		font-weight: 700;
+	}
+
+	.confirm {
+		min-height: 0;
+		max-width: min(30rem, calc(100vw - 32px));
+		border: 3px solid var(--accent);
+		border-radius: 14px;
+		padding: 1.5rem;
+		background: var(--bg-2);
+		box-shadow: 6px 7px 0 var(--shadow);
+	}
+
+	.confirm::backdrop {
+		background: rgb(43 34 22 / 0.55);
+	}
+
+	.confirm form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.9rem;
+	}
+
+	.confirm h2 {
+		color: var(--accent);
+		font-size: 1.6rem;
+	}
+
+	.confirm p {
+		margin: 0;
+	}
+
+	.warn {
+		font-weight: 800;
+		color: var(--accent);
+		background: rgb(196 48 31 / 0.1);
+		border-left: 4px solid var(--accent);
+		padding: 0.6rem 0.8rem;
+	}
+
+	.confirm label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.confirm input {
+		font: inherit;
+		padding: 0.45rem 0.6rem;
+		border: 2px solid var(--line);
+		border-radius: 8px;
+		background: var(--bg-2);
+		cursor: var(--cursor-text);
+	}
+
+	.confirm-actions {
+		display: flex;
+		justify-content: flex-end;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+	}
+
+	.cancel-btn,
+	.danger-btn {
+		font: inherit;
+		font-weight: 700;
+		border-radius: 10px;
+		padding: 0.5rem 1rem;
+		cursor: var(--cursor-pointer);
+	}
+
+	.cancel-btn {
+		color: var(--ink);
+		background: none;
+		border: 2px solid var(--ink);
+	}
+
+	.danger-btn {
+		color: var(--accent-ink);
+		background: var(--accent);
+		border: 2px solid var(--accent);
+	}
+
+	.danger-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 
 	.empty {

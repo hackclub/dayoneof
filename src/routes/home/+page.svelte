@@ -2,6 +2,7 @@
 	import { formatDate, formatViews, initials } from '$lib/format';
 	import { page } from '$app/state';
 	import { numberTape, sprite } from '$lib/asset_sheet';
+	import { HELP_URL } from '$lib/help';
 
 	let { data } = $props();
 
@@ -83,10 +84,11 @@
 						Post your links in
 						<a href="https://hackclub.enterprise.slack.com/archives/C0C2UM7UCUB" target="_blank" rel="noopener"
 							>#dayoneof-submissions</a
-						>. For chatting, questions, leaderboards, and announcements, use
+						>. For chatting, leaderboards, and announcements, use
 						<a href="https://hackclub.enterprise.slack.com/archives/C0C2U1ANNP7" target="_blank" rel="noopener"
 							>#dayoneof</a
-						>!
+						>, and ask questions in
+						<a href={HELP_URL} target="_blank" rel="noopener">#dayoneof-help</a>!
 					</p>
 				</li>
 				<li>

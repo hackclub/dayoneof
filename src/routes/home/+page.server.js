@@ -22,12 +22,13 @@ function cap(value, max) {
 }
 
 export async function load({ locals }) {
-	const [participants, submissions] = await Promise.all([
+	const [participants, allSubmissions] = await Promise.all([
 		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
 		airtable.listCached(TABLES.submissions, {
 			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
 		})
 	]);
+	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
 
 	const nameBySlackId = new Map(
 		participants.map((p) => [

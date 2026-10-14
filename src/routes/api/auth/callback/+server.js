@@ -3,7 +3,7 @@ import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
 import { exchangeCode, fetchMe } from '$lib/server/hca.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-import { setSessionCookie } from '$lib/server/session.js';
+import { setSessionCookie, safeNextPath } from '$lib/server/session.js';
 
 export async function GET({ url, cookies }) {
 	const code = url.searchParams.get('code');
@@ -11,9 +11,11 @@ export async function GET({ url, cookies }) {
 	const expectedState = cookies.get('hca_state');
 	const expectedEmail = cookies.get('hca_email');
 	const reauthed = cookies.get('hca_reauth') === '1';
+	const next = cookies.get('hca_next');
 	cookies.delete('hca_state', { path: '/' });
 	cookies.delete('hca_email', { path: '/' });
 	cookies.delete('hca_reauth', { path: '/' });
+	cookies.delete('hca_next', { path: '/' });
 
 	if (!code || !state || state !== expectedState) {
 		error(400, 'That sign-in link expired or was already used. Head back and sign in again.');
@@ -70,8 +72,10 @@ export async function GET({ url, cookies }) {
 	const submissionChannelId = requireEnv('SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId);
 	slack
 		.inviteToChannel(submissionChannelId, [slackId])
-		.catch((err) => console.error('channel invite failed', err));
+		.catch((err) => {
+			if (!String(err.message).includes('already_in_channel')) console.error('channel invite failed', err);
+		});
 
 	setSessionCookie(cookies, slackId);
-	redirect(302, '/home');
+	redirect(302, safeNextPath(next) ?? '/home');
 }
