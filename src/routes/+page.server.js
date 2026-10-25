@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { config, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import { count } from '$lib/format';
 import { hasSignedInBefore, rememberSignIn } from '$lib/server/session.js';
@@ -37,7 +37,6 @@ export async function load({ locals, cookies }) {
 		totalViews: views.reduce((sum, v) => sum + v, 0),
 		mostViewedVideo: views.reduce((max, v) => Math.max(max, v), 0),
 		participants: participants.length,
-		submissionsOpen: config.submissionsOpen,
 		leaderboard
 	};
 }

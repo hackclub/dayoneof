@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractLink } from '../src/lib/server/links.js';
+import { extractLink, extractLinks } from '../src/lib/server/links.js';
 
 test('unwraps a Slack-wrapped link with no label', async () => {
 	const link = await extractLink('<https://www.youtube.com/watch?v=g4H16UR-kaE>');
@@ -54,4 +54,15 @@ test('normalizes a TikTok link, keeping the username', async () => {
 test('returns null for text with no recognized link', async () => {
 	assert.equal(await extractLink('just chatting, no link here'), null);
 	assert.equal(await extractLink(undefined), null);
+});
+
+test('extracts every distinct video in a message, in order', async () => {
+	const links = await extractLinks(
+		'<https://youtu.be/g4H16UR-kaE> and <https://www.instagram.com/reel/DdPz2m6S41Q/> again https://www.youtube.com/shorts/g4H16UR-kaE'
+	);
+	assert.deepEqual(
+		links.map((l) => l.platform),
+		['youtube', 'instagram']
+	);
+	assert.deepEqual(await extractLinks('no links'), []);
 });

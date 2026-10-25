@@ -4,7 +4,7 @@ import { env as publicEnv } from '$env/dynamic/public';
 
 import { tablesFor, shippingTableFor } from './schema.js';
 
-export { F, PARTICIPANT_HAS_SLACK_ID, SUBMISSION_NOT_DELETED } from './schema.js';
+export { F, PARTICIPANT_HAS_SLACK_ID, SUBMISSION_NOT_DELETED, SUBMISSION_IS_PRIMARY } from './schema.js';
 
 /** @type {'dev' | 'prod'} */
 export const appEnv = env.APP_ENV?.trim().toLowerCase() === 'prod' ? 'prod' : 'dev';

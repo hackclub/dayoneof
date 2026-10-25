@@ -69,14 +69,24 @@ function matchLink(candidate) {
 	return null;
 }
 
+// Every distinct video linked in the text, in the order it was linked.
 /** @param {string | undefined} text */
-export async function extractLink(text) {
-	if (!text) return null;
+export async function extractLinks(text) {
+	if (!text) return [];
 	const unwrapped = text.replace(SLACK_LINK, '$1');
 	const candidates = unwrapped.match(URL_REGEX) ?? [];
+	/** @type {Map<string, { url: string, platform: string, videoId: string }>} */
+	const links = new Map();
 	for (const candidate of candidates) {
 		const link = matchLink(SHORT_LINK.test(candidate) ? await resolveShortLink(candidate) : candidate);
-		if (link) return link;
+		if (link && !links.has(`${link.platform}:${link.videoId}`)) {
+			links.set(`${link.platform}:${link.videoId}`, link);
+		}
 	}
-	return null;
+	return [...links.values()];
+}
+
+/** @param {string | undefined} text */
+export async function extractLink(text) {
+	return (await extractLinks(text))[0] ?? null;
 }

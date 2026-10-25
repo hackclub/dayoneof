@@ -8,6 +8,10 @@ import { isYswsEligible } from '$lib/server/verification.js';
 import { restoreSubmission, sweepDeletedMessages } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
 import { prizesUnlocked } from '$lib/server/streak.js';
+import { groupByVideo } from '$lib/server/videos.js';
+
+const LOW_LIKES = 5;
+const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /** @param {import('./$types').RequestEvent['locals']} locals */
 function requireAdmin(locals) {
@@ -46,12 +50,16 @@ export async function load({ locals }) {
 		})
 	]);
 	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
+	const primaries = submissions.filter((s) => !s.fields[F.submissions.primarySubmission]);
 	/** @param {import('$lib/server/airtable.js').AirtableRecord} s */
 	const videoKey = (s) => `${s.fields[F.submissions.platform]}:${s.fields[F.submissions.videoId]}`;
 	const liveVideos = new Set(submissions.map(videoKey));
-	/** @param {string} field */
-	const flagged = (field) =>
-		allSubmissions
+	/**
+	 * @param {string} field
+	 * @param {import('$lib/server/airtable.js').AirtableRecord[]} [from]
+	 */
+	const flagged = (field, from = allSubmissions) =>
+		from
 			.filter((s) => s.fields[field])
 			.sort((a, b) => (a.fields[field] < b.fields[field] ? 1 : -1))
 			.map((s) => ({
@@ -66,7 +74,7 @@ export async function load({ locals }) {
 			}));
 
 	const videoCountBySlackId = new Map();
-	for (const s of submissions) {
+	for (const s of primaries) {
 		const slackId = s.fields[F.submissions.slackId];
 		videoCountBySlackId.set(slackId, (videoCountBySlackId.get(slackId) ?? 0) + 1);
 	}
@@ -112,9 +120,61 @@ export async function load({ locals }) {
 				prizes: prizesUnlocked(p.fields[F.participants.lastMilestone])
 			}))
 			.filter((p) => p.prizes.length && !submittedSlackIds.has(p.slackId)),
-		videosPosted: submissions.length,
+		videosPosted: primaries.length,
 		videosTracked: submissions.filter((s) => s.fields[F.submissions.unifiedId]).length,
-		deletedVideos: flagged(F.submissions.deletedAt),
+		// Other platforms are deleted and restored along with their video, so only videos are listed.
+		deletedVideos: flagged(
+			F.submissions.deletedAt,
+			allSubmissions.filter((s) => !s.fields[F.submissions.primarySubmission])
+		),
+		noHcMention: submissions
+			.filter((s) => s.fields[F.submissions.noHcMention])
+			.map((s) => ({
+				slackId: s.fields[F.submissions.slackId],
+				url: s.fields[F.submissions.url],
+				platform: s.fields[F.submissions.platform],
+				day: s.fields[F.submissions.day],
+				views: s.fields[F.submissions.views] ?? 0
+			})),
+		unavailable: submissions
+			.filter((s) => s.fields[F.submissions.availability])
+			.map((s) => ({
+				slackId: s.fields[F.submissions.slackId],
+				url: s.fields[F.submissions.url],
+				platform: s.fields[F.submissions.platform],
+				day: s.fields[F.submissions.day],
+				availability: s.fields[F.submissions.availability],
+				checkedAt: s.fields[F.submissions.availabilityCheckedAt]
+			})),
+		// Only videos with a like count from unified-socials on at least one platform are judged.
+		lowLikes: groupByVideo(submissions)
+			.filter(({ primary, rows }) => {
+				const postedAt = Date.parse(primary.fields[F.submissions.postedAt] ?? '');
+				const counted = rows.filter((s) => typeof s.fields[F.submissions.likes] === 'number');
+				return (
+					Date.now() - postedAt >= LOW_LIKES_AFTER_MS &&
+					counted.length > 0 &&
+					counted.reduce((sum, s) => sum + s.fields[F.submissions.likes], 0) < LOW_LIKES
+				);
+			})
+			.map(({ primary, rows, views }) => ({
+				slackId: primary.fields[F.submissions.slackId],
+				urls: rows.map((s) => s.fields[F.submissions.url]),
+				day: primary.fields[F.submissions.day],
+				likes: rows.reduce((sum, s) => sum + (s.fields[F.submissions.likes] ?? 0), 0),
+				views
+			})),
+		repeats: submissions
+			.filter((s) => s.fields[F.submissions.repeatOf])
+			.map((s) => ({
+				id: s.id,
+				slackId: s.fields[F.submissions.slackId],
+				url: s.fields[F.submissions.url],
+				day: s.fields[F.submissions.day],
+				counted: !!s.fields[F.submissions.countedTowardStreak],
+				repeatOf: s.fields[F.submissions.repeatOf],
+				reason: s.fields[F.submissions.repeatReason] ?? ''
+			})),
 		deletedMessages: flagged(F.submissions.messageDeletedAt),
 		participants: participants.map((p) => ({
 			id: p.id,
@@ -180,6 +240,17 @@ export const actions = {
 		const shipped = new Set([...(record.fields[F.shipping.shippedPrizes] ?? []), ...eligible]);
 		await airtable.update(SHIPPING_TABLE, id, { [F.shipping.shippedPrizes]: [...shipped] });
 		return { shipped: id };
+	},
+	// Kept as 'dismissed' rather than blanked, so the views job doesn't flag the same pair again.
+	dismissRepeat: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const data = await request.formData();
+		const id = String(data.get('id'));
+		await airtable.update(TABLES.submissions, id, {
+			[F.submissions.repeatOf]: '',
+			[F.submissions.repeatReason]: 'dismissed'
+		});
+		return { dismissed: id };
 	},
 	restoreVideo: async ({ request, locals }) => {
 		requireAdmin(locals);

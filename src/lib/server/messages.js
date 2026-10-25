@@ -2,6 +2,10 @@ import { config } from './config.js';
 import { HELP_CHANNEL_ID } from '../help.js';
 
 const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
+const OTHER_PLATFORMS = 'Upload it to other platforms too! You can link them in a reply to this thread.';
+
+/** @type {Record<string, string>} */
+const PLATFORM_NAMES = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
 
 /** @typedef {{ views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean }} PostStats */
 
@@ -71,7 +75,7 @@ export const messages = {
 	 */
 	streakUpdate(streak, freezesRemaining, stats) {
 		const day = streak === 1 ? 'day' : 'days';
-		return `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.\n${statsLine(stats)}`;
+		return `Day ${streak} logged! 🔥 ${streak}-${day} streak · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} in the bank.\n${statsLine(stats)}\n${OTHER_PLATFORMS}`;
 	},
 	/**
 	 * @param {string} slackId
@@ -80,7 +84,29 @@ export const messages = {
 	 * @param {PostStats | null} [stats]
 	 */
 	duplicatePost(slackId, streak, freezesRemaining, stats) {
-		return `<@${slackId}> you've already posted today, so this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine(stats)}`;
+		return `<@${slackId}> you've already posted today, so this one's saved but won't count toward your streak. Still at ${streak} days · ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'}.\n${statsLine(stats)}\n${OTHER_PLATFORMS}`;
+	},
+	/**
+	 * @param {string} slackId
+	 * @param {string} platform
+	 */
+	platformAlreadyLinked(slackId, platform) {
+		return `<@${slackId}> this video already has a ${PLATFORM_NAMES[platform] ?? platform} link, so that one wasn't added. Link it from a different platform!`;
+	},
+	/** @param {string} slackId */
+	otherPlatformDuplicate(slackId) {
+		return `<@${slackId}> that video has already been posted, so it wasn't added as another platform. If you think this is a mistake, send a message in <#${HELP_CHANNEL_ID}>!`;
+	},
+	/** @param {string} slackId */
+	otherPlatformTooOld(slackId) {
+		return `<@${slackId}> that video was published well before this one, so it wasn't added. Only link this same video on other platforms!`;
+	},
+	/**
+	 * @param {string} slackId
+	 * @param {number} minSeconds
+	 */
+	otherPlatformTooShort(slackId, minSeconds) {
+		return `<@${slackId}> that video is shorter than ${minSeconds} seconds, so it wasn't added.`;
 	},
 	/**
 	 * @param {string} slackId

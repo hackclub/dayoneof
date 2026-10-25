@@ -1,7 +1,8 @@
 // Fills the dev tables with believable participants and submissions so the site can be looked at
 // populated. Everything is real: the videos are shortform rows from unified-socials-db, and each
 // participant is one of their actual authors, carrying that author's own posts, view counts,
-// titles, archive thumbnails and links, and publish dates.
+// titles, archive thumbnails and links, and publish dates. A video the same account cross-posted
+// under the same caption gets its other platforms linked, the way a thread reply would.
 //
 //   node --env-file=.env scripts/seed_dev.js
 //   node --env-file=.env scripts/seed_dev.js --clean    # remove seeded rows, insert nothing
@@ -94,13 +95,21 @@ async function list(token, baseId, table, filterByFormula) {
  * @param {Record<string, unknown>[]} rows
  */
 async function create(token, baseId, table, rows) {
+	/** @type {{ id: string }[]} */
+	const created = [];
 	for (let i = 0; i < rows.length; i += 10) {
-		await api(token, `${API}/${baseId}/${encodeURIComponent(table)}`, {
+		const { records } = await api(token, `${API}/${baseId}/${encodeURIComponent(table)}`, {
 			method: 'POST',
 			body: JSON.stringify({ records: rows.slice(i, i + 10).map((fields) => ({ fields })) })
 		});
+		created.push(...records);
 	}
+	return created;
 }
+
+// Cross-posts share a caption but not always a channel name (Hack Club vs starthackclub).
+/** @param {string} title */
+const captionKey = (title) => title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
 
 /**
  * @param {string} token
@@ -129,6 +138,8 @@ async function fetchAuthors(people) {
 
 	/** @type {Map<string, any[]>} */
 	const byAuthor = new Map();
+	/** @type {Map<string, any[]>} */
+	const byCaption = new Map();
 	for (let offset = 0; offset < 3000; offset += 200) {
 		const params = new URLSearchParams({ limit: '200', offset: String(offset), kind: 'video' });
 		const res = await fetch(`${base}/posts?${params}`, {
@@ -144,9 +155,7 @@ async function fetchAuthors(people) {
 			if (!(row.duration_seconds <= MAX_DURATION_SECONDS)) continue;
 			if (!['youtube', 'instagram', 'tiktok'].includes(row.platform)) continue;
 
-			const posts = byAuthor.get(author) ?? [];
-			if (posts.length >= MAX_POSTS_PER_PERSON) continue;
-			posts.push({
+			const post = {
 				unifiedId: String(row.id),
 				platform: row.platform,
 				videoId: row.platform_post_id,
@@ -155,20 +164,42 @@ async function fetchAuthors(people) {
 				views: row.views,
 				publishedAt: row.published_at,
 				thumbnailUrl: String(row.preview_thumbnail_url).replace(/^http:\/\//, 'https://'),
-				archiveUrl: row.video_url ?? ''
-			});
+				archiveUrl: row.video_url ?? '',
+				likes: row.likes ?? 0,
+				noHcMention: row.hc_share === 0
+			};
+			const key = captionKey(post.title);
+			if (key.length >= 12) byCaption.set(key, [...(byCaption.get(key) ?? []), post]);
+
+			const posts = byAuthor.get(author) ?? [];
+			if (posts.length >= MAX_POSTS_PER_PERSON) continue;
+			posts.push(post);
 			byAuthor.set(author, posts);
 		}
 	}
 
 	// Prefer the accounts with the most posts — they make the fullest-looking profiles and boards.
-	return [...byAuthor.entries()]
+	const authors = [...byAuthor.entries()]
 		.map(([name, posts]) => ({
 			name,
 			posts: posts.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
 		}))
 		.sort((a, b) => b.posts.length - a.posts.length)
 		.slice(0, people);
+
+	// One other upload per platform, never a video some participant already submitted.
+	const used = new Set(authors.flatMap((a) => a.posts.map((p) => `${p.platform}:${p.videoId}`)));
+	for (const post of authors.flatMap((a) => a.posts)) {
+		post.otherPlatforms = [];
+		for (const other of byCaption.get(captionKey(post.title)) ?? []) {
+			const key = `${other.platform}:${other.videoId}`;
+			if (used.has(key) || other.platform === post.platform) continue;
+			if (post.otherPlatforms.some((/** @type {any} */ o) => o.platform === other.platform)) continue;
+			used.add(key);
+			post.otherPlatforms.push(other);
+		}
+	}
+	return authors;
 }
 
 /** @param {Date} date */
@@ -210,6 +241,8 @@ async function main() {
 
 	const participants = [];
 	const submissions = [];
+	/** @type {{ slackId: string, postedAt: Date, posts: any[] }[]} */
+	const otherPlatforms = [];
 	const days = [];
 	const shipping = [];
 	let counter = 0;
@@ -233,7 +266,9 @@ async function main() {
 		for (const [n, video] of author.posts.entries()) {
 			const postedAt = new Date(video.publishedAt);
 			views += video.views;
+			for (const other of video.otherPlatforms) views += other.views;
 			counter++;
+			otherPlatforms.push({ slackId, postedAt, posts: video.otherPlatforms });
 
 			submissions.push({
 				[F.submissions.slackId]: slackId,
@@ -246,6 +281,8 @@ async function main() {
 				[F.submissions.channelId]: 'CSEEDCHANNEL',
 				[F.submissions.messageTs]: `${Math.floor(postedAt.getTime() / 1000)}.000${counter}`,
 				[F.submissions.views]: video.views,
+				[F.submissions.likes]: video.likes,
+				[F.submissions.noHcMention]: video.noHcMention,
 				[F.submissions.title]: video.title,
 				[F.submissions.thumbnailUrl]: video.thumbnailUrl,
 				[F.submissions.archiveUrl]: video.archiveUrl,
@@ -305,11 +342,33 @@ async function main() {
 
 	await create(token, baseId, TABLES.participants, participants);
 	await create(token, baseId, TABLES.days, days);
-	await create(token, baseId, TABLES.submissions, submissions);
+	const primaries = await create(token, baseId, TABLES.submissions, submissions);
+	const others = otherPlatforms.flatMap(({ slackId, postedAt, posts }, i) =>
+		posts.map((/** @type {any} */ other) => ({
+			[F.submissions.slackId]: slackId,
+			[F.submissions.url]: other.url,
+			[F.submissions.platform]: other.platform,
+			[F.submissions.videoId]: other.videoId,
+			[F.submissions.postedAt]: postedAt.toISOString(),
+			[F.submissions.day]: dayString(postedAt),
+			[F.submissions.countedTowardStreak]: false,
+			[F.submissions.channelId]: 'CSEEDCHANNEL',
+			[F.submissions.views]: other.views,
+			[F.submissions.likes]: other.likes,
+			[F.submissions.noHcMention]: other.noHcMention,
+			[F.submissions.title]: other.title,
+			[F.submissions.thumbnailUrl]: other.thumbnailUrl,
+			[F.submissions.archiveUrl]: other.archiveUrl,
+			[F.submissions.unifiedId]: other.unifiedId,
+			[F.submissions.primarySubmission]: primaries[i].id
+		}))
+	);
+	await create(token, baseId, TABLES.submissions, others);
 	await create(token, baseId, SHIPPING, shipping);
 
 	console.log(
-		`seeded ${participants.length} participants, ${submissions.length} submissions and ` +
+		`seeded ${participants.length} participants, ${submissions.length} submissions ` +
+			`(+${others.length} other platforms) and ` +
 			`${shipping.length} shipping addresses into ${baseId}`
 	);
 	console.log('done');

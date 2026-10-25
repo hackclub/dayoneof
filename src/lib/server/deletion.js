@@ -1,6 +1,6 @@
 // Deleting a video only marks it: the row, its day and the streak it earned are all kept, along
 // with a snapshot of the participant before the delete, so an admin can restore it in one click.
-import { TABLES, F } from './config.js';
+import { TABLES, F, SUBMISSION_NOT_DELETED } from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import { syncParticipantTotalViews, findParticipant } from './jobs.js';
@@ -54,6 +54,16 @@ function findLivePostedDay(slackId, date) {
 		TABLES.days,
 		`AND(${airtable.eq(F.days.slackId, slackId)}, ${airtable.eq(F.days.date, date)}, ${airtable.eq(F.days.status, 'posted')}, {${F.days.deletedAt}} = BLANK())`
 	);
+}
+
+/**
+ * @param {string} primaryId
+ * @param {string} filter
+ */
+function listOtherPlatforms(primaryId, filter) {
+	return airtable.list(TABLES.submissions, {
+		filterByFormula: `AND(${airtable.eq(F.submissions.primarySubmission, primaryId)}, ${filter})`
+	});
 }
 
 /** @param {Record<string, any>} fields */
@@ -134,6 +144,9 @@ export async function deleteSubmission(submissionId, slackId) {
 		[F.submissions.deletedAt]: now,
 		[F.submissions.preDeleteState]: state ? JSON.stringify(state) : ''
 	});
+	for (const other of await listOtherPlatforms(submission.id, SUBMISSION_NOT_DELETED)) {
+		await airtable.update(TABLES.submissions, other.id, { [F.submissions.deletedAt]: now });
+	}
 	if (participant && participantFields) {
 		await airtable.update(TABLES.participants, participant.id, participantFields);
 	}
@@ -184,6 +197,11 @@ export async function restoreSubmission(submissionId) {
 		[F.submissions.deletedAt]: null,
 		[F.submissions.preDeleteState]: ''
 	});
+	// Only the platforms deleted along with it, matched by the shared timestamp.
+	for (const other of await listOtherPlatforms(submission.id, `{${F.submissions.deletedAt}}`)) {
+		if (other.fields[F.submissions.deletedAt] !== fields[F.submissions.deletedAt]) continue;
+		await airtable.update(TABLES.submissions, other.id, { [F.submissions.deletedAt]: null });
+	}
 	if (participant) await syncParticipantTotalViews(participant);
 
 	const channel = fields[F.submissions.channelId];

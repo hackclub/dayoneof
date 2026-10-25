@@ -9,8 +9,27 @@ import * as unified from './unified.js';
 import { messages, statsLine } from './messages.js';
 import { serialize } from './queue.js';
 import { streakDay, addDays, settleMissedDays, compareStreaks, viewMilestoneCrossed, prizeFor } from './streak.js';
+import { groupByVideo, combineStats, totalViews } from './videos.js';
+import { checkAvailability } from './availability.js';
+import { findRepeats } from './repeats.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
+
+/** @param {NonNullable<Awaited<ReturnType<typeof unified.fetchPostByPlatformId>>>} post */
+export function postFields(post) {
+	return {
+		[F.submissions.views]: post.views,
+		[F.submissions.likes]: post.likes,
+		[F.submissions.title]: post.title,
+		[F.submissions.thumbnailUrl]: post.thumbnailUrl,
+		[F.submissions.archiveUrl]: post.archiveUrl,
+		[F.submissions.unifiedId]: String(post.id),
+		[F.submissions.noHcMention]: post.noHcMention,
+		// Rounded to the field's precision so an unchanged duration never reads back as a change.
+		[F.submissions.durationSeconds]:
+			post.durationSeconds == null ? null : Math.round(post.durationSeconds * 10) / 10
+	};
+}
 
 /** @param {string} slackId */
 export function findParticipant(slackId) {
@@ -122,6 +141,9 @@ export async function runReconcile() {
 }
 
 const UNIFIED_READ_CONCURRENCY = 5;
+const AVAILABILITY_CONCURRENCY = 3;
+// Checks scrape the platforms' public pages, so each video is checked every few hours, not hourly.
+const AVAILABILITY_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * @template T, R
@@ -145,7 +167,7 @@ async function mapPool(items, limit, fn) {
 }
 
 // Reads run in parallel; Airtable writes and Slack posts stay sequential for their rate limits.
-/** @returns {Promise<{ viewsChecked: number, submissions: AirtableRecord[] }>} */
+/** @returns {Promise<{ viewsChecked: number, repeatsFlagged: number, submissions: AirtableRecord[] }>} */
 async function refreshViews() {
 	const submissions = await airtable.list(TABLES.submissions, {
 		filterByFormula: SUBMISSION_NOT_DELETED
@@ -164,63 +186,89 @@ async function refreshViews() {
 		}
 	});
 
-	for (const [i, submission] of submissions.entries()) {
-		const post = posts[i];
-		if (!post) continue;
-		viewsChecked++;
+	const postById = new Map(submissions.map((s, i) => [s.id, posts[i]]));
 
+	const checkedBefore = Date.now() - AVAILABILITY_INTERVAL_MS;
+	/** @type {Map<string, Promise<string | null>>} */
+	const feeds = new Map();
+	const availability = await mapPool(submissions, AVAILABILITY_CONCURRENCY, async (submission) => {
 		const fields = submission.fields;
-		const viewsBefore = fields[F.submissions.views];
-		const replyStats = statsLine(post);
-		if (
-			viewsBefore === post.views &&
-			(fields[F.submissions.replyStats] ?? '') === replyStats &&
-			fields[F.submissions.title] === post.title &&
-			(fields[F.submissions.thumbnailUrl] ?? '') === post.thumbnailUrl &&
-			(fields[F.submissions.archiveUrl] ?? '') === post.archiveUrl
-		) {
-			continue;
+		if (Date.parse(fields[F.submissions.availabilityCheckedAt] ?? '') > checkedBefore) return null;
+		const post = postById.get(submission.id);
+		return checkAvailability(
+			{
+				platform: fields[F.submissions.platform],
+				videoId: fields[F.submissions.videoId],
+				url: fields[F.submissions.url]
+			},
+			{ channelId: post?.channelId, publishedAt: post?.publishedAt },
+			feeds
+		);
+	});
+	const availabilityById = new Map(submissions.map((s, i) => [s.id, availability[i]]));
+	const checkedAt = new Date().toISOString();
+
+	// Blank and false both read back from Airtable as a missing field.
+	/** @param {unknown} v */
+	const blank = (v) => v == null || v === '' || v === false;
+	/** @param {unknown} a @param {unknown} b */
+	const same = (a, b) => (blank(a) ? blank(b) : a === b);
+
+	for (const { primary, rows } of groupByVideo(submissions)) {
+		const fetched = rows.flatMap((s) => postById.get(s.id) ?? []);
+		const viewsBefore = totalViews(rows);
+		const replyStatsBefore = primary.fields[F.submissions.replyStats] ?? '';
+		const replyStats = fetched.length ? statsLine(combineStats(fetched)) : replyStatsBefore;
+
+		for (const submission of rows) {
+			const post = postById.get(submission.id);
+			if (post) viewsChecked++;
+			const available = availabilityById.get(submission.id);
+			/** @type {Record<string, unknown>} */
+			const changes = {
+				...(post ? postFields(post) : {}),
+				...(submission === primary && fetched.length ? { [F.submissions.replyStats]: replyStats } : {})
+			};
+			if (available) {
+				changes[F.submissions.availability] = available === 'public' ? '' : available;
+				changes[F.submissions.availabilityCheckedAt] = checkedAt;
+			}
+			if (Object.entries(changes).every(([field, value]) => same(submission.fields[field], value))) {
+				continue;
+			}
+			const updated = await airtable.update(TABLES.submissions, submission.id, changes);
+			submission.fields = updated.fields;
 		}
 
-		const updated = await airtable.update(TABLES.submissions, submission.id, {
-			[F.submissions.views]: post.views,
-			[F.submissions.title]: post.title,
-			[F.submissions.thumbnailUrl]: post.thumbnailUrl,
-			[F.submissions.archiveUrl]: post.archiveUrl,
-			[F.submissions.unifiedId]: String(post.id),
-			[F.submissions.replyStats]: replyStats
-		});
-		submission.fields = updated.fields;
-
 		// Edits the original confirmation reply in place instead of spamming a new one each refresh.
-		const replyMessageTs = submission.fields[F.submissions.replyMessageTs];
+		const replyMessageTs = primary.fields[F.submissions.replyMessageTs];
 		if (
 			replyMessageTs &&
-			submission.fields[F.submissions.countedTowardStreak] &&
-			!submission.fields[F.submissions.messageDeletedAt] &&
-			fields[F.submissions.replyStats] !== replyStats
+			primary.fields[F.submissions.countedTowardStreak] &&
+			!primary.fields[F.submissions.messageDeletedAt] &&
+			replyStatsBefore !== replyStats
 		) {
 			try {
 				const text = messages.streakUpdate(
-					submission.fields[F.submissions.streakAtPost] ?? 0,
-					submission.fields[F.submissions.freezesAtPost] ?? 0,
-					post
+					primary.fields[F.submissions.streakAtPost] ?? 0,
+					primary.fields[F.submissions.freezesAtPost] ?? 0,
+					combineStats(fetched)
 				);
-				await slack.updateMessage(submission.fields[F.submissions.channelId], replyMessageTs, text);
+				await slack.updateMessage(primary.fields[F.submissions.channelId], replyMessageTs, text);
 			} catch (err) {
 				console.error('failed to update submission reply with fresh stats', err);
 			}
 		}
 
-		const milestone = viewMilestoneCrossed(viewsBefore, post.views);
+		const milestone = viewMilestoneCrossed(viewsBefore, totalViews(rows));
 		if (milestone) {
 			try {
 				const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
 				await slack.postMessage(
 					announceChannelId,
 					messages.viewMilestoneAnnounce(
-						submission.fields[F.submissions.slackId],
-						submission.fields[F.submissions.url],
+						primary.fields[F.submissions.slackId],
+						primary.fields[F.submissions.url],
 						milestone
 					)
 				);
@@ -230,18 +278,32 @@ async function refreshViews() {
 		}
 	}
 
-	return { viewsChecked, submissions };
+	// Only ever sets the flag; an admin dismissing it is what stops it coming back.
+	const repeats = await findRepeats(submissions, new Date().toISOString().slice(0, 10), (id) =>
+		unified.fetchScreenplay(id)
+	);
+	for (const [id, { of, reason }] of repeats) {
+		const submission = submissions.find((s) => s.id === id);
+		if (!submission) continue;
+		const updated = await airtable.update(TABLES.submissions, id, {
+			[F.submissions.repeatOf]: of.fields[F.submissions.url],
+			[F.submissions.repeatReason]: reason
+		});
+		submission.fields = updated.fields;
+	}
+
+	return { viewsChecked, repeatsFlagged: repeats.size, submissions };
 }
 
 // Hourly, matching how often unified-socials captures new counts. Totals are resynced so the
 // site's view boards move between nightly leaderboards too.
 export async function runViews() {
-	const { viewsChecked, submissions } = await refreshViews();
+	const { viewsChecked, repeatsFlagged, submissions } = await refreshViews();
 	const participants = await airtable.list(TABLES.participants, {
 		filterByFormula: PARTICIPANT_HAS_SLACK_ID
 	});
 	await syncTotalViews(participants, submissions);
-	return { viewsChecked };
+	return { viewsChecked, repeatsFlagged };
 }
 
 const BOARD_SIZE = 10;
@@ -283,7 +345,9 @@ export async function runLeaderboard({ force = false } = {}) {
 
 	const byStreak = [...participants].sort(compareStreaks).slice(0, BOARD_SIZE);
 	const byViews = topBy(participants, F.participants.totalViews);
-	const byVideo = topBy(submissions, F.submissions.views);
+	const byVideo = groupByVideo(submissions)
+		.sort((a, b) => b.views - a.views)
+		.slice(0, BOARD_SIZE);
 
 	const streakLines = numbered(
 		byStreak,
@@ -296,11 +360,12 @@ export async function runLeaderboard({ force = false } = {}) {
 		(p) => `<@${p.fields[F.participants.slackId]}> · ${p.fields[F.participants.totalViews] ?? 0} views`
 	);
 
-	const videoLines = numbered(byVideo, (s) => {
-		const label = s.fields[F.submissions.title] || s.fields[F.submissions.platform];
-		const views = s.fields[F.submissions.views] ?? 0;
-		return `<${s.fields[F.submissions.url]}|${label}> by <@${s.fields[F.submissions.slackId]}> · ${views} views`;
-	});
+	const videoLines = byVideo
+		.map(({ primary: s, views }, i) => {
+			const label = s.fields[F.submissions.title] || s.fields[F.submissions.platform];
+			return `${i + 1}. <${s.fields[F.submissions.url]}|${label}> by <@${s.fields[F.submissions.slackId]}> · ${views} views`;
+		})
+		.join('\n');
 
 	const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
 	await slack.postMessage(announceChannelId, `*Longest active streaks*\n${streakLines}`);

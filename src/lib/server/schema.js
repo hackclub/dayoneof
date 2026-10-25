@@ -69,7 +69,15 @@ export const F = {
 		freezesAtPost: 'freezes_at_post',
 		deletedAt: 'deleted_at',
 		preDeleteState: 'pre_delete_state',
-		messageDeletedAt: 'message_deleted_at'
+		messageDeletedAt: 'message_deleted_at',
+		primarySubmission: 'primary_submission',
+		noHcMention: 'no_hc_mention',
+		likes: 'likes',
+		availability: 'availability',
+		availabilityCheckedAt: 'availability_checked_at',
+		durationSeconds: 'duration_seconds',
+		repeatOf: 'repeat_of',
+		repeatReason: 'repeat_reason'
 	},
 	shipping: {
 		slackId: 'slack_id',
@@ -97,3 +105,6 @@ export const PARTICIPANT_HAS_SLACK_ID = `NOT({${F.participants.slackId}} = "")`;
 
 // Deleted submissions stay in the table for review but are hidden everywhere else.
 export const SUBMISSION_NOT_DELETED = `{${F.submissions.deletedAt}} = BLANK()`;
+
+// Extra platform links for a video point at its first submission, which holds the streak and reply.
+export const SUBMISSION_IS_PRIMARY = `{${F.submissions.primarySubmission}} = BLANK()`;

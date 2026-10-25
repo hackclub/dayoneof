@@ -1,12 +1,20 @@
 import { json } from '@sveltejs/kit';
-import { config, requireEnv, isAdmin, TABLES, F, SUBMISSION_NOT_DELETED } from '$lib/server/config.js';
+import {
+	config,
+	requireEnv,
+	isAdmin,
+	TABLES,
+	F,
+	SUBMISSION_NOT_DELETED,
+	SUBMISSION_IS_PRIMARY
+} from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
-import { extractLink } from '$lib/server/links.js';
+import { extractLinks } from '$lib/server/links.js';
 import { messages, statsLine } from '$lib/server/messages.js';
 import { isYswsEligible } from '$lib/server/verification.js';
-import { syncParticipantTotalViews, settleParticipant } from '$lib/server/jobs.js';
+import { syncParticipantTotalViews, settleParticipant, postFields } from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
 import { markMessageDeleted } from '$lib/server/deletion.js';
 import {
@@ -46,19 +54,33 @@ async function findSubmissionByVideo(platform, videoId) {
 	);
 }
 
+/** @typedef {{ url: string, platform: string, videoId: string }} Link */
+/** @typedef {import('$lib/server/airtable.js').AirtableRecord} AirtableRecord */
+
+// The first link is the submission; any others in the same message are its other platforms.
 /** @param {SlackEvent} event */
-async function handleSubmission(event) {
-	const link = await extractLink(event.text);
+async function handleSubmissionMessage(event) {
+	const [link, ...others] = await extractLinks(event.text);
 	if (!link) {
 		await slack.addReaction(event.channel, event.ts, 'question');
 		await slack.postMessage(event.channel, messages.unsupportedLink(event.user), event.ts);
 		return;
 	}
+	const primary = await handleSubmission(event, link);
+	if (!primary) return;
+	for (const other of others) await addOtherPlatform(event, primary, other);
+}
 
+/**
+ * @param {SlackEvent} event
+ * @param {Link} link
+ * @returns {Promise<AirtableRecord | null>} the stored submission, or null if it was refused
+ */
+async function handleSubmission(event, link) {
 	if (!config.submissionsOpen && !isAdmin(event.user)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
 		await slack.postMessage(event.channel, messages.notLaunched(event.user), event.ts);
-		return;
+		return null;
 	}
 
 	// Participants are only created at HCA sign-in, never here.
@@ -69,7 +91,7 @@ async function handleSubmission(event) {
 	if (!participant) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
-		return;
+		return null;
 	}
 	if (!isYswsEligible(participant.fields[F.participants.yswsEligible])) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
@@ -78,7 +100,7 @@ async function handleSubmission(event) {
 			messages.notVerified(event.user, participant.fields[F.participants.verificationStatus]),
 			event.ts
 		);
-		return;
+		return null;
 	}
 
 	// Ahead of the stats lookup and of trackPost: a video already stored is refused outright, so
@@ -86,7 +108,7 @@ async function handleSubmission(event) {
 	if (await findSubmissionByVideo(link.platform, link.videoId)) {
 		await slack.addReaction(event.channel, event.ts, 'x');
 		await slack.postMessage(event.channel, messages.duplicateVideo(event.user), event.ts);
-		return;
+		return null;
 	}
 
 	// Looked up once, before anything is written, because the age rule below has to be able to
@@ -105,7 +127,7 @@ async function handleSubmission(event) {
 			messages.postTooOld(event.user, config.maxPostAgeDays),
 			event.ts
 		);
-		return;
+		return null;
 	}
 
 	if (isVideoTooShort(stats?.durationSeconds, config.minVideoSeconds)) {
@@ -115,7 +137,7 @@ async function handleSubmission(event) {
 			messages.videoTooShort(event.user, config.minVideoSeconds),
 			event.ts
 		);
-		return;
+		return null;
 	}
 
 	// Paid, so it sits behind every gate above: an unverified poster or a video that just got
@@ -123,13 +145,7 @@ async function handleSubmission(event) {
 	const trackedId = stats ? null : await trackPost(link.url);
 
 	const statsFields = stats
-		? {
-				[F.submissions.views]: stats.views,
-				[F.submissions.title]: stats.title,
-				[F.submissions.thumbnailUrl]: stats.thumbnailUrl,
-				[F.submissions.archiveUrl]: stats.archiveUrl,
-				[F.submissions.unifiedId]: String(stats.id)
-			}
+		? postFields(stats)
 		: trackedId
 			? { [F.submissions.unifiedId]: trackedId }
 			: {};
@@ -168,7 +184,7 @@ async function handleSubmission(event) {
 		await airtable.update(TABLES.submissions, duplicate.id, {
 			[F.submissions.replyMessageTs]: reply.ts
 		});
-		return;
+		return duplicate;
 	}
 
 	await airtable.create(TABLES.days, {
@@ -222,6 +238,107 @@ async function handleSubmission(event) {
 			[F.participants.lastMilestoneAt]: new Date().toISOString()
 		});
 	}
+
+	return submission;
+}
+
+/** @param {AirtableRecord} primary */
+function listOtherPlatforms(primary) {
+	return airtable.list(TABLES.submissions, {
+		filterByFormula: `AND(${airtable.eq(F.submissions.primarySubmission, primary.id)}, ${SUBMISSION_NOT_DELETED})`
+	});
+}
+
+// Another platform's link to an already-stored video. It never touches the streak, but adds its
+// views to the video's and the poster's totals, so it gets the same duplicate, age and length
+// gates. Age is judged against when the video was first submitted.
+/**
+ * @param {SlackEvent} event
+ * @param {AirtableRecord} primary
+ * @param {Link} link
+ * @returns {Promise<boolean>} whether it was added
+ */
+async function addOtherPlatform(event, primary, link) {
+	const linked = [primary, ...(await listOtherPlatforms(primary))];
+	if (linked.some((s) => s.fields[F.submissions.platform] === link.platform)) {
+		await slack.postMessage(
+			event.channel,
+			messages.platformAlreadyLinked(event.user, link.platform),
+			event.ts
+		);
+		return false;
+	}
+
+	// Ahead of trackPost, for the same reason as in handleSubmission.
+	if (await findSubmissionByVideo(link.platform, link.videoId)) {
+		await slack.postMessage(event.channel, messages.otherPlatformDuplicate(event.user), event.ts);
+		return false;
+	}
+
+	let stats = null;
+	try {
+		stats = await fetchPostByPlatformId(link.platform, link.videoId);
+	} catch (err) {
+		console.error('unified-socials stats lookup failed for another platform', err);
+	}
+
+	const submittedAt = new Date(primary.fields[F.submissions.postedAt] ?? Date.now());
+	if (isPostTooOld(stats?.publishedAt, config.maxPostAgeDays, submittedAt)) {
+		await slack.postMessage(event.channel, messages.otherPlatformTooOld(event.user), event.ts);
+		return false;
+	}
+	if (isVideoTooShort(stats?.durationSeconds, config.minVideoSeconds)) {
+		await slack.postMessage(
+			event.channel,
+			messages.otherPlatformTooShort(event.user, config.minVideoSeconds),
+			event.ts
+		);
+		return false;
+	}
+
+	const trackedId = stats ? null : await trackPost(link.url);
+
+	await airtable.create(TABLES.submissions, {
+		[F.submissions.slackId]: event.user,
+		[F.submissions.url]: link.url,
+		[F.submissions.platform]: link.platform,
+		[F.submissions.videoId]: link.videoId,
+		[F.submissions.postedAt]: new Date().toISOString(),
+		[F.submissions.day]: primary.fields[F.submissions.day],
+		[F.submissions.countedTowardStreak]: false,
+		[F.submissions.channelId]: event.channel,
+		[F.submissions.messageTs]: event.ts,
+		[F.submissions.primarySubmission]: primary.id,
+		...(stats ? postFields(stats) : trackedId ? { [F.submissions.unifiedId]: trackedId } : {})
+	});
+
+	if (stats) {
+		const participant = await airtable.find(
+			TABLES.participants,
+			airtable.eq(F.participants.slackId, event.user)
+		);
+		if (participant) await syncParticipantTotalViews(participant);
+	}
+	return true;
+}
+
+// Only the poster's own replies under a stored submission are read; every other reply is ignored.
+/** @param {SlackEvent} event */
+async function handleThreadReply(event) {
+	const links = await extractLinks(event.text);
+	if (!links.length || !event.thread_ts) return;
+
+	const primary = await airtable.find(
+		TABLES.submissions,
+		`AND(${airtable.eq(F.submissions.messageTs, event.thread_ts)}, ${airtable.eq(F.submissions.slackId, event.user)}, ${SUBMISSION_IS_PRIMARY}, ${SUBMISSION_NOT_DELETED})`
+	);
+	if (!primary) return;
+
+	let added = false;
+	for (const link of links) {
+		if (await addOtherPlatform(event, primary, link)) added = true;
+	}
+	if (added) await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 }
 
 // Cached across requests — the bot's own id never changes for a given token.
@@ -245,11 +362,11 @@ async function handleMessageDeleted(event) {
 	const previous = event.previous_message;
 	if (!previous?.user || previous.bot_id || !event.deleted_ts) return;
 
-	const submission = await airtable.find(
-		TABLES.submissions,
-		airtable.eq(F.submissions.messageTs, event.deleted_ts)
-	);
-	if (submission) await markMessageDeleted(submission);
+	// A message linking several platforms stored a submission for each.
+	const submissions = await airtable.list(TABLES.submissions, {
+		filterByFormula: airtable.eq(F.submissions.messageTs, event.deleted_ts)
+	});
+	for (const submission of submissions) await markMessageDeleted(submission);
 }
 
 /** @param {SlackEvent} [event] */
@@ -261,10 +378,12 @@ async function handleEvent(event) {
 	if (event.type === 'message') {
 		if (event.channel !== config.submissionChannelId) return;
 		if (event.subtype === 'message_deleted') return handleMessageDeleted(event);
-		// Edits, joins, thread replies and the bot's own replies all arrive here as message events.
+		// Edits, joins and the bot's own replies all arrive here as message events.
 		if (event.subtype || event.bot_id) return;
-		if (event.thread_ts && event.thread_ts !== event.ts) return;
-		return serialize(() => handleSubmission(event));
+		if (event.thread_ts && event.thread_ts !== event.ts) {
+			return serialize(() => handleThreadReply(event));
+		}
+		return serialize(() => handleSubmissionMessage(event));
 	}
 }
 

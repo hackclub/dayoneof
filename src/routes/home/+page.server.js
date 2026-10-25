@@ -1,8 +1,9 @@
-import { config, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import { isYswsEligible } from '$lib/server/verification.js';
 import * as airtable from '$lib/server/airtable.js';
 import { count } from '$lib/format';
 import { compareStreaks } from '$lib/server/streak.js';
+import { groupByVideo, videoPlatforms } from '$lib/server/videos.js';
 
 const BOARD_SIZE = 10;
 
@@ -37,16 +38,20 @@ export async function load({ locals }) {
 		])
 	);
 
-	const videos = submissions.map((s) => ({
-		slackId: s.fields[F.submissions.slackId],
-		name: nameBySlackId.get(s.fields[F.submissions.slackId]) ?? 'Unknown',
-		url: s.fields[F.submissions.url],
-		platform: cap(s.fields[F.submissions.platform], 20),
-		title: cap(s.fields[F.submissions.title], TITLE_MAX),
-		thumbnail: s.fields[F.submissions.thumbnailUrl] || '',
-		postedAt: s.fields[F.submissions.postedAt],
-		views: count(s.fields[F.submissions.views])
-	}));
+	const videos = groupByVideo(submissions).map(({ primary, rows, views }) => {
+		const platforms = videoPlatforms(rows).map((p) => ({ ...p, title: cap(p.title, TITLE_MAX) }));
+		return {
+			key: primary.id,
+			slackId: primary.fields[F.submissions.slackId],
+			name: nameBySlackId.get(primary.fields[F.submissions.slackId]) ?? 'Unknown',
+			url: platforms[0].url,
+			platform: platforms[0].platform,
+			title: platforms[0].title,
+			platforms,
+			postedAt: primary.fields[F.submissions.postedAt],
+			views: count(views)
+		};
+	});
 
 	const byStreak = [...participants]
 		.sort(compareStreaks)
@@ -85,8 +90,7 @@ export async function load({ locals }) {
 		avatar: me?.fields[F.participants.avatar] || '',
 		verified: isYswsEligible(me?.fields[F.participants.yswsEligible]),
 		hasPosted: !!session && videos.some((v) => v.slackId === session.slackId),
-		submissionsOpen: config.submissionsOpen || isAdmin(session?.slackId),
-		videosPosted: submissions.length,
+		videosPosted: videos.length,
 		videos,
 		byStreak,
 		byViews,

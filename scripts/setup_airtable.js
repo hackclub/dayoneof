@@ -96,7 +96,15 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.freezesAtPost, ...int },
 				{ name: F.submissions.deletedAt, ...when },
 				{ name: F.submissions.preDeleteState, type: 'multilineText' },
-				{ name: F.submissions.messageDeletedAt, ...when }
+				{ name: F.submissions.messageDeletedAt, ...when },
+				{ name: F.submissions.primarySubmission, ...text },
+				{ name: F.submissions.noHcMention, ...check },
+				{ name: F.submissions.likes, ...int },
+				{ name: F.submissions.availability, ...text },
+				{ name: F.submissions.availabilityCheckedAt, ...when },
+				{ name: F.submissions.durationSeconds, type: 'number', options: { precision: 1 } },
+				{ name: F.submissions.repeatOf, ...text },
+				{ name: F.submissions.repeatReason, ...text }
 			]
 		},
 		{

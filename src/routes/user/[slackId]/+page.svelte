@@ -2,6 +2,7 @@
 	import { formatDate, formatViews, initials } from '$lib/format';
 	import { numberTape, sprite } from '$lib/asset_sheet';
 	import { HELP_URL } from '$lib/help';
+	import PlatformSwitch from '$lib/platform_switch.svelte';
 
 	let { data, form } = $props();
 
@@ -13,6 +14,7 @@
 	];
 
 	let sort = $state<Sort>('date');
+	let picked = $state<Record<string, string>>({});
 
 	const isMe = $derived(data.session?.slackId === data.slackId);
 
@@ -121,13 +123,15 @@
 			<p class="empty">No videos yet.</p>
 		{:else}
 			<div class="grid">
-				{#each videos as video, i}
+				{#each videos as video, i (video.key)}
+					{@const shown =
+						video.platforms.find((p) => p.platform === picked[video.key]) ?? video.platforms[0]}
 					<article class="card">
-						<a class="tile" href={video.url} target="_blank" rel="noopener">
-							{#if video.thumbnail}
+						<a class="tile" href={shown.url} target="_blank" rel="noopener">
+							{#if shown.thumbnail}
 								<img
 									class="thumb"
-									src={video.thumbnail}
+									src={shown.thumbnail}
 									alt=""
 									loading={i < 12 ? 'eager' : 'lazy'}
 									decoding="async"
@@ -135,12 +139,12 @@
 							{/if}
 							<span class="play" aria-hidden="true"><span style={sprite('badge_arrow')}></span></span>
 							<span class="tile-foot">
-								{#if video.title}<span class="tile-title">{video.title}</span>{/if}
+								{#if shown.title}<span class="tile-title">{shown.title}</span>{/if}
 								<span class="tile-views">{formatViews(video.views)} views</span>
 							</span>
 						</a>
 						<div class="meta">
-							<span class="platform">{video.platform}</span>
+							<PlatformSwitch platforms={video.platforms} bind:value={picked[video.key]} />
 							<span class="when">
 								{formatDate(video.postedAt)}
 								{#if !video.countedTowardStreak}· didn't count{/if}
@@ -513,15 +517,6 @@
 		gap: 8px;
 		font-size: clamp(0.9rem, 0.95vw, 1.05rem);
 		min-width: 0;
-	}
-
-	.platform {
-		font-family: var(--font-hand);
-		font-weight: 700;
-		color: var(--ink);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.when {

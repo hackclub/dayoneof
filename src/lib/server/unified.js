@@ -8,10 +8,11 @@ function headers() {
 
 // An untracked post is a 200 with `rows: []`. Some thumbnails are stored as http, so they're
 // upgraded to embed over https. video_url stays null until archiving runs, so it's re-read nightly.
+// hc_share is exactly 0 only once a post has been coded and no Hack Club content was found.
 /**
  * @param {string} platform
  * @param {string} platformPostId
- * @returns {Promise<{ id: number, views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean, title: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null, durationSeconds: number | null } | null>}
+ * @returns {Promise<{ id: number, views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean, title: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null, durationSeconds: number | null, noHcMention: boolean, channelId: string | null } | null>}
  */
 export async function fetchPostByPlatformId(platform, platformPostId) {
 	const params = new URLSearchParams({ platform, platform_post_id: platformPostId });
@@ -31,8 +32,25 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 		thumbnailUrl: (post.preview_thumbnail_url ?? '').replace(/^http:\/\//, 'https://'),
 		archiveUrl: post.video_url ?? '',
 		publishedAt: post.published_at ?? null,
-		durationSeconds: post.duration_seconds ?? null
+		durationSeconds: post.duration_seconds ?? null,
+		noHcMention: post.hc_share === 0,
+		channelId: post.account_platform_id ?? null
 	};
+}
+
+// The model's timestamped write-up of what the video shows and says, once it has been watched.
+/**
+ * @param {string} unifiedId
+ * @returns {Promise<string | null>}
+ */
+export async function fetchScreenplay(unifiedId) {
+	const params = new URLSearchParams({ post_id: unifiedId, is_current: 'true', limit: '1' });
+	const res = await fetch(`${config.unifiedSocialsApiUrl}/post_screenplays?${params}`, {
+		headers: headers()
+	});
+	if (!res.ok) throw new Error(`unified-socials screenplay fetch failed: ${res.status}`);
+	const { rows } = await res.json();
+	return rows[0]?.screenplay ?? null;
 }
 
 // The one write in this codebase, and it spends money: POST /api/v1/tracked-posts pays Arker to

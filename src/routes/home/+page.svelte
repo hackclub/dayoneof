@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { numberTape, sprite } from '$lib/asset_sheet';
 	import { HELP_URL } from '$lib/help';
+	import PlatformSwitch from '$lib/platform_switch.svelte';
 
 	let { data } = $props();
 
@@ -22,6 +23,7 @@
 
 	let sort = $state<Sort>('date');
 	let tab = $state<Tab>('people');
+	let picked = $state<Record<string, string>>({});
 
 	const heading = $derived(sort === 'views' ? 'Most viewed reels' : 'Newest reels');
 
@@ -66,12 +68,6 @@
 	{#if data.session}
 		<details class="guide" open={!data.hasPosted}>
 			<summary>How to participate</summary>
-			{#if !data.submissionsOpen}
-				<p class="guide-alert">
-					The challenge hasn't started yet. Submissions open once 200 people have joined, so invite
-					your friends!
-				</p>
-			{/if}
 			{#if !data.verified}
 				<p class="guide-alert">
 					Your Hack Club account isn't verified as 13–18 yet, so your posts won't count until it is.
@@ -94,8 +90,17 @@
 				<li>
 					<h2>Post every day</h2>
 					<p>
-						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, that mentions Hack Club. Post it
-						before 3AM your time and the bot replies with your streak!
+						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, that mentions Hack Club. It has to
+						stay public, so no private, unlisted, or deleted videos. Post it before 3AM your time and
+						the bot replies with your streak!
+					</p>
+				</li>
+				<li>
+					<h2>Post it everywhere</h2>
+					<p>
+						Uploaded the same video to more than one platform? Put all the links in your post, or reply
+						to the bot in your post's thread with the others. Views from every platform add up, but it
+						still only counts as one day.
 					</p>
 				</li>
 				<li>
@@ -141,15 +146,17 @@
 				<p class="empty">No videos yet. Post a link in the Slack channel to start the wall!</p>
 			{:else}
 				<div class="grid">
-					{#each videos as video, i}
+					{#each videos as video, i (video.key)}
+						{@const shown =
+							video.platforms.find((p) => p.platform === picked[video.key]) ?? video.platforms[0]}
 						<article class="card">
-							<a class="tile" href={video.url} target="_blank" rel="noopener">
-								{#if video.thumbnail}
+							<a class="tile" href={shown.url} target="_blank" rel="noopener">
+								{#if shown.thumbnail}
 									<!-- Lazy images inside the scrolling grid never start loading in Chrome until it
 									     scrolls, so the first screenful is eager and the rest lazy. -->
 									<img
 										class="thumb"
-										src={video.thumbnail}
+										src={shown.thumbnail}
 										alt=""
 										loading={i < 12 ? 'eager' : 'lazy'}
 										fetchpriority={i < 4 ? 'high' : 'auto'}
@@ -158,12 +165,13 @@
 								{/if}
 								<span class="play" aria-hidden="true"><span style={sprite('badge_arrow')}></span></span>
 								<span class="tile-foot">
-									{#if video.title}<span class="tile-title">{video.title}</span>{/if}
+									{#if shown.title}<span class="tile-title">{shown.title}</span>{/if}
 									<span class="tile-views">{formatViews(video.views)} views</span>
 								</span>
 							</a>
 							<div class="meta">
 								<a class="author" href="/user/{video.slackId}">{video.name}</a>
+								<PlatformSwitch platforms={video.platforms} bind:value={picked[video.key]} />
 								<span class="when">{formatDate(video.postedAt)}</span>
 							</div>
 						</article>
@@ -699,6 +707,7 @@
 	}
 
 	.when {
+		margin-left: auto;
 		color: var(--ink-soft);
 		white-space: nowrap;
 	}

@@ -3,6 +3,7 @@ import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import { deleteSubmission, deletionPlan } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
+import { groupByVideo, videoPlatforms } from '$lib/server/videos.js';
 
 export async function load({ params, locals }) {
 	const [participants, allSubmissions] = await Promise.all([
@@ -21,6 +22,7 @@ export async function load({ params, locals }) {
 		(s) => s.fields[F.submissions.slackId] === params.slackId && !s.fields[F.submissions.deletedAt]
 	);
 	const isMe = locals.session?.slackId === params.slackId;
+	const groups = groupByVideo(submissions);
 
 	return {
 		session: locals.session,
@@ -29,15 +31,13 @@ export async function load({ params, locals }) {
 		avatar: participant.fields[F.participants.avatar] || '',
 		currentStreak: participant.fields[F.participants.currentStreak] ?? 0,
 		totalViews: participant.fields[F.participants.totalViews] ?? 0,
-		videosPosted: submissions.length,
-		videos: submissions.map((s) => ({
+		videosPosted: groups.length,
+		videos: groups.map(({ primary: s, rows, views }) => ({
+			key: s.id,
 			id: isMe ? s.id : '',
-			url: s.fields[F.submissions.url],
-			platform: s.fields[F.submissions.platform],
-			title: s.fields[F.submissions.title] || '',
-			thumbnail: s.fields[F.submissions.thumbnailUrl] || '',
+			platforms: videoPlatforms(rows),
 			postedAt: s.fields[F.submissions.postedAt],
-			views: s.fields[F.submissions.views] ?? 0,
+			views,
 			countedTowardStreak: !!s.fields[F.submissions.countedTowardStreak],
 			deleteImpact:
 				isMe && s.fields[F.submissions.countedTowardStreak]

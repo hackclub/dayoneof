@@ -45,6 +45,7 @@
 				<li>
 					<strong>views</strong>: hourly, refreshes view counts from unified-socials for every
 					submission, edits each changed reply, resyncs totals, and announces videos passing 10k/100k/500k/1M views.
+					Every 6 hours per video it also checks the platforms for removed, private or unlisted videos.
 				</li>
 				<li>
 					<strong>leaderboard</strong>: refreshes view counts from unified-socials for every
@@ -232,6 +233,159 @@
 						<li><a href="/user/{p.slackId}">{p.name}</a>: {p.prizes.join(', ')}</li>
 					{/each}
 				</ul>
+			{/if}
+		</section>
+
+		<section>
+			<h2>No Hack Club mention</h2>
+			<p>
+				Live videos unified-socials has coded with no Hack Club content (<code>hc_share</code> of 0),
+				refreshed by the views job. Videos it hasn't coded yet aren't listed. Participants never see this.
+			</p>
+			{#if data.noHcMention.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Platform</th>
+							<th>Day</th>
+							<th>Views</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.noHcMention as v}
+							<tr>
+								<td><a href="/user/{v.slackId}">{v.slackId}</a></td>
+								<td><a href={v.url} target="_blank" rel="noopener">{v.url}</a></td>
+								<td>{v.platform}</td>
+								<td>{v.day}</td>
+								<td>{v.views}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Removed, private or unlisted</h2>
+			<p>
+				Checked against each platform's public page every 6 hours by the views job. Removed means
+				deleted or private. Unlisted is YouTube only, judged from the channel's feed. Instagram hides
+				posts from scrapers at times, so double-check those before acting.
+			</p>
+			{#if data.unavailable.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Platform</th>
+							<th>Day</th>
+							<th>Status</th>
+							<th>Checked</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.unavailable as v}
+							<tr>
+								<td><a href="/user/{v.slackId}">{v.slackId}</a></td>
+								<td><a href={v.url} target="_blank" rel="noopener">{v.url}</a></td>
+								<td>{v.platform}</td>
+								<td>{v.day}</td>
+								<td>{v.availability}</td>
+								<td>{v.checkedAt ? new Date(v.checkedAt).toLocaleString() : ''}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Under 5 likes after 24 hours</h2>
+			<p>Likes are combined across a video's platforms, counted from when it was submitted.</p>
+			{#if data.lowLikes.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Day</th>
+							<th>Likes</th>
+							<th>Views</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.lowLikes as v}
+							<tr>
+								<td><a href="/user/{v.slackId}">{v.slackId}</a></td>
+								<td>
+									{#each v.urls as url}<div><a href={url} target="_blank" rel="noopener">{url}</a></div>{/each}
+								</td>
+								<td>{v.day}</td>
+								<td>{v.likes}</td>
+								<td>{v.views}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Possible repeats</h2>
+			<p>
+				A video submitted again on a later day under a new link, usually re-uploaded to another
+				platform. Matched on an identical caption (and length, when known), or the same length (within 1.5s) plus overlapping
+				unified-socials screenplays, which also catches roughly 1 in 50 different videos, so check
+				both links. Dismissing stops the pair being flagged again. Delete a confirmed repeat from
+				Airtable or ask the participant to.
+			</p>
+			{#if form?.dismissed}
+				<p>Dismissed {form.dismissed}.</p>
+			{/if}
+			{#if data.repeats.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Day</th>
+							<th>Counted</th>
+							<th>Same as</th>
+							<th>Why</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.repeats as r}
+							<tr>
+								<td><a href="/user/{r.slackId}">{r.slackId}</a></td>
+								<td><a href={r.url} target="_blank" rel="noopener">{r.url}</a></td>
+								<td>{r.day}</td>
+								<td>{r.counted ? 'yes' : 'no'}</td>
+								<td><a href={r.repeatOf} target="_blank" rel="noopener">{r.repeatOf}</a></td>
+								<td>{r.reason}</td>
+								<td>
+									<form class="inline" method="POST" action="?/dismissRepeat">
+										<input type="hidden" name="id" value={r.id} />
+										<button type="submit">Dismiss</button>
+									</form>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
 			{/if}
 		</section>
 
