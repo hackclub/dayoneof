@@ -2,10 +2,10 @@
 // unified-socials doesn't say. Anything ambiguous (blocked, rate limited, timed out) is null, so a
 // flaky check never flags a video on its own.
 
-const BROWSER_UA =
+export const BROWSER_UA =
 	'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36';
 // Instagram only serves its og: tags to link-preview crawlers.
-const CRAWLER_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
+export const CRAWLER_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
 // A just-published video can take a while to show up in its channel's feed.
 const FEED_GRACE_MS = 60 * 60 * 1000;
 
@@ -15,7 +15,7 @@ const FEED_GRACE_MS = 60 * 60 * 1000;
  * @param {string} url
  * @param {string} userAgent
  */
-function get(url, userAgent) {
+export function get(url, userAgent) {
 	return fetch(url, {
 		headers: { 'User-Agent': userAgent },
 		redirect: 'manual',

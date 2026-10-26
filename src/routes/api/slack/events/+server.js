@@ -14,7 +14,12 @@ import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
 import { extractLinks } from '$lib/server/links.js';
 import { messages, statsLine } from '$lib/server/messages.js';
 import { isYswsEligible } from '$lib/server/verification.js';
-import { syncParticipantTotalViews, settleParticipant, postFields } from '$lib/server/jobs.js';
+import {
+	syncParticipantTotalViews,
+	settleParticipant,
+	postFields,
+	previewFields
+} from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
 import { markMessageDeleted } from '$lib/server/deletion.js';
 import {
@@ -144,11 +149,13 @@ async function handleSubmission(event, link) {
 	// refused for being too old or too short never reaches it, and it only fires when the read found no row.
 	const trackedId = stats ? null : await trackPost(link.url);
 
+	/** @type {Record<string, unknown>} */
 	const statsFields = stats
 		? postFields(stats)
 		: trackedId
 			? { [F.submissions.unifiedId]: trackedId }
 			: {};
+	Object.assign(statsFields, await previewFields(link, statsFields));
 
 	const today = streakDay(participant.fields[F.participants.tz]);
 	// Settles any unposted days first, so the streak and freezes below already account for them.
@@ -297,6 +304,13 @@ async function addOtherPlatform(event, primary, link) {
 	}
 
 	const trackedId = stats ? null : await trackPost(link.url);
+	/** @type {Record<string, unknown>} */
+	const statsFields = stats
+		? postFields(stats)
+		: trackedId
+			? { [F.submissions.unifiedId]: trackedId }
+			: {};
+	Object.assign(statsFields, await previewFields(link, statsFields));
 
 	await airtable.create(TABLES.submissions, {
 		[F.submissions.slackId]: event.user,
@@ -309,7 +323,7 @@ async function addOtherPlatform(event, primary, link) {
 		[F.submissions.channelId]: event.channel,
 		[F.submissions.messageTs]: event.ts,
 		[F.submissions.primarySubmission]: primary.id,
-		...(stats ? postFields(stats) : trackedId ? { [F.submissions.unifiedId]: trackedId } : {})
+		...statsFields
 	});
 
 	if (stats) {

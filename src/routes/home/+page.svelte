@@ -16,13 +16,13 @@
 	];
 
 	const tabs: { key: Tab; label: string }[] = [
-		{ key: 'streak', label: 'Longest streak' },
 		{ key: 'people', label: 'Top creators' },
+		{ key: 'streak', label: 'Longest streak' },
 		{ key: 'videos', label: 'Top videos' }
 	];
 
 	let sort = $state<Sort>('date');
-	let tab = $state<Tab>('people');
+	let tab = $state<Tab>('streak');
 	let picked = $state<Record<string, string>>({});
 
 	const heading = $derived(sort === 'views' ? 'Most viewed reels' : 'Newest reels');
@@ -90,8 +90,9 @@
 				<li>
 					<h2>Post every day</h2>
 					<p>
-						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, that mentions Hack Club. It has to
-						stay public, so no private, unlisted, or deleted videos. Post it before 3AM your time and
+						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, that mentions Hack Club and explains
+						what you're learning or working on, not just a timelapse (no Lapse or Hackatime needed). It
+						has to stay public, so no private, unlisted, or deleted videos. Post it before 3AM your time and
 						the bot replies with your streak!
 					</p>
 				</li>

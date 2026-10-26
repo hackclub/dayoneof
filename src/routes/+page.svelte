@@ -113,7 +113,7 @@
 		},
 		{
 			q: 'What are the rules?',
-			a: 'Learn or make anything you want, like learning piano, building hardware, or whatever you\'re already into. Videos must be at least 15 seconds long, published in the last day, and mention Hack Club somewhere, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify you made it. Please don\'t use generative AI anywhere in your videos.'
+			a: 'Learn or make anything you want, like learning piano, building hardware, or whatever you\'re already into. Videos must be at least 15 seconds long, published in the last day, and mention Hack Club somewhere, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify you made it. Videos can\'t just be timelapses: every video has to explain what you\'re learning or working on. No Lapse or Hackatime is required. Please don\'t use generative AI anywhere in your videos.'
 		},
 		{
 			q: 'How do streaks and freezes work?',

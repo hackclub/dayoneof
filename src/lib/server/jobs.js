@@ -11,6 +11,7 @@ import { serialize } from './queue.js';
 import { streakDay, addDays, settleMissedDays, compareStreaks, viewMilestoneCrossed, prizeFor } from './streak.js';
 import { groupByVideo, combineStats, totalViews } from './videos.js';
 import { checkAvailability } from './availability.js';
+import { fetchPreview } from './previews.js';
 import { findRepeats } from './repeats.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
@@ -20,14 +21,30 @@ export function postFields(post) {
 	return {
 		[F.submissions.views]: post.views,
 		[F.submissions.likes]: post.likes,
-		[F.submissions.title]: post.title,
-		[F.submissions.thumbnailUrl]: post.thumbnailUrl,
+		// Left out while blank, so a stand-in from previews.js isn't wiped before the archive is ready.
+		...(post.title ? { [F.submissions.title]: post.title } : {}),
+		...(post.thumbnailUrl ? { [F.submissions.thumbnailUrl]: post.thumbnailUrl } : {}),
 		[F.submissions.archiveUrl]: post.archiveUrl,
 		[F.submissions.unifiedId]: String(post.id),
 		[F.submissions.noHcMention]: post.noHcMention,
 		// Rounded to the field's precision so an unchanged duration never reads back as a change.
 		[F.submissions.durationSeconds]:
 			post.durationSeconds == null ? null : Math.round(post.durationSeconds * 10) / 10
+	};
+}
+
+// Only fills what's still blank, so it never overwrites anything unified-socials already gave.
+/**
+ * @param {{ platform: string, url: string }} video
+ * @param {Record<string, any>} fields
+ */
+export async function previewFields(video, fields) {
+	if (fields[F.submissions.thumbnailUrl]) return {};
+	const preview = await fetchPreview(video);
+	if (!preview?.thumbnailUrl) return {};
+	return {
+		[F.submissions.thumbnailUrl]: preview.thumbnailUrl,
+		...(!fields[F.submissions.title] && preview.title ? { [F.submissions.title]: preview.title } : {})
 	};
 }
 
@@ -304,6 +321,44 @@ export async function runViews() {
 	});
 	await syncTotalViews(participants, submissions);
 	return { viewsChecked, repeatsFlagged };
+}
+
+const PREVIEW_WINDOW_DAYS = 2;
+
+// Every few minutes, and only for recent videos still without a thumbnail, so a new post shows up
+// properly well before the hourly views run. Older rows are left to that run.
+export async function runPreviews() {
+	const submissions = await airtable.list(TABLES.submissions, {
+		filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, {${F.submissions.thumbnailUrl}} = BLANK(), IS_AFTER({${F.submissions.postedAt}}, DATEADD(NOW(), -${PREVIEW_WINDOW_DAYS}, 'days')))`
+	});
+	let filled = 0;
+	/** @type {Set<string>} */
+	const viewsChanged = new Set();
+
+	for (const submission of submissions) {
+		const fields = submission.fields;
+		const video = { platform: fields[F.submissions.platform], url: fields[F.submissions.url] };
+		let post = null;
+		try {
+			post = await unified.fetchPostByPlatformId(video.platform, fields[F.submissions.videoId]);
+		} catch (err) {
+			console.error('unified-socials preview fetch failed', err);
+		}
+		/** @type {Record<string, unknown>} */
+		const changes = post ? postFields(post) : {};
+		Object.assign(changes, await previewFields(video, { ...fields, ...changes }));
+		if (!changes[F.submissions.thumbnailUrl]) continue;
+
+		await airtable.update(TABLES.submissions, submission.id, changes);
+		if (post) viewsChanged.add(fields[F.submissions.slackId]);
+		filled++;
+	}
+
+	for (const slackId of viewsChanged) {
+		const participant = await findParticipant(slackId);
+		if (participant) await syncParticipantTotalViews(participant);
+	}
+	return { checked: submissions.length, filled };
 }
 
 const BOARD_SIZE = 10;
