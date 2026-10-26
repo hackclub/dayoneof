@@ -1,4 +1,4 @@
-import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID, isAdmin } from '$lib/server/config.js';
 import { isYswsEligible } from '$lib/server/verification.js';
 import * as airtable from '$lib/server/airtable.js';
 import { count } from '$lib/format';
@@ -86,6 +86,7 @@ export async function load({ locals }) {
 
 	return {
 		session,
+		isAdmin: isAdmin(session?.slackId),
 		name: me ? cap(me.fields[F.participants.name], NAME_MAX) || null : null,
 		avatar: me?.fields[F.participants.avatar] || '',
 		verified: isYswsEligible(me?.fields[F.participants.yswsEligible]),

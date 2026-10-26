@@ -76,6 +76,7 @@ export const F = {
 		availability: 'availability',
 		availabilityCheckedAt: 'availability_checked_at',
 		durationSeconds: 'duration_seconds',
+		publishedAt: 'published_at',
 		repeatOf: 'repeat_of',
 		repeatReason: 'repeat_reason'
 	},

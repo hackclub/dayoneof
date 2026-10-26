@@ -58,6 +58,9 @@
 						<span class="who-name">{data.name}</span>
 					</a>
 				{/if}
+				{#if data.isAdmin}
+					<a class="ghost-btn" href="/admin">Admin</a>
+				{/if}
 				<a class="ghost-btn" href="/api/auth/logout">Sign out</a>
 			{:else}
 				<a class="ghost-btn" href="/api/auth/login">Sign in with Hack Club</a>

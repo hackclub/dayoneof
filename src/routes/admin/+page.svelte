@@ -12,6 +12,20 @@
 		if (!confirm('Mark every prize this person has unlocked as shipped?')) event.preventDefault();
 	}
 
+	const rejectImpactText: Record<string, string> = {
+		today: 'their day is open again until 3am',
+		freeze: 'a freeze covered the day',
+		break: 'their streak was reset',
+		none: "it didn't count toward their streak"
+	};
+
+	function confirmReject(event: SubmitEvent) {
+		const ok = confirm(
+			'Rejects the video: undoes its streak day like a delete, edits the bot reply, removes the checkmark and DMs them your message. Continue?'
+		);
+		if (!ok) event.preventDefault();
+	}
+
 	function confirmRestore(event: SubmitEvent) {
 		const ok = confirm(
 			"Restores the video and resets this participant's streak, freezes, days and status to what they were just before the delete, overwriting anything since. Continue?"
@@ -119,6 +133,27 @@
 						no unified-socials match yet
 					{/if}
 				</p>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Reject a video</h2>
+			<p>
+				Paste any of its platform links. The streak day is undone the same way as deleting it from the
+				site, and it shows up under deleted videos, where it can be restored. Restoring rewrites the
+				reply with fresh stats, but the DM stays sent.
+			</p>
+			<form method="POST" action="?/rejectVideo" onsubmit={confirmReject}>
+				<input type="text" name="url" placeholder="https://..." size="40" required />
+				<br />
+				<textarea name="reason" rows="3" cols="60" placeholder="Why it was rejected" required></textarea>
+				<br />
+				<button type="submit">Reject</button>
+			</form>
+			{#if form?.rejectError}
+				<p><strong>Failed:</strong> {form.rejectError}</p>
+			{:else if form?.rejected}
+				<p>Rejected {form.rejected}: {rejectImpactText[form.rejectImpact]}.</p>
 			{/if}
 		</section>
 
@@ -263,6 +298,42 @@
 								<td>{v.platform}</td>
 								<td>{v.day}</td>
 								<td>{v.views}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
+		<section>
+			<h2>Too short or too old</h2>
+			<p>
+				Under 15 seconds, or published more than a day before it was submitted, per unified-socials
+				once it tracks the video. Posts it didn't have yet skip these checks at submit time.
+			</p>
+			{#if data.brokenRules.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Platform</th>
+							<th>Day</th>
+							<th>Counted</th>
+							<th>Why</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.brokenRules as v}
+							<tr>
+								<td><a href="/user/{v.slackId}">{v.slackId}</a></td>
+								<td><a href={v.url} target="_blank" rel="noopener">{v.url}</a></td>
+								<td>{v.platform}</td>
+								<td>{v.day}</td>
+								<td>{v.counted ? 'yes' : 'no'}</td>
+								<td>{v.reasons.join(', ')}</td>
 							</tr>
 						{/each}
 					</tbody>

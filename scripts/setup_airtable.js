@@ -103,6 +103,7 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.availability, ...text },
 				{ name: F.submissions.availabilityCheckedAt, ...when },
 				{ name: F.submissions.durationSeconds, type: 'number', options: { precision: 1 } },
+				{ name: F.submissions.publishedAt, ...when },
 				{ name: F.submissions.repeatOf, ...text },
 				{ name: F.submissions.repeatReason, ...text }
 			]

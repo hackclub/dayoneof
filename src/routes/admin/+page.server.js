@@ -1,13 +1,22 @@
-import { error, redirect } from '@sveltejs/kit';
-import { appEnv, isAdmin, TABLES, SHIPPING_TABLE, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { error, fail, redirect } from '@sveltejs/kit';
+import {
+	appEnv,
+	config,
+	isAdmin,
+	TABLES,
+	SHIPPING_TABLE,
+	F,
+	PARTICIPANT_HAS_SLACK_ID,
+	SUBMISSION_NOT_DELETED
+} from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import { runReconcile, runViews, runLeaderboard, runRemind, runBackup } from '$lib/server/jobs.js';
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { isYswsEligible } from '$lib/server/verification.js';
-import { restoreSubmission, sweepDeletedMessages } from '$lib/server/deletion.js';
+import { deleteSubmission, restoreSubmission, sweepDeletedMessages } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
-import { prizesUnlocked } from '$lib/server/streak.js';
+import { prizesUnlocked, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
 import { groupByVideo } from '$lib/server/videos.js';
 
 const LOW_LIKES = 5;
@@ -136,6 +145,30 @@ export async function load({ locals }) {
 				day: s.fields[F.submissions.day],
 				views: s.fields[F.submissions.views] ?? 0
 			})),
+		// Submit-time checks only see videos unified-socials already had, so new ones are judged here.
+		// Age is against when the video was first submitted, same as for other platforms.
+		brokenRules: submissions
+			.map((s) => {
+				const primaryId = s.fields[F.submissions.primarySubmission];
+				const primary = primaryId ? submissions.find((p) => p.id === primaryId) : s;
+				const submittedAt = new Date(primary?.fields[F.submissions.postedAt] ?? Date.now());
+				const duration = s.fields[F.submissions.durationSeconds];
+				const reasons = [
+					...(isVideoTooShort(duration, config.minVideoSeconds) ? [`${duration}s long`] : []),
+					...(isPostTooOld(s.fields[F.submissions.publishedAt], config.maxPostAgeDays, submittedAt)
+						? [`published ${s.fields[F.submissions.publishedAt].slice(0, 10)}`]
+						: [])
+				];
+				return {
+					slackId: s.fields[F.submissions.slackId],
+					url: s.fields[F.submissions.url],
+					platform: s.fields[F.submissions.platform],
+					day: s.fields[F.submissions.day],
+					counted: !!s.fields[F.submissions.countedTowardStreak],
+					reasons
+				};
+			})
+			.filter((s) => s.reasons.length),
 		unavailable: submissions
 			.filter((s) => s.fields[F.submissions.availability])
 			.map((s) => ({
@@ -258,6 +291,26 @@ export const actions = {
 		const id = String(data.get('id'));
 		await serialize(() => restoreSubmission(id));
 		return { restored: id };
+	},
+	// Another platform's link rejects the video it belongs to, since only that one holds the streak.
+	rejectVideo: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const data = await request.formData();
+		const url = String(data.get('url') ?? '').trim();
+		const reason = String(data.get('reason') ?? '').trim();
+		if (!reason) return fail(400, { rejectError: 'Write a message to send them.' });
+		const link = await extractLink(url);
+		if (!link) return fail(400, { rejectError: "That doesn't look like a YouTube/TikTok/Instagram link." });
+		const found = await airtable.find(
+			TABLES.submissions,
+			`AND(${airtable.eq(F.submissions.platform, link.platform)}, ${airtable.eq(F.submissions.videoId, link.videoId)}, ${SUBMISSION_NOT_DELETED})`
+		);
+		if (!found) return fail(404, { rejectError: 'No live submission for that video.' });
+		const primaryId = found.fields[F.submissions.primarySubmission] || found.id;
+		const slackId = found.fields[F.submissions.slackId];
+		const impact = await serialize(() => deleteSubmission(primaryId, slackId, { rejection: reason }));
+		if (!impact) return fail(404, { rejectError: 'That video was already deleted.' });
+		return { rejected: url, rejectImpact: impact };
 	},
 	checkStats: async ({ request, locals }) => {
 		requireAdmin(locals);

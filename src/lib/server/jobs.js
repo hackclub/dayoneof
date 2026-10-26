@@ -29,7 +29,10 @@ export function postFields(post) {
 		[F.submissions.noHcMention]: post.noHcMention,
 		// Rounded to the field's precision so an unchanged duration never reads back as a change.
 		[F.submissions.durationSeconds]:
-			post.durationSeconds == null ? null : Math.round(post.durationSeconds * 10) / 10
+			post.durationSeconds == null ? null : Math.round(post.durationSeconds * 10) / 10,
+		// In Airtable's own ISO form for the same reason.
+		[F.submissions.publishedAt]:
+			post.publishedAt == null ? null : new Date(post.publishedAt).toISOString()
 	};
 }
 

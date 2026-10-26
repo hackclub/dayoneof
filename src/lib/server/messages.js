@@ -143,6 +143,17 @@ export const messages = {
 	dayFrozen(freezesRemaining) {
 		return `You missed yesterday, so a freeze saved your streak (frozen days don't add to it). ${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} left.`;
 	},
+	/**
+	 * @param {string} day
+	 * @param {string} reason
+	 */
+	rejectedDm(day, reason) {
+		return `Your #dayoneof submission on ${day} has been rejected: ${reason}`;
+	},
+	/** @param {string} reason */
+	rejectedReply(reason) {
+		return `This submission was rejected and doesn't count toward your streak: ${reason}`;
+	},
 	streakBroken() {
 		return 'You missed yesterday and had no freezes left, so your streak reset. Post today to start a new one.';
 	},

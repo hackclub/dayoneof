@@ -3,6 +3,9 @@
 import { TABLES, F, SUBMISSION_NOT_DELETED } from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
+import { messages } from './messages.js';
+import * as unified from './unified.js';
+import { combineStats } from './videos.js';
 import { syncParticipantTotalViews, findParticipant } from './jobs.js';
 import { streakDay, afterDeletingPost } from './streak.js';
 
@@ -66,6 +69,17 @@ function listOtherPlatforms(primaryId, filter) {
 	});
 }
 
+// A failed read leaves that platform out of the rewritten reply rather than failing the restore.
+/** @param {AirtableRecord} submission */
+async function fetchStats(submission) {
+	const { [F.submissions.platform]: platform, [F.submissions.videoId]: videoId } = submission.fields;
+	if (!platform || !videoId) return null;
+	return unified.fetchPostByPlatformId(platform, videoId).catch((err) => {
+		console.error('unified-socials fetch failed on restore', err);
+		return null;
+	});
+}
+
 /** @param {Record<string, any>} fields */
 function postReaction(fields) {
 	return fields[F.submissions.countedTowardStreak] ? 'white_check_mark' : 'repeat';
@@ -100,12 +114,14 @@ export async function sweepDeletedMessages() {
 	return { checked: submissions.length, found };
 }
 
-// Callers run this inside serialize(), like every other streak write.
+// Callers run this inside serialize(), like every other streak write. A rejection by an admin
+// undoes the streak the same way, but edits the bot reply and DMs the reason instead.
 /**
  * @param {string} submissionId
  * @param {string} slackId
+ * @param {{ rejection?: string }} [options]
  */
-export async function deleteSubmission(submissionId, slackId) {
+export async function deleteSubmission(submissionId, slackId, { rejection } = {}) {
 	const submission = await airtable.get(TABLES.submissions, submissionId);
 	const fields = submission.fields;
 	if (fields[F.submissions.slackId] !== slackId || fields[F.submissions.deletedAt]) return null;
@@ -142,7 +158,9 @@ export async function deleteSubmission(submissionId, slackId) {
 
 	await airtable.update(TABLES.submissions, submission.id, {
 		[F.submissions.deletedAt]: now,
-		[F.submissions.preDeleteState]: state ? JSON.stringify(state) : ''
+		// Marked as rejected so a restore knows the reply was edited, not deleted.
+		[F.submissions.preDeleteState]:
+			state || rejection ? JSON.stringify({ ...state, ...(rejection ? { rejected: true } : {}) }) : ''
 	});
 	for (const other of await listOtherPlatforms(submission.id, SUBMISSION_NOT_DELETED)) {
 		await airtable.update(TABLES.submissions, other.id, { [F.submissions.deletedAt]: now });
@@ -156,14 +174,25 @@ export async function deleteSubmission(submissionId, slackId) {
 	const messageTs = fields[F.submissions.messageTs];
 	const replyTs = fields[F.submissions.replyMessageTs];
 	if (channel && replyTs) {
-		await bestEffort('delete bot reply failed', () => slack.deleteMessage(channel, replyTs));
+		await bestEffort(rejection ? 'edit bot reply failed' : 'delete bot reply failed', () =>
+			rejection
+				? slack.updateMessage(channel, replyTs, messages.rejectedReply(rejection))
+				: slack.deleteMessage(channel, replyTs)
+		);
 	}
 	if (channel && messageTs) {
 		await bestEffort('remove reaction failed', () =>
 			slack.removeReaction(channel, messageTs, postReaction(fields))
 		);
-		await bestEffort('add wastebasket failed', () =>
-			slack.addReaction(channel, messageTs, 'wastebasket')
+		if (!rejection) {
+			await bestEffort('add wastebasket failed', () =>
+				slack.addReaction(channel, messageTs, 'wastebasket')
+			);
+		}
+	}
+	if (rejection) {
+		await bestEffort('rejection dm failed', () =>
+			slack.dm(slackId, messages.rejectedDm(fields[F.submissions.day], rejection))
 		);
 	}
 
@@ -171,7 +200,7 @@ export async function deleteSubmission(submissionId, slackId) {
 }
 
 // Puts the participant back exactly as they were before the delete, overwriting anything since.
-// The bot's deleted reply is not re-posted.
+// A rejected video's edited reply is rewritten with fresh stats; a deleted reply is not re-posted.
 /** @param {string} submissionId */
 export async function restoreSubmission(submissionId) {
 	const submission = await airtable.get(TABLES.submissions, submissionId);
@@ -189,7 +218,7 @@ export async function restoreSubmission(submissionId) {
 		});
 	}
 	if (state?.dayId) await airtable.update(TABLES.days, state.dayId, { [F.days.deletedAt]: null });
-	if (state && participant) {
+	if (state?.participant && participant) {
 		await airtable.update(TABLES.participants, participant.id, state.participant);
 	}
 
@@ -198,14 +227,38 @@ export async function restoreSubmission(submissionId) {
 		[F.submissions.preDeleteState]: ''
 	});
 	// Only the platforms deleted along with it, matched by the shared timestamp.
+	const restored = [submission];
 	for (const other of await listOtherPlatforms(submission.id, `{${F.submissions.deletedAt}}`)) {
 		if (other.fields[F.submissions.deletedAt] !== fields[F.submissions.deletedAt]) continue;
 		await airtable.update(TABLES.submissions, other.id, { [F.submissions.deletedAt]: null });
+		restored.push(other);
 	}
 	if (participant) await syncParticipantTotalViews(participant);
 
 	const channel = fields[F.submissions.channelId];
 	const messageTs = fields[F.submissions.messageTs];
+	const replyTs = fields[F.submissions.replyMessageTs];
+	if (state?.rejected && channel && replyTs) {
+		await bestEffort('rewrite rejected reply failed', async () => {
+			const stats = combineStats(
+				(await Promise.all(restored.map(fetchStats))).filter((post) => post != null)
+			);
+			const p = participant?.fields ?? {};
+			const text = fields[F.submissions.countedTowardStreak]
+				? messages.streakUpdate(
+						fields[F.submissions.streakAtPost] ?? 0,
+						fields[F.submissions.freezesAtPost] ?? 0,
+						stats
+					)
+				: messages.duplicatePost(
+						fields[F.submissions.slackId],
+						p[F.participants.currentStreak] ?? 0,
+						p[F.participants.streakFreezes] ?? 0,
+						stats
+					);
+			await slack.updateMessage(channel, replyTs, text);
+		});
+	}
 	if (channel && messageTs) {
 		await bestEffort('remove wastebasket failed', () =>
 			slack.removeReaction(channel, messageTs, 'wastebasket')
