@@ -87,16 +87,15 @@ export const messages = {
 	 * @param {string} slackId
 	 * @param {string} feedback
 	 */
-	starred(slackId, feedback) {
-		const note = feedback ? `\n${feedback}` : '';
-		return `<@${slackId}> ⭐ this video got starred by the reviewers, so you'll get extra stickers!${note}`;
+	reviewFeedback(slackId, feedback) {
+		return `<@${slackId}> feedback from the reviewers: ${feedback}`;
 	},
 	/**
 	 * @param {string} slackId
-	 * @param {string} feedback
+	 * @param {string} originalUrl
 	 */
-	reviewFeedback(slackId, feedback) {
-		return `<@${slackId}> feedback from the reviewers: ${feedback}`;
+	mergedIntoEarlier(slackId, originalUrl) {
+		return `<@${slackId}> this looks like the same video as one you already posted, so I added it as another platform for that one. It won't count as a new day. Next time, reply in <${originalUrl}|your original post's thread> with the other links instead!`;
 	},
 	/** @param {string} slackId */
 	duplicateVideo(slackId) {

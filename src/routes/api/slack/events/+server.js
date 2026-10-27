@@ -16,6 +16,7 @@ import {
 	countSubmission,
 	countWithOtherPlatform,
 	findPendingPrimary,
+	findSameVideo,
 	PENDING_REACTION
 } from '$lib/server/pending.js';
 import { messages } from '$lib/server/messages.js';
@@ -133,6 +134,21 @@ async function handleSubmission(event, link) {
 			event.ts
 		);
 		return null;
+	}
+
+	const same = await findSameVideo(
+		event.user,
+		link.platform,
+		facts.durationSeconds,
+		new Date().toISOString()
+	);
+	if (same) {
+		if (await addOtherPlatform(event, same, link)) {
+			await slack.addReaction(event.channel, event.ts, 'white_check_mark');
+			const original = slack.permalink(same.fields[F.submissions.channelId], same.fields[F.submissions.messageTs]);
+			await slack.postMessage(event.channel, messages.mergedIntoEarlier(event.user, original), event.ts);
+		}
+		return same;
 	}
 
 	// Paid, so it sits behind every gate above and only fires when the read found no row.

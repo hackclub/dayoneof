@@ -5,7 +5,7 @@ import { F } from './schema.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 
-const MAX_DURATION_GAP = 1.5;
+export const MAX_DURATION_GAP = 1.5;
 const MIN_SCREENPLAY_OVERLAP = 0.15;
 const MIN_CAPTION_KEY = 12;
 // Screenplays land hours after a post, so recent posts are re-checked until they have one.

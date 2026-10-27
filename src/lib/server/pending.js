@@ -7,12 +7,44 @@ import { serialize } from './queue.js';
 import { lookupVideo } from './facts.js';
 import { settleParticipant, syncParticipantTotalViews, findParticipant, postFields } from './jobs.js';
 import { addDays, isPostTooOld, isVideoTooShort, freezesAfterPost, nextMilestone } from './streak.js';
+import { MAX_DURATION_GAP } from './repeats.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 /** @typedef {import('./messages.js').PostStats} PostStats */
 
 export const PENDING_REACTION = 'hourglass_flowing_sand';
 const PENDING_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+
+const SAME_VIDEO_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+// A poster's recent video of the same length that isn't on this platform yet is the same upload.
+/**
+ * @param {string} slackId
+ * @param {string} platform
+ * @param {number | null} durationSeconds
+ * @param {string} before ISO time; only videos submitted earlier count
+ */
+export async function findSameVideo(slackId, platform, durationSeconds, before) {
+	if (durationSeconds == null) return null;
+	const since = new Date(Date.parse(before) - SAME_VIDEO_WINDOW_MS).toISOString();
+	const recent = await airtable.list(TABLES.submissions, {
+		filterByFormula: `AND(${airtable.eq(F.submissions.slackId, slackId)}, ${SUBMISSION_NOT_DELETED}, IS_AFTER({${F.submissions.postedAt}}, '${since}'), IS_BEFORE({${F.submissions.postedAt}}, '${before}'))`
+	});
+	const videoOf = (/** @type {AirtableRecord} */ s) => s.fields[F.submissions.primarySubmission] || s.id;
+	const onPlatform = new Set(
+		recent.filter((s) => s.fields[F.submissions.platform] === platform).map(videoOf)
+	);
+	return (
+		recent
+			.filter((s) => !s.fields[F.submissions.primarySubmission] && !onPlatform.has(s.id))
+			.filter((s) => {
+				const d = s.fields[F.submissions.durationSeconds];
+				return typeof d === 'number' && Math.abs(d - durationSeconds) <= MAX_DURATION_GAP;
+			})
+			.sort((a, b) => (a.fields[F.submissions.postedAt] < b.fields[F.submissions.postedAt] ? 1 : -1))[0] ??
+		null
+	);
+}
 
 /** @param {string} slackId */
 export function findPendingPrimary(slackId) {
@@ -196,6 +228,34 @@ async function finishPending(row, stats) {
 	if (participant) await countSubmission(participant, changes, stats, row);
 }
 
+/**
+ * @param {AirtableRecord} row
+ * @param {AirtableRecord} into
+ * @param {Parameters<typeof postFields>[0] | null} stats
+ */
+async function mergePending(row, into, stats) {
+	const f = row.fields;
+	const channel = f[F.submissions.channelId];
+	const messageTs = f[F.submissions.messageTs];
+	await airtable.update(TABLES.submissions, row.id, {
+		...(stats ? postFields(stats) : {}),
+		[F.submissions.primarySubmission]: into.id,
+		[F.submissions.day]: into.fields[F.submissions.day],
+		[F.submissions.pendingCheck]: false
+	});
+	const participant = await findParticipant(f[F.submissions.slackId]);
+	if (stats && participant) await syncParticipantTotalViews(participant);
+	await slack.removeReaction(channel, messageTs, PENDING_REACTION).catch(() => {});
+	await slack.addReaction(channel, messageTs, 'white_check_mark');
+	const text = messages.mergedIntoEarlier(
+		f[F.submissions.slackId],
+		slack.permalink(into.fields[F.submissions.channelId], into.fields[F.submissions.messageTs])
+	);
+	const replyTs = f[F.submissions.replyMessageTs];
+	if (replyTs) await slack.updateMessage(channel, replyTs, text);
+	else await slack.postMessage(channel, text, messageTs);
+}
+
 /** @param {AirtableRecord} row */
 async function requestReview(row) {
 	const f = row.fields;
@@ -291,8 +351,15 @@ export async function runPending() {
 			continue;
 		}
 
+		const same =
+			!reason && !primaryId
+				? await findSameVideo(slackId, link.platform, facts.durationSeconds, f[F.submissions.postedAt])
+				: null;
+
 		try {
-			await serialize(() => (reason ? rejectPending(row, reason) : finishPending(row, stats)));
+			await serialize(() =>
+				reason ? rejectPending(row, reason) : same ? mergePending(row, same, stats) : finishPending(row, stats)
+			);
 			if (reason) rejected++;
 			else counted++;
 		} catch (err) {

@@ -141,6 +141,14 @@ export async function getMessage(channel, ts) {
 	return message?.ts === ts ? message : null;
 }
 
+/**
+ * @param {string} channel
+ * @param {string} ts
+ */
+export function permalink(channel, ts) {
+	return `https://hackclub.enterprise.slack.com/archives/${channel}/p${ts.replace('.', '')}`;
+}
+
 /** @param {string} userId */
 export async function usersInfo(userId) {
 	const { user } = await call('users.info', { user: userId });

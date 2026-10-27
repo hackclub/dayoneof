@@ -108,7 +108,7 @@ export async function load({ locals, url }) {
 			postedAt: f[F.submissions.postedAt],
 			streakAtPost: f[F.submissions.streakAtPost] ?? null,
 			views,
-			slackUrl: `https://hackclub.enterprise.slack.com/archives/${f[F.submissions.channelId]}/p${String(f[F.submissions.messageTs]).replace('.', '')}`,
+			slackUrl: slack.permalink(f[F.submissions.channelId], f[F.submissions.messageTs]),
 			archiveUrl: archived?.fields[F.submissions.archiveUrl] ?? '',
 			embedUrl: EMBEDS[f[F.submissions.platform]]?.(f[F.submissions.videoId]) ?? '',
 			platforms: rows.map((s) => ({
@@ -156,11 +156,9 @@ export const actions = {
 		const channel = f[F.submissions.channelId];
 		const thread = f[F.submissions.messageTs];
 
-		if (decision === 'feedback' || decision === 'pass') {
+		if (decision === 'feedback' || decision === 'pass' || decision === 'star') {
 			if (decision === 'feedback' && !feedback) return fail(400, { error: 'Write some feedback first.' });
 			if (feedback) await slack.postMessage(channel, messages.reviewFeedback(slackId, feedback), thread);
-		} else if (decision === 'star') {
-			await slack.postMessage(channel, messages.starred(slackId, feedback), thread);
 		} else if (decision === 'reject') {
 			if (!feedback) return fail(400, { error: 'Rejecting needs a reason, written in the feedback box.' });
 			await serialize(() => deleteSubmission(id, slackId, { rejection: feedback }));
