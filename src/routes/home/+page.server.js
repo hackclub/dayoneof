@@ -29,7 +29,9 @@ export async function load({ locals }) {
 			sort: [{ field: F.submissions.postedAt, direction: 'desc' }]
 		})
 	]);
-	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
+	const submissions = allSubmissions.filter(
+		(s) => !s.fields[F.submissions.deletedAt] && !s.fields[F.submissions.pendingCheck]
+	);
 
 	const nameBySlackId = new Map(
 		participants.map((p) => [
@@ -53,7 +55,8 @@ export async function load({ locals }) {
 		};
 	});
 
-	const byStreak = [...participants]
+	const byStreak = participants
+		.filter((p) => count(p.fields[F.participants.currentStreak]) > 0)
 		.sort(compareStreaks)
 		.slice(0, BOARD_SIZE)
 		.map((p) => ({
@@ -63,7 +66,8 @@ export async function load({ locals }) {
 			freezes: count(p.fields[F.participants.streakFreezes])
 		}));
 
-	const byViews = [...participants]
+	const byViews = participants
+		.filter((p) => count(p.fields[F.participants.totalViews]) > 0)
 		.sort(
 			(a, b) =>
 				count(b.fields[F.participants.totalViews]) - count(a.fields[F.participants.totalViews])
@@ -75,7 +79,7 @@ export async function load({ locals }) {
 			views: count(p.fields[F.participants.totalViews])
 		}));
 
-	const byVideo = [...videos].sort((a, b) => b.views - a.views).slice(0, BOARD_SIZE);
+	const byVideo = videos.filter((v) => v.views > 0).sort((a, b) => b.views - a.views).slice(0, BOARD_SIZE);
 
 	const session = locals.session;
 	// A first sign-in lands before the stale participant list has refreshed to include them.

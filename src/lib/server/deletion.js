@@ -8,6 +8,7 @@ import * as unified from './unified.js';
 import { combineStats } from './videos.js';
 import { syncParticipantTotalViews, findParticipant } from './jobs.js';
 import { streakDay, afterDeletingPost } from './streak.js';
+import { PENDING_REACTION } from './pending.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 
@@ -82,6 +83,7 @@ async function fetchStats(submission) {
 
 /** @param {Record<string, any>} fields */
 function postReaction(fields) {
+	if (fields[F.submissions.pendingCheck]) return PENDING_REACTION;
 	return fields[F.submissions.countedTowardStreak] ? 'white_check_mark' : 'repeat';
 }
 

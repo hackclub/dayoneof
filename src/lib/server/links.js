@@ -86,6 +86,30 @@ export async function extractLinks(text) {
 	return [...links.values()];
 }
 
+const INSTAGRAM_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const INSTAGRAM_EPOCH_MS = 1314220021721n;
+
+// TikTok and Instagram ids carry their creation time, so age is known before unified-socials is.
+/**
+ * @param {{ platform: string, videoId: string }} link
+ * @returns {string | null}
+ */
+export function createdAtFromId({ platform, videoId }) {
+	let ms = null;
+	if (platform === 'tiktok' && /^\d+$/.test(videoId)) {
+		ms = (BigInt(videoId) >> 32n) * 1000n;
+	} else if (platform === 'instagram' && videoId.length <= 12) {
+		let id = 0n;
+		for (const char of videoId) {
+			const digit = INSTAGRAM_ALPHABET.indexOf(char);
+			if (digit < 0) return null;
+			id = id * 64n + BigInt(digit);
+		}
+		ms = (id >> 23n) + INSTAGRAM_EPOCH_MS;
+	}
+	return ms ? new Date(Number(ms)).toISOString() : null;
+}
+
 /** @param {string | undefined} text */
 export async function extractLink(text) {
 	return (await extractLinks(text))[0] ?? null;

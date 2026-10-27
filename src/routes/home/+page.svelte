@@ -93,10 +93,11 @@
 				<li>
 					<h2>Post every day</h2>
 					<p>
-						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, that mentions Hack Club and explains
-						what you're learning or working on, not just a timelapse (no Lapse or Hackatime needed). It
-						has to stay public, so no private, unlisted, or deleted videos. Post it before 3AM your time and
-						the bot replies with your streak!
+						A YouTube Short, TikTok, or Instagram reel, 15+ seconds, from the same account every day. Say
+						"this video was made doing the Day One Of challenge from Hack Club" somewhere in it, and explain
+						what you're learning or working on, not just a timelapse (no Lapse or Hackatime needed). Submit
+						it within a day of publishing, and keep it public, so no private, unlisted, or deleted videos.
+						Post it before 3AM your time and the bot replies with your streak!
 					</p>
 				</li>
 				<li>
@@ -119,7 +120,7 @@
 					<p>
 						Stickers at 2 days, a t-shirt at 7,
 						socks and a pin at 15, and an Orpheus plushie at 25. Most
-						total views at the end wins $500, and giving feedback on others' videos earns bonus stickers!
+						total views when the challenge ends on December 7 wins $500, and giving feedback on others' videos earns bonus stickers!
 					</p>
 				</li>
 			</ol>

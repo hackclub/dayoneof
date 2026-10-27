@@ -78,7 +78,9 @@ export const F = {
 		durationSeconds: 'duration_seconds',
 		publishedAt: 'published_at',
 		repeatOf: 'repeat_of',
-		repeatReason: 'repeat_reason'
+		repeatReason: 'repeat_reason',
+		pendingCheck: 'pending_check',
+		reviewRequestedAt: 'review_requested_at'
 	},
 	shipping: {
 		slackId: 'slack_id',
@@ -108,4 +110,7 @@ export const PARTICIPANT_HAS_SLACK_ID = `NOT({${F.participants.slackId}} = "")`;
 export const SUBMISSION_NOT_DELETED = `{${F.submissions.deletedAt}} = BLANK()`;
 
 // Extra platform links for a video point at its first submission, which holds the streak and reply.
+// Waiting on a publish date or length, so it neither counts nor shows anywhere yet.
+export const SUBMISSION_CHECKED = `NOT({${F.submissions.pendingCheck}})`;
+
 export const SUBMISSION_IS_PRIMARY = `{${F.submissions.primarySubmission}} = BLANK()`;

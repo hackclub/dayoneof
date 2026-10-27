@@ -20,7 +20,9 @@ export async function load({ locals, cookies }) {
 		}),
 		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID })
 	]);
-	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
+	const submissions = allSubmissions.filter(
+		(s) => !s.fields[F.submissions.deletedAt] && !s.fields[F.submissions.pendingCheck]
+	);
 
 	const views = submissions.map((s) => s.fields[F.submissions.views] ?? 0);
 

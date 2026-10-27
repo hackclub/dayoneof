@@ -4,7 +4,13 @@ import { env as publicEnv } from '$env/dynamic/public';
 
 import { tablesFor, shippingTableFor } from './schema.js';
 
-export { F, PARTICIPANT_HAS_SLACK_ID, SUBMISSION_NOT_DELETED, SUBMISSION_IS_PRIMARY } from './schema.js';
+export {
+	F,
+	PARTICIPANT_HAS_SLACK_ID,
+	SUBMISSION_NOT_DELETED,
+	SUBMISSION_IS_PRIMARY,
+	SUBMISSION_CHECKED
+} from './schema.js';
 
 /** @type {'dev' | 'prod'} */
 export const appEnv = env.APP_ENV?.trim().toLowerCase() === 'prod' ? 'prod' : 'dev';
@@ -38,6 +44,7 @@ export const config = {
 	// Blank switches tracking off entirely. Dev leaves it blank on purpose: a Funnel host is not
 	// localhost, so count.js would report local browsing straight into the real site's numbers.
 	goatcounterUrl: pub('PUBLIC_GOATCOUNTER_URL')?.replace(/\/$/, ''),
+	goatcounterDashboardUrl: priv('GOATCOUNTER_DASHBOARD_URL'),
 	airtableToken: priv('AIRTABLE_TOKEN'),
 	airtableBaseId: priv('AIRTABLE_BASE_ID'),
 	slackBotToken: priv('SLACK_BOT_TOKEN'),
@@ -56,6 +63,7 @@ export const config = {
 		priv('UNIFIED_SOCIALS_API_URL') || 'https://unified-socials-db.hackclub.com/api/v1',
 	// Opt-in because submitting a post to unified-socials-db starts paid work. Off in both
 	// environments until it is set to exactly "true" — see trackPost in unified.js.
+	youtubeApiKey: priv('YOUTUBE_API_KEY'),
 	unifiedSocialsTrackPosts: priv('UNIFIED_SOCIALS_TRACK_POSTS') === 'true',
 	// Falls back on anything unparseable rather than passing NaN on: every age comparison against
 	// NaN is false, which would let any old video through.

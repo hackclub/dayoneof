@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { HELP_CHANNEL_ID } from '../help.js';
 
+const REVIEWER_SLACK_IDS = ['U0795SNGE9L', 'U0793HPEX6V'];
 const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
 const OTHER_PLATFORMS = 'Upload it to other platforms too! You can link them in a reply to this thread.';
 
@@ -64,6 +65,25 @@ export const messages = {
 		return `<@${slackId}> that video is shorter than ${minSeconds} seconds, so it can't count toward your streak. Post a video that's at least ${minSeconds} seconds long!`;
 	},
 	// Points at #dayoneof-help since only a human can check a repost the poster believes is new.
+	/**
+	 * @param {string} slackId
+	 * @param {string} platform
+	 */
+	awaitingData(slackId, platform) {
+		const tip =
+			platform === 'instagram'
+				? '\nInstagram-only posts take about an hour to confirm. Reply here with its YouTube or TikTok link to count it right away!'
+				: '';
+		return `<@${slackId}> waiting on data to count your streak, check back in around an hour!${tip}`;
+	},
+	/** @param {string} slackId */
+	otherPlatformAwaitingData(slackId) {
+		return `<@${slackId}> waiting on data to add that link, check back in around an hour!`;
+	},
+	manualReview() {
+		const reviewers = REVIEWER_SLACK_IDS.map((id) => `<@${id}>`).join(' ');
+		return `${reviewers} this video needs manual review, bot couldn't verify!`;
+	},
 	/** @param {string} slackId */
 	duplicateVideo(slackId) {
 		return `<@${slackId}> that video has already been posted, so it can't count toward your streak. Post a different video, and if you think this is a mistake, send a message in <#${HELP_CHANNEL_ID}>!`;

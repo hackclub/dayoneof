@@ -19,7 +19,10 @@ export async function load({ params, locals }) {
 	if (!participant) error(404, "Nobody's signed up with that Slack ID.");
 
 	const submissions = allSubmissions.filter(
-		(s) => s.fields[F.submissions.slackId] === params.slackId && !s.fields[F.submissions.deletedAt]
+		(s) =>
+			s.fields[F.submissions.slackId] === params.slackId &&
+			!s.fields[F.submissions.deletedAt] &&
+			!s.fields[F.submissions.pendingCheck]
 	);
 	const isMe = locals.session?.slackId === params.slackId;
 	const groups = groupByVideo(submissions);

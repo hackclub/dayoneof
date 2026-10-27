@@ -18,6 +18,7 @@ import { deleteSubmission, restoreSubmission, sweepDeletedMessages } from '$lib/
 import { serialize } from '$lib/server/queue.js';
 import { prizesUnlocked, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
 import { groupByVideo } from '$lib/server/videos.js';
+import { runPending, approvePending } from '$lib/server/pending.js';
 
 const LOW_LIKES = 5;
 const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
@@ -145,8 +146,18 @@ export async function load({ locals }) {
 				day: s.fields[F.submissions.day],
 				views: s.fields[F.submissions.views] ?? 0
 			})),
-		// Submit-time checks only see videos unified-socials already had, so new ones are judged here.
-		// Age is against when the video was first submitted, same as for other platforms.
+		metricsUrl: config.goatcounterDashboardUrl ?? null,
+		pending: submissions
+			.filter((s) => s.fields[F.submissions.pendingCheck])
+			.map((s) => ({
+				id: s.id,
+				slackId: s.fields[F.submissions.slackId],
+				url: s.fields[F.submissions.url],
+				platform: s.fields[F.submissions.platform],
+				day: s.fields[F.submissions.day],
+				postedAt: s.fields[F.submissions.postedAt],
+				needsReview: !!s.fields[F.submissions.reviewRequestedAt]
+			})),
 		brokenRules: submissions
 			.map((s) => {
 				const primaryId = s.fields[F.submissions.primarySubmission];
@@ -241,6 +252,18 @@ export const actions = {
 	runRemind: async ({ locals }) => {
 		requireAdmin(locals);
 		return runJob('remind', () => runRemind({ force: true }));
+	},
+	runPending: async ({ locals }) => {
+		requireAdmin(locals);
+		return runJob('pending', runPending);
+	},
+	approvePending: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const id = String((await request.formData()).get('id'));
+		return runJob('count pending', async () => {
+			await approvePending(id);
+			return { id };
+		});
 	},
 	runBackup: async ({ locals }) => {
 		requireAdmin(locals);

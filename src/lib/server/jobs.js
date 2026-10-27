@@ -1,7 +1,15 @@
 // Shared job bodies behind /api/cron/* — one implementation per job, reused by the admin panel.
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { config, requireEnv, TABLES, F, PARTICIPANT_HAS_SLACK_ID, SUBMISSION_NOT_DELETED } from './config.js';
+import {
+	config,
+	requireEnv,
+	TABLES,
+	F,
+	PARTICIPANT_HAS_SLACK_ID,
+	SUBMISSION_NOT_DELETED,
+	SUBMISSION_CHECKED
+} from './config.js';
 import { tablesFor, shippingTableFor } from './schema.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
@@ -60,7 +68,7 @@ export function findParticipant(slackId) {
 /** @param {AirtableRecord} participant */
 export async function syncParticipantTotalViews(participant) {
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `AND(${airtable.eq(F.submissions.slackId, participant.fields[F.participants.slackId])}, ${SUBMISSION_NOT_DELETED})`
+		filterByFormula: `AND(${airtable.eq(F.submissions.slackId, participant.fields[F.participants.slackId])}, ${SUBMISSION_NOT_DELETED}, ${SUBMISSION_CHECKED})`
 	});
 	const total = submissions.reduce((sum, s) => sum + (s.fields[F.submissions.views] ?? 0), 0);
 	await airtable.update(TABLES.participants, participant.id, { [F.participants.totalViews]: total });
@@ -143,10 +151,15 @@ export async function runReconcile() {
 		filterByFormula: `AND(${PARTICIPANT_HAS_SLACK_ID}, OR({${F.participants.status}} = "active", {${F.participants.status}} = "frozen"))`
 	});
 
+	const pending = await airtable.list(TABLES.submissions, {
+		filterByFormula: `AND({${F.submissions.pendingCheck}}, ${SUBMISSION_NOT_DELETED})`
+	});
+	const waiting = new Set(pending.map((s) => s.fields[F.submissions.slackId]));
 	let frozen = 0;
 	let broken = 0;
 
 	for (const participant of participants) {
+		if (waiting.has(participant.fields[F.participants.slackId])) continue;
 		const yesterday = addDays(streakDay(participant.fields[F.participants.tz]), -1);
 		if (!(participant.fields[F.participants.lastDay] < yesterday)) continue;
 
@@ -190,7 +203,7 @@ async function mapPool(items, limit, fn) {
 /** @returns {Promise<{ viewsChecked: number, repeatsFlagged: number, submissions: AirtableRecord[] }>} */
 async function refreshViews() {
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: SUBMISSION_NOT_DELETED
+		filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, ${SUBMISSION_CHECKED})`
 	});
 	let viewsChecked = 0;
 
@@ -332,7 +345,7 @@ const PREVIEW_WINDOW_DAYS = 2;
 // properly well before the hourly views run. Older rows are left to that run.
 export async function runPreviews() {
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, {${F.submissions.thumbnailUrl}} = BLANK(), IS_AFTER({${F.submissions.postedAt}}, DATEADD(NOW(), -${PREVIEW_WINDOW_DAYS}, 'days')))`
+		filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, ${SUBMISSION_CHECKED}, {${F.submissions.thumbnailUrl}} = BLANK(), IS_AFTER({${F.submissions.postedAt}}, DATEADD(NOW(), -${PREVIEW_WINDOW_DAYS}, 'days')))`
 	});
 	let filled = 0;
 	/** @type {Set<string>} */
@@ -401,16 +414,25 @@ export async function runLeaderboard({ force = false } = {}) {
 	});
 	await syncTotalViews(participants, submissions);
 
-	const byStreak = [...participants].sort(compareStreaks).slice(0, BOARD_SIZE);
-	const byViews = topBy(participants, F.participants.totalViews);
+	const byStreak = participants
+		.filter((p) => p.fields[F.participants.currentStreak] > 0)
+		.sort(compareStreaks)
+		.slice(0, BOARD_SIZE);
+	const byViews = topBy(
+		participants.filter((p) => p.fields[F.participants.totalViews] > 0),
+		F.participants.totalViews
+	);
 	const byVideo = groupByVideo(submissions)
+		.filter((v) => v.views > 0)
 		.sort((a, b) => b.views - a.views)
 		.slice(0, BOARD_SIZE);
 
 	const streakLines = numbered(
 		byStreak,
-		(p) =>
-			`<@${p.fields[F.participants.slackId]}> · ${p.fields[F.participants.currentStreak] ?? 0} days`
+		(p) => {
+			const streak = p.fields[F.participants.currentStreak];
+			return `<@${p.fields[F.participants.slackId]}> · ${streak} day${streak === 1 ? '' : 's'}`;
+		}
 	);
 
 	const viewLines = numbered(

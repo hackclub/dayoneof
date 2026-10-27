@@ -113,11 +113,15 @@
 		},
 		{
 			q: 'What are the rules?',
-			a: 'Learn or make anything you want, like learning piano, building hardware, or whatever you\'re already into. Videos must be at least 15 seconds long, published in the last day, and mention Hack Club somewhere, like "This video is part of the Day One Of Challenge from Hack Club!", so we can verify you made it. Videos can\'t just be timelapses: every video has to explain what you\'re learning or working on. No Lapse or Hackatime is required. Please don\'t use generative AI anywhere in your videos.'
+			a: "Learn or make anything you want, in any language, and switch topics as often as you like. Post to YouTube Shorts, TikTok, or Instagram Reels only, from the same account every day. Videos must be at least 15 seconds long and published within a day of when you submit them, so no videos from before the challenge started and no uploading now to submit later (scheduled posts are fine). Somewhere in the video, say something like \"this video was made doing the Day One Of challenge from Hack Club\". A link to dayoneof.hackclub.com in your description helps but isn't required. Videos can't just be timelapses: every video has to explain what you're learning or working on. No Lapse or Hackatime is required. AI text-to-speech voiceovers and auto-generated captions are fine, but please don't use generative AI for anything else in your videos."
 		},
 		{
 			q: 'How do streaks and freezes work?',
 			a: "Your streak is how many days in a row you've posted. Your day ends at 3am your local time, so a video posted at 2am still counts for the day before, and posting twice in one day doesn't add an extra day. For every 2 days you post, you earn a streak freeze, and you can hold up to 3. If a day ends without a post, a freeze is used automatically so your streak survives, but frozen days don't add to it. Miss a day with no freezes left and your streak goes back to 0."
+		},
+		{
+			q: 'When does it end?',
+			a: 'Day One Of runs until December 7, 2026. Streak prizes are yours as soon as you hit each milestone, and the $500 grand prize goes to whoever has the most total views across all their videos when the challenge ends. You don\'t need a 25-day streak to win it.'
 		},
 		{
 			q: 'I have more questions!',
@@ -389,7 +393,7 @@
 					</ul>
 					<p>
 						<strong class="grand">Grand prize:</strong> whoever has the most views across all of their
-						videos combined at the end gets $500 USD for their setup, like a camera, a mic, or funds
+						videos combined when the challenge ends on December 7 gets $500 USD for their setup, like a camera, a mic, or funds
 						for their projects.
 					</p>
 					<p class="bonus">

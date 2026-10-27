@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractLink, extractLinks } from '../src/lib/server/links.js';
+import { extractLink, extractLinks, createdAtFromId } from '../src/lib/server/links.js';
 
 test('unwraps a Slack-wrapped link with no label', async () => {
 	const link = await extractLink('<https://www.youtube.com/watch?v=g4H16UR-kaE>');
@@ -65,4 +65,16 @@ test('extracts every distinct video in a message, in order', async () => {
 		['youtube', 'instagram']
 	);
 	assert.deepEqual(await extractLinks('no links'), []);
+});
+
+test('reads creation time out of TikTok and Instagram ids', () => {
+	assert.equal(
+		createdAtFromId({ platform: 'tiktok', videoId: '7701227063537061141' }),
+		'2026-10-27T06:14:14.000Z'
+	);
+	assert.equal(
+		createdAtFromId({ platform: 'instagram', videoId: 'DepZpLyAEfG' }),
+		'2026-10-18T19:09:27.869Z'
+	);
+	assert.equal(createdAtFromId({ platform: 'youtube', videoId: 'G7xsd5MWVa4' }), null);
 });

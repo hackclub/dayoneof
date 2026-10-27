@@ -47,14 +47,17 @@
 			this page doesn't duplicate that. Everything for debugging lives here now, not in Slack.
 		</p>
 		<p>{data.videosPosted} videos posted · {data.videosTracked} tracked by unified-socials</p>
+		{#if data.metricsUrl}
+			<p><a href={data.metricsUrl} target="_blank" rel="noopener">Site metrics (GoatCounter)</a></p>
+		{/if}
 
 		<section>
 			<h2>Jobs</h2>
 			<ul>
 				<li>
 					<strong>reconcile</strong>: for anyone active/frozen whose day ended (3am their time)
-					without a post, spends a freeze (or breaks their streak if they have none left). Runs
-					hourly.
+					without a post, spends a freeze (or breaks their streak if they have none left). Skips
+					anyone with a post waiting on data. Runs hourly.
 				</li>
 				<li>
 					<strong>views</strong>: hourly, refreshes view counts from unified-socials for every
@@ -74,6 +77,11 @@
 					button below is a pure test blast. It DMs <em>everyone</em>, ignoring the hour, whether they've posted
 					today, and whether they were already reminded, and it doesn't mark anyone as reminded,
 					so it can't suppress a real reminder later today.
+				</li>
+				<li>
+					<strong>pending</strong>: every few minutes with previews, counts or rejects posts that
+					were waiting on a publish date or length, oldest first. Asks for a manual review of any still
+					unknown after 6 hours.
 				</li>
 				<li>
 					<strong>backup</strong>: hourly, writes every Airtable table (prod and dev) to one JSON
@@ -97,6 +105,9 @@
 			</form>
 			<form class="inline" method="POST" action="?/runRemind">
 				<button type="submit">Run remind</button>
+			</form>
+			<form class="inline" method="POST" action="?/runPending">
+				<button type="submit">Run pending</button>
 			</form>
 			<form class="inline" method="POST" action="?/runBackup">
 				<button type="submit">Run backup</button>
@@ -306,10 +317,53 @@
 		</section>
 
 		<section>
+			<h2>Waiting on data</h2>
+			<p>
+				Counted or rejected automatically once its age and length are known. After 6 hours the bot
+				asks for a manual review: check the video, then count it here or reject it above.
+			</p>
+			{#if data.pending.length === 0}
+				<p>None.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th>Slack</th>
+							<th>Video</th>
+							<th>Platform</th>
+							<th>Day</th>
+							<th>Posted</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each data.pending as v}
+							<tr>
+								<td><a href="/user/{v.slackId}">{v.slackId}</a></td>
+								<td><a href={v.url} target="_blank" rel="noopener">{v.url}</a></td>
+								<td>{v.platform}</td>
+								<td>{v.day}</td>
+								<td>{v.postedAt}</td>
+								<td>
+									{#if v.needsReview}
+										<form class="inline" method="POST" action="?/approvePending">
+											<input type="hidden" name="id" value={v.id} />
+											<button type="submit">Count it</button>
+										</form>
+									{/if}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
+		</section>
+
+		<section>
 			<h2>Too short or too old</h2>
 			<p>
-				Under 15 seconds, or published more than a day before it was submitted, per unified-socials
-				once it tracks the video. Posts it didn't have yet skip these checks at submit time.
+				Under 15 seconds, or published more than a day before it was submitted. Only posts from
+				before submit-time checks covered every platform should show up here.
 			</p>
 			{#if data.brokenRules.length === 0}
 				<p>None.</p>

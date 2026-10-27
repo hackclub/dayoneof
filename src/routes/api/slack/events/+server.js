@@ -1,7 +1,6 @@
 import { json } from '@sveltejs/kit';
 import {
 	config,
-	requireEnv,
 	isAdmin,
 	TABLES,
 	F,
@@ -10,26 +9,21 @@ import {
 } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
-import { fetchPostByPlatformId, trackPost } from '$lib/server/unified.js';
+import { trackPost } from '$lib/server/unified.js';
 import { extractLinks } from '$lib/server/links.js';
-import { messages, statsLine } from '$lib/server/messages.js';
-import { isYswsEligible } from '$lib/server/verification.js';
+import { lookupVideo } from '$lib/server/facts.js';
 import {
-	syncParticipantTotalViews,
-	settleParticipant,
-	postFields,
-	previewFields
-} from '$lib/server/jobs.js';
+	countSubmission,
+	countWithOtherPlatform,
+	findPendingPrimary,
+	PENDING_REACTION
+} from '$lib/server/pending.js';
+import { messages } from '$lib/server/messages.js';
+import { isYswsEligible } from '$lib/server/verification.js';
+import { syncParticipantTotalViews, postFields, previewFields } from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
 import { markMessageDeleted } from '$lib/server/deletion.js';
-import {
-	streakDay,
-	addDays,
-	isPostTooOld,
-	isVideoTooShort,
-	freezesAfterPost,
-	nextMilestone
-} from '$lib/server/streak.js';
+import { streakDay, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
 
 /**
  * @typedef {{
@@ -62,10 +56,13 @@ async function findSubmissionByVideo(platform, videoId) {
 /** @typedef {{ url: string, platform: string, videoId: string }} Link */
 /** @typedef {import('$lib/server/airtable.js').AirtableRecord} AirtableRecord */
 
-// The first link is the submission; any others in the same message are its other platforms.
+// Instagram goes last since its length isn't known instantly; the first link is the submission.
 /** @param {SlackEvent} event */
 async function handleSubmissionMessage(event) {
-	const [link, ...others] = await extractLinks(event.text);
+	const links = await extractLinks(event.text);
+	const [link, ...others] = links.sort(
+		(a, b) => Number(a.platform === 'instagram') - Number(b.platform === 'instagram')
+	);
 	if (!link) {
 		await slack.addReaction(event.channel, event.ts, 'question');
 		await slack.postMessage(event.channel, messages.unsupportedLink(event.user), event.ts);
@@ -116,16 +113,9 @@ async function handleSubmission(event, link) {
 		return null;
 	}
 
-	// Looked up once, before anything is written, because the age rule below has to be able to
-	// refuse the post without having left a day or a submission row behind.
-	let stats = null;
-	try {
-		stats = await fetchPostByPlatformId(link.platform, link.videoId);
-	} catch (err) {
-		console.error('unified-socials stats lookup failed at submission time', err);
-	}
+	const { stats, facts } = await lookupVideo(link);
 
-	if (isPostTooOld(stats?.publishedAt, config.maxPostAgeDays)) {
+	if (isPostTooOld(facts.publishedAt, config.maxPostAgeDays)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
 		await slack.postMessage(
 			event.channel,
@@ -135,7 +125,7 @@ async function handleSubmission(event, link) {
 		return null;
 	}
 
-	if (isVideoTooShort(stats?.durationSeconds, config.minVideoSeconds)) {
+	if (isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
 		await slack.postMessage(
 			event.channel,
@@ -145,8 +135,7 @@ async function handleSubmission(event, link) {
 		return null;
 	}
 
-	// Paid, so it sits behind every gate above: an unverified poster or a video that just got
-	// refused for being too old or too short never reaches it, and it only fires when the read found no row.
+	// Paid, so it sits behind every gate above and only fires when the read found no row.
 	const trackedId = stats ? null : await trackPost(link.url);
 
 	/** @type {Record<string, unknown>} */
@@ -157,96 +146,29 @@ async function handleSubmission(event, link) {
 			: {};
 	Object.assign(statsFields, await previewFields(link, statsFields));
 
-	const today = streakDay(participant.fields[F.participants.tz]);
-	// Settles any unposted days first, so the streak and freezes below already account for them.
-	const { record } = await settleParticipant(participant, addDays(today, -1));
-	const streakBefore = record.fields[F.participants.currentStreak] ?? 0;
-	const freezesBefore = record.fields[F.participants.streakFreezes] ?? 0;
-
 	const submissionFields = {
 		[F.submissions.slackId]: event.user,
 		[F.submissions.url]: link.url,
 		[F.submissions.platform]: link.platform,
 		[F.submissions.videoId]: link.videoId,
 		[F.submissions.postedAt]: new Date().toISOString(),
-		[F.submissions.day]: today,
+		[F.submissions.day]: streakDay(participant.fields[F.participants.tz]),
 		[F.submissions.channelId]: event.channel,
 		[F.submissions.messageTs]: event.ts,
 		...statsFields
 	};
 
-	if (record.fields[F.participants.lastDay] >= today) {
-		await slack.addReaction(event.channel, event.ts, 'repeat');
-		const duplicate = await airtable.create(TABLES.submissions, {
+	if (!facts.publishedAt || facts.durationSeconds == null || (await findPendingPrimary(event.user))) {
+		await slack.addReaction(event.channel, event.ts, PENDING_REACTION);
+		const reply = await slack.postMessage(event.channel, messages.awaitingData(event.user, link.platform), event.ts);
+		return airtable.create(TABLES.submissions, {
 			...submissionFields,
-			[F.submissions.countedTowardStreak]: false
-		});
-		if (stats) await syncParticipantTotalViews(record);
-		const reply = await slack.postMessage(
-			event.channel,
-			messages.duplicatePost(event.user, streakBefore, freezesBefore, stats),
-			event.ts
-		);
-		// Kept so deleting this video can delete the reply too.
-		await airtable.update(TABLES.submissions, duplicate.id, {
+			[F.submissions.pendingCheck]: true,
 			[F.submissions.replyMessageTs]: reply.ts
 		});
-		return duplicate;
 	}
 
-	await airtable.create(TABLES.days, {
-		[F.days.slackId]: event.user,
-		[F.days.date]: today,
-		[F.days.status]: 'posted'
-	});
-
-	const streak = streakBefore + 1;
-	const completed = (record.fields[F.participants.daysCompleted] ?? 0) + 1;
-	const freezes = freezesAfterPost(freezesBefore, completed);
-
-	const submission = await airtable.create(TABLES.submissions, {
-		...submissionFields,
-		[F.submissions.countedTowardStreak]: true,
-		[F.submissions.streakAtPost]: streak,
-		[F.submissions.freezesAtPost]: freezes
-	});
-
-	const updated = await airtable.update(TABLES.participants, participant.id, {
-		[F.participants.daysCompleted]: completed,
-		[F.participants.streakFreezes]: freezes,
-		[F.participants.currentStreak]: streak,
-		[F.participants.status]: 'active',
-		[F.participants.lastDay]: today
-	});
-	if (stats) await syncParticipantTotalViews(updated);
-
-	try {
-		await slack.addReaction(event.channel, event.ts, 'white_check_mark');
-		const reply = await slack.postMessage(event.channel, messages.streakUpdate(streak, freezes, stats), event.ts);
-		// Lets the leaderboard job edit this reply with fresh stats instead of posting a new one.
-		await airtable.update(TABLES.submissions, submission.id, {
-			[F.submissions.replyMessageTs]: reply.ts,
-			[F.submissions.replyStats]: statsLine(stats)
-		});
-	} catch (err) {
-		console.error('react/reply to submission failed', event.channel, event.ts, err);
-	}
-
-	const milestone = nextMilestone(streak, participant.fields[F.participants.lastMilestone]);
-	if (milestone) {
-		const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
-		await slack.postMessage(announceChannelId, messages.milestoneAnnounce(event.user, milestone));
-		await slack
-			.postMessage(event.channel, messages.milestoneThread(event.user, milestone), event.ts)
-			.catch((err) => console.error('milestone thread reply failed', err));
-		await slack.dm(event.user, messages.milestoneDm(milestone));
-		await airtable.update(TABLES.participants, participant.id, {
-			[F.participants.lastMilestone]: milestone,
-			[F.participants.lastMilestoneAt]: new Date().toISOString()
-		});
-	}
-
-	return submission;
+	return countSubmission(participant, submissionFields, stats);
 }
 
 /** @param {AirtableRecord} primary */
@@ -282,19 +204,14 @@ async function addOtherPlatform(event, primary, link) {
 		return false;
 	}
 
-	let stats = null;
-	try {
-		stats = await fetchPostByPlatformId(link.platform, link.videoId);
-	} catch (err) {
-		console.error('unified-socials stats lookup failed for another platform', err);
-	}
+	const { stats, facts } = await lookupVideo(link);
 
 	const submittedAt = new Date(primary.fields[F.submissions.postedAt] ?? Date.now());
-	if (isPostTooOld(stats?.publishedAt, config.maxPostAgeDays, submittedAt)) {
+	if (isPostTooOld(facts.publishedAt, config.maxPostAgeDays, submittedAt)) {
 		await slack.postMessage(event.channel, messages.otherPlatformTooOld(event.user), event.ts);
 		return false;
 	}
-	if (isVideoTooShort(stats?.durationSeconds, config.minVideoSeconds)) {
+	if (isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
 		await slack.postMessage(
 			event.channel,
 			messages.otherPlatformTooShort(event.user, config.minVideoSeconds),
@@ -302,6 +219,7 @@ async function addOtherPlatform(event, primary, link) {
 		);
 		return false;
 	}
+	const pending = !facts.publishedAt || facts.durationSeconds == null;
 
 	const trackedId = stats ? null : await trackPost(link.url);
 	/** @type {Record<string, unknown>} */
@@ -323,9 +241,14 @@ async function addOtherPlatform(event, primary, link) {
 		[F.submissions.channelId]: event.channel,
 		[F.submissions.messageTs]: event.ts,
 		[F.submissions.primarySubmission]: primary.id,
-		...statsFields
+		...statsFields,
+		...(pending ? { [F.submissions.pendingCheck]: true } : {})
 	});
 
+	if (pending) {
+		await slack.postMessage(event.channel, messages.otherPlatformAwaitingData(event.user), event.ts);
+		return false;
+	}
 	if (stats) {
 		const participant = await airtable.find(
 			TABLES.participants,
@@ -333,6 +256,7 @@ async function addOtherPlatform(event, primary, link) {
 		);
 		if (participant) await syncParticipantTotalViews(participant);
 	}
+	if (facts.durationSeconds != null) await countWithOtherPlatform(primary, facts.durationSeconds);
 	return true;
 }
 

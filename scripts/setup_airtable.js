@@ -105,7 +105,9 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.durationSeconds, type: 'number', options: { precision: 1 } },
 				{ name: F.submissions.publishedAt, ...when },
 				{ name: F.submissions.repeatOf, ...text },
-				{ name: F.submissions.repeatReason, ...text }
+				{ name: F.submissions.repeatReason, ...text },
+				{ name: F.submissions.pendingCheck, ...check },
+				{ name: F.submissions.reviewRequestedAt, ...when }
 			]
 		},
 		{

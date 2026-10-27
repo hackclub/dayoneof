@@ -35,8 +35,7 @@ export function addDays(day, n) {
 	return date.toISOString().slice(0, 10);
 }
 
-// Unknown means allowed: a video posted minutes ago usually isn't tracked yet, so there is no
-// publish date to judge and refusing on a missing one would reject the ordinary case.
+// Unknown isn't judged here: callers hold the post as pending until it's known.
 /**
  * @param {string | null | undefined} publishedAt
  * @param {number} maxAgeDays
@@ -49,7 +48,6 @@ export function isPostTooOld(publishedAt, maxAgeDays, now = new Date()) {
 	return now.getTime() - published > maxAgeDays * 24 * 60 * 60 * 1000;
 }
 
-// Unknown means allowed, for the same reason as isPostTooOld.
 /**
  * @param {number | null | undefined} durationSeconds
  * @param {number} minSeconds
