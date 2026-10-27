@@ -89,6 +89,13 @@ export async function load({ locals }) {
 		videoCountBySlackId.set(slackId, (videoCountBySlackId.get(slackId) ?? 0) + 1);
 	}
 
+	const starsBySlackId = new Map();
+	for (const s of primaries) {
+		if (s.fields[F.submissions.reviewStatus] !== 'starred') continue;
+		const slackId = s.fields[F.submissions.slackId];
+		starsBySlackId.set(slackId, (starsBySlackId.get(slackId) ?? 0) + 1);
+	}
+
 	const participantBySlackId = new Map(participants.map((p) => [p.fields[F.participants.slackId], p]));
 	const shipping = (shippingRecords ?? [])
 		.map((r) => {
@@ -112,6 +119,7 @@ export async function load({ locals }) {
 				birthday: f[F.shipping.birthday] ?? '',
 				submittedAt: f[F.shipping.submittedAt] ?? '',
 				eligible,
+				stars: starsBySlackId.get(f[F.shipping.slackId]) ?? 0,
 				shipped,
 				toShip: eligible.filter((prize) => !shipped.includes(prize))
 			};

@@ -1,4 +1,4 @@
-import { TABLES, F, PARTICIPANT_HAS_SLACK_ID, isAdmin } from '$lib/server/config.js';
+import { TABLES, F, PARTICIPANT_HAS_SLACK_ID, isAdmin, isReviewer } from '$lib/server/config.js';
 import { isYswsEligible } from '$lib/server/verification.js';
 import * as airtable from '$lib/server/airtable.js';
 import { count } from '$lib/format';
@@ -51,6 +51,7 @@ export async function load({ locals }) {
 			title: platforms[0].title,
 			platforms,
 			postedAt: primary.fields[F.submissions.postedAt],
+			starred: primary.fields[F.submissions.reviewStatus] === 'starred',
 			views: count(views)
 		};
 	});
@@ -91,6 +92,7 @@ export async function load({ locals }) {
 	return {
 		session,
 		isAdmin: isAdmin(session?.slackId),
+		isReviewer: isReviewer(session?.slackId),
 		name: me ? cap(me.fields[F.participants.name], NAME_MAX) || null : null,
 		avatar: me?.fields[F.participants.avatar] || '',
 		verified: isYswsEligible(me?.fields[F.participants.yswsEligible]),

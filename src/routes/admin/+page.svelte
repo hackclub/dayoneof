@@ -239,6 +239,7 @@
 							<th>Address</th>
 							<th>Birthday</th>
 							<th>Unlocked</th>
+							<th>Stars</th>
 							<th>Shipped</th>
 							<th>To ship</th>
 							<th></th>
@@ -257,6 +258,7 @@
 								</td>
 								<td>{s.birthday}</td>
 								<td>{s.eligible.join(', ') || 'none'}</td>
+								<td>{s.stars}</td>
 								<td>{s.shipped.join(', ') || 'none'}</td>
 								<td><strong>{s.toShip.join(', ')}</strong></td>
 								<td>

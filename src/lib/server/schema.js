@@ -80,7 +80,11 @@ export const F = {
 		repeatOf: 'repeat_of',
 		repeatReason: 'repeat_reason',
 		pendingCheck: 'pending_check',
-		reviewRequestedAt: 'review_requested_at'
+		reviewRequestedAt: 'review_requested_at',
+		reviewStatus: 'review_status',
+		reviewedBy: 'reviewed_by',
+		reviewedAt: 'reviewed_at',
+		reviewFeedback: 'review_feedback'
 	},
 	shipping: {
 		slackId: 'slack_id',
@@ -101,6 +105,7 @@ export const F = {
 };
 
 export const DAY_STATUSES = ['posted', 'frozen', 'missed'];
+export const REVIEW_STATUSES = ['starred', 'passed', 'rejected'];
 export const PARTICIPANT_STATUSES = ['notStarted', 'active', 'frozen', 'broken'];
 
 // Excludes blank rows (e.g. added by hand in Airtable) from any full-table participant listing.

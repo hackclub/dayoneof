@@ -12,6 +12,7 @@ import {
 	shippingTableFor,
 	F,
 	DAY_STATUSES,
+	REVIEW_STATUSES,
 	PARTICIPANT_STATUSES
 } from '../src/lib/server/schema.js';
 import { PRIZE_NAMES } from '../src/lib/server/streak.js';
@@ -107,7 +108,11 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.repeatOf, ...text },
 				{ name: F.submissions.repeatReason, ...text },
 				{ name: F.submissions.pendingCheck, ...check },
-				{ name: F.submissions.reviewRequestedAt, ...when }
+				{ name: F.submissions.reviewRequestedAt, ...when },
+				{ name: F.submissions.reviewStatus, ...select(REVIEW_STATUSES) },
+				{ name: F.submissions.reviewedBy, ...text },
+				{ name: F.submissions.reviewedAt, ...when },
+				{ name: F.submissions.reviewFeedback, type: 'multilineText' }
 			]
 		},
 		{

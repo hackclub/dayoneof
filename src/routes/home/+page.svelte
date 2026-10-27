@@ -58,6 +58,9 @@
 						<span class="who-name">{data.name}</span>
 					</a>
 				{/if}
+				{#if data.isReviewer}
+					<a class="ghost-btn" href="/review">Review</a>
+				{/if}
 				{#if data.isAdmin}
 					<a class="ghost-btn" href="/admin">Admin</a>
 				{/if}
@@ -154,8 +157,9 @@
 					{#each videos as video, i (video.key)}
 						{@const shown =
 							video.platforms.find((p) => p.platform === picked[video.key]) ?? video.platforms[0]}
-						<article class="card">
+						<article class="card" class:starred={video.starred}>
 							<a class="tile" href={shown.url} target="_blank" rel="noopener">
+								{#if video.starred}<span class="star" title="Starred by the reviewers">⭐</span>{/if}
 								{#if shown.thumbnail}
 									<!-- Lazy images inside the scrolling grid never start loading in Chrome until it
 									     scrolls, so the first screenful is eager and the rest lazy. -->
@@ -582,6 +586,21 @@
 		transition:
 			transform 0.12s ease,
 			box-shadow 0.12s ease;
+	}
+
+	.card.starred .tile {
+		box-shadow:
+			0 0 0 4px #f5c518,
+			4px 5px 0 var(--shadow);
+	}
+
+	.star {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		z-index: 2;
+		font-size: 1.4rem;
+		filter: drop-shadow(1px 2px 0 var(--shadow));
 	}
 
 	.card:nth-child(odd) .tile {

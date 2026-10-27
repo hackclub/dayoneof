@@ -1,7 +1,6 @@
 import { config } from './config.js';
 import { HELP_CHANNEL_ID } from '../help.js';
 
-const REVIEWER_SLACK_IDS = ['U0795SNGE9L', 'U0793HPEX6V'];
 const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
 const OTHER_PLATFORMS = 'Upload it to other platforms too! You can link them in a reply to this thread.';
 
@@ -81,8 +80,23 @@ export const messages = {
 		return `<@${slackId}> waiting on data to add that link, check back in around an hour!`;
 	},
 	manualReview() {
-		const reviewers = REVIEWER_SLACK_IDS.map((id) => `<@${id}>`).join(' ');
+		const reviewers = config.reviewerSlackIds.map((id) => `<@${id}>`).join(' ');
 		return `${reviewers} this video needs manual review, bot couldn't verify!`;
+	},
+	/**
+	 * @param {string} slackId
+	 * @param {string} feedback
+	 */
+	starred(slackId, feedback) {
+		const note = feedback ? `\n${feedback}` : '';
+		return `<@${slackId}> ⭐ this video got starred by the reviewers, so you'll get extra stickers!${note}`;
+	},
+	/**
+	 * @param {string} slackId
+	 * @param {string} feedback
+	 */
+	reviewFeedback(slackId, feedback) {
+		return `<@${slackId}> feedback from the reviewers: ${feedback}`;
 	},
 	/** @param {string} slackId */
 	duplicateVideo(slackId) {

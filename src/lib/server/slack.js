@@ -120,6 +120,16 @@ export function deleteMessage(channel, ts) {
  * @param {string} ts
  */
 export async function messageExists(channel, ts) {
+	const message = await getMessage(channel, ts);
+	return !!message && message.subtype !== 'tombstone';
+}
+
+/**
+ * @param {string} channel
+ * @param {string} ts
+ * @returns {Promise<{ ts: string, text?: string, subtype?: string } | null>}
+ */
+export async function getMessage(channel, ts) {
 	const { messages } = await call('conversations.history', {
 		channel,
 		latest: ts,
@@ -128,7 +138,7 @@ export async function messageExists(channel, ts) {
 		limit: 1
 	});
 	const message = messages?.[0];
-	return !!message && message.ts === ts && message.subtype !== 'tombstone';
+	return message?.ts === ts ? message : null;
 }
 
 /** @param {string} userId */

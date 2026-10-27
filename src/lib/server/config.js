@@ -37,6 +37,14 @@ const priv = (name) => envVar(env, name);
 /** @param {string} name */
 const pub = (name) => envVar(publicEnv, name);
 
+/** @param {string | undefined} list */
+function slackIds(list) {
+	return (list ?? '')
+		.split(',')
+		.map((id) => id.trim())
+		.filter(Boolean);
+}
+
 export const config = {
 	// Trailing slash stripped — every use appends a rooted path, and `.dev//api/auth/callback`
 	// doesn't match the redirect URI registered with HCA.
@@ -72,11 +80,14 @@ export const config = {
 	prizeFormUrl: priv('PRIZE_FORM_URL'),
 	maxPostAgeDays: Number(priv('MAX_POST_AGE_DAYS')) || 1,
 	minVideoSeconds: 15,
-	adminSlackIds: (priv('ADMIN_SLACK_IDS') ?? '')
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean)
+	adminSlackIds: slackIds(priv('ADMIN_SLACK_IDS')),
+	reviewerSlackIds: slackIds(priv('REVIEWER_SLACK_IDS'))
 };
+
+/** @param {string | undefined} slackId */
+export function isReviewer(slackId) {
+	return !!slackId && config.reviewerSlackIds.includes(slackId);
+}
 
 /** @param {string | undefined} slackId */
 export function isAdmin(slackId) {
