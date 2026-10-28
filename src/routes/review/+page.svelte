@@ -141,7 +141,8 @@
 					<h2><a href="/user/{video.slackId}">{video.name}</a></h2>
 					<p>
 						Day {video.day}{video.streakAtPost ? ` · ${video.streakAtPost}-day streak` : ''} · posted
-						{formatDate(video.postedAt)} · {formatViews(video.views)} views
+						{formatDate(video.postedAt)} · {formatViews(video.views)} views ·
+						<span class:warned={video.warnings > 0}>{video.warnings} warning{video.warnings === 1 ? '' : 's'}</span>
 					</p>
 					<p class="links">
 						{#each video.platforms as p}
@@ -178,6 +179,24 @@
 					</div>
 				</div>
 
+				<div class="history">
+					<h3>Their other videos</h3>
+					{#if video.history.length}
+						<ul>
+							{#each video.history as h}
+								<li>
+									<span class="muted-day">Day {h.day}</span>
+									<a href={h.url} target="_blank" rel="noopener">{h.title || h.url}</a>
+									{#if h.status}<span class="status">{h.status}</span>{/if}
+									{#if h.feedback}<p class="quote">{h.feedback}</p>{/if}
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="muted">This is their first video.</p>
+					{/if}
+				</div>
+
 				<form method="POST" action="?/review" onsubmit={confirmReject} use:enhance={submitEnhance}>
 					<input type="hidden" name="id" value={video.id} />
 					<label for="feedback"><h3>Feedback</h3></label>
@@ -186,7 +205,7 @@
 						name="feedback"
 						rows="4"
 						bind:value={feedback}
-						placeholder="Optional for star and pass. Posted as the bot in their thread. Required to reject, and sent as the reason."
+						placeholder="Optional for star and pass. Posted as the bot in their thread. Required to warn, and to reject as the reason."
 					></textarea>
 
 					<div class="decide">
@@ -197,6 +216,9 @@
 							>Just send feedback</button
 						>
 						<span class="spacer"></span>
+						<button type="submit" name="decision" value="warn" class="warn" disabled={busy || !feedback.trim()}
+							>Pass with warning</button
+						>
 						<button type="submit" name="decision" value="pass" disabled={busy}>Pass</button>
 						<button type="submit" name="decision" value="star" class="star" disabled={busy}>⭐ Star</button>
 					</div>
@@ -459,6 +481,41 @@
 		overflow-y: auto;
 	}
 
+	.history {
+		margin-bottom: 16px;
+	}
+
+	.history ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		max-height: 16em;
+		overflow-y: auto;
+	}
+
+	.history li {
+		padding: 6px 0;
+		border-top: 1px dashed var(--line);
+	}
+
+	.history .quote {
+		margin-top: 4px;
+	}
+
+	.muted-day {
+		font-weight: 700;
+		margin-right: 6px;
+	}
+
+	.status {
+		font-size: 0.8rem;
+		font-weight: 700;
+		margin-left: 6px;
+		padding: 1px 8px;
+		border-radius: 999px;
+		background: var(--bg-2);
+	}
+
 	.muted {
 		font-style: italic;
 		margin: 0;
@@ -522,6 +579,18 @@
 		background: #c0392b;
 		border-color: #922b21;
 		box-shadow: inset 0 -5px 0 #922b21;
+	}
+
+	.decide .warn {
+		color: #6b4b00;
+		background: #ffe9a8;
+		border-color: #c99a00;
+		box-shadow: inset 0 -5px 0 #c99a00;
+	}
+
+	.warned {
+		font-weight: 700;
+		color: #c0392b;
 	}
 
 	.decide .quiet {

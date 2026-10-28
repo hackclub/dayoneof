@@ -14,6 +14,8 @@ import { MAX_DURATION_GAP } from './repeats.js';
 
 export const PENDING_REACTION = 'hourglass_flowing_sand';
 const PENDING_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+// Unified-socials fills in a post it's tracking within a day, so reviewers are only pinged after.
+const TRACKED_PENDING_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 const SAME_VIDEO_WINDOW_MS = 48 * 60 * 60 * 1000;
 
@@ -350,7 +352,8 @@ export async function runPending() {
 					: null;
 		if (!reason && !isAdmin(slackId) && (!facts.publishedAt || facts.durationSeconds == null)) {
 			if (!primaryId) blocked.add(slackId);
-			const overdue = Date.now() - Date.parse(f[F.submissions.postedAt]) > PENDING_TIMEOUT_MS;
+			const timeout = f[F.submissions.unifiedId] ? TRACKED_PENDING_TIMEOUT_MS : PENDING_TIMEOUT_MS;
+			const overdue = Date.now() - Date.parse(f[F.submissions.postedAt]) > timeout;
 			if (overdue && !f[F.submissions.reviewRequestedAt]) await requestReview(row);
 			continue;
 		}

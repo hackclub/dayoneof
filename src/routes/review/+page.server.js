@@ -7,12 +7,17 @@ import { deleteSubmission, deletionPlan } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
 import { groupByVideo } from '$lib/server/videos.js';
 import { isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
+import { approvePending } from '$lib/server/pending.js';
+import { findParticipant } from '$lib/server/jobs.js';
 
 /** @typedef {import('$lib/server/airtable.js').AirtableRecord} AirtableRecord */
 
 const LOW_LIKES = 5;
 const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
 const REVIEWED_SHOWN = 30;
+// Added next to the bot's own reaction so a thread shows how a reviewer judged it.
+/** @type {Record<string, string>} */
+const REVIEW_REACTIONS = { pass: 'heavy_check_mark', warn: 'warning', star: 'star', reject: 'x' };
 
 /** @type {Record<string, (id: string) => string>} */
 const EMBEDS = {
@@ -36,7 +41,8 @@ function flagsFor(primary, rows) {
 	const old = Date.now() - submittedAt.getTime() > LOW_LIKES_AFTER_MS;
 	/** @type {string[]} */
 	const flags = [];
-	if (!primary.fields[F.submissions.countedTowardStreak]) flags.push("extra post, didn't count");
+	if (primary.fields[F.submissions.pendingCheck]) flags.push("bot couldn't verify, passing counts it for its day");
+	else if (!primary.fields[F.submissions.countedTowardStreak]) flags.push("extra post, didn't count");
 	for (const s of rows) {
 		const f = s.fields;
 		const on = rows.length > 1 ? ` (${f[F.submissions.platform]})` : '';
@@ -84,15 +90,29 @@ export async function load({ locals, url }) {
 		})
 	]);
 	const byId = new Map(participants.map((p) => [p.fields[F.participants.slackId], p]));
+	// Held posts the bot gave up on are reviewable too, and go first since a streak waits on them.
 	const live = allSubmissions.filter(
-		(s) => !s.fields[F.submissions.deletedAt] && !s.fields[F.submissions.pendingCheck]
+		(s) =>
+			!s.fields[F.submissions.deletedAt] &&
+			(!s.fields[F.submissions.pendingCheck] || s.fields[F.submissions.reviewRequestedAt])
 	);
 	const groups = groupByVideo(live);
-	const queue = groups.filter(({ primary }) => !primary.fields[F.submissions.reviewStatus]);
+	const held = (/** @type {AirtableRecord} */ s) => Number(!!s.fields[F.submissions.pendingCheck]);
+	const queue = groups
+		.filter(({ primary }) => !primary.fields[F.submissions.reviewStatus])
+		.sort((a, b) => held(b.primary) - held(a.primary));
 	const reviewed = allSubmissions
 		.filter((s) => s.fields[F.submissions.reviewStatus] && !s.fields[F.submissions.primarySubmission])
 		.sort((a, b) => (a.fields[F.submissions.reviewedAt] < b.fields[F.submissions.reviewedAt] ? 1 : -1))
 		.slice(0, REVIEWED_SHOWN);
+
+	/** @type {Map<string, AirtableRecord[]>} */
+	const postsBy = new Map();
+	for (const s of allSubmissions) {
+		if (s.fields[F.submissions.primarySubmission]) continue;
+		const slackId = s.fields[F.submissions.slackId];
+		postsBy.set(slackId, [...(postsBy.get(slackId) ?? []), s]);
+	}
 
 	const videos = queue.map(({ primary, rows, views }) => {
 		const f = primary.fields;
@@ -118,6 +138,17 @@ export async function load({ locals, url }) {
 			})),
 			flags: flagsFor(primary, rows),
 			currentStreak: participant?.fields[F.participants.currentStreak] ?? 0,
+			warnings: participant?.fields[F.participants.warnings] ?? 0,
+			history: (postsBy.get(f[F.submissions.slackId]) ?? [])
+				.filter((s) => s.id !== primary.id)
+				.reverse()
+				.map((s) => ({
+					day: s.fields[F.submissions.day],
+					url: s.fields[F.submissions.url],
+					title: s.fields[F.submissions.title] ?? '',
+					status: s.fields[F.submissions.reviewStatus] ?? (s.fields[F.submissions.deletedAt] ? 'deleted' : ''),
+					feedback: s.fields[F.submissions.reviewFeedback] ?? ''
+				})),
 			rejection: participant
 				? rejection(participant, primary)
 				: { impact: 'none', streak: 0, freezes: 0 }
@@ -156,9 +187,20 @@ export const actions = {
 		const channel = f[F.submissions.channelId];
 		const thread = f[F.submissions.messageTs];
 
-		if (decision === 'feedback' || decision === 'pass' || decision === 'star') {
-			if (decision === 'feedback' && !feedback) return fail(400, { error: 'Write some feedback first.' });
+		if (decision === 'feedback' || decision === 'pass' || decision === 'star' || decision === 'warn') {
+			if ((decision === 'feedback' || decision === 'warn') && !feedback) {
+				return fail(400, { error: 'Write some feedback first.' });
+			}
+			if (decision !== 'feedback' && f[F.submissions.pendingCheck]) await approvePending(id);
 			if (feedback) await slack.postMessage(channel, messages.reviewFeedback(slackId, feedback), thread);
+			if (decision === 'warn') {
+				const participant = await findParticipant(slackId);
+				if (participant) {
+					await airtable.update(TABLES.participants, participant.id, {
+						[F.participants.warnings]: (participant.fields[F.participants.warnings] ?? 0) + 1
+					});
+				}
+			}
 		} else if (decision === 'reject') {
 			if (!feedback) return fail(400, { error: 'Rejecting needs a reason, written in the feedback box.' });
 			await serialize(() => deleteSubmission(id, slackId, { rejection: feedback }));
@@ -167,9 +209,10 @@ export const actions = {
 		}
 
 		/** @type {Record<string, string>} */
-		const statuses = { pass: 'passed', star: 'starred', reject: 'rejected' };
+		const statuses = { pass: 'passed', warn: 'passed', star: 'starred', reject: 'rejected' };
 		const status = statuses[decision];
 		const previous = f[F.submissions.reviewFeedback];
+		const note = decision === 'warn' ? `Warning: ${feedback}` : feedback;
 		await airtable.update(TABLES.submissions, id, {
 			...(status
 				? {
@@ -179,9 +222,14 @@ export const actions = {
 					}
 				: {}),
 			...(feedback
-				? { [F.submissions.reviewFeedback]: previous ? `${previous}\n${feedback}` : feedback }
+				? { [F.submissions.reviewFeedback]: previous ? `${previous}\n${note}` : note }
 				: {})
 		});
+		if (REVIEW_REACTIONS[decision]) {
+			await slack.addReaction(channel, thread, REVIEW_REACTIONS[decision]).catch((err) => {
+				console.error('review reaction failed', err);
+			});
+		}
 		return { done: decision };
 	}
 };

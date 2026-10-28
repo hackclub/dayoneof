@@ -31,6 +31,11 @@ test('strips query params and tracking junk from a plain pasted link', async () 
 	assert.equal(link?.url, 'https://www.youtube.com/watch?v=g4H16UR-kaE');
 });
 
+test('stops a YouTube id at 11 characters when text runs into it', async () => {
+	const link = await extractLink('https://www.youtube.com/watch?v=LrrcijZmQw0day');
+	assert.equal(link?.videoId, 'LrrcijZmQw0');
+});
+
 test('normalizes an Instagram reel link', async () => {
 	const link = await extractLink('<https://www.instagram.com/reel/DdPz2m6S41Q/|instagram.com/reel/…>');
 	assert.deepEqual(link, {

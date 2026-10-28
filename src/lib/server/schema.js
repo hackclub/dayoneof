@@ -39,7 +39,8 @@ export const F = {
 		remindersOff: 'reminders_off',
 		lastReminderDay: 'last_reminder_day',
 		lastDay: 'last_day',
-		totalViews: 'total_views'
+		totalViews: 'total_views',
+		warnings: 'warnings'
 	},
 	days: {
 		slackId: 'slack_id',

@@ -61,7 +61,8 @@ function schemaFor(appEnv) {
 				{ name: F.participants.remindersOff, ...check },
 				{ name: F.participants.lastReminderDay, ...text },
 				{ name: F.participants.lastDay, ...text },
-				{ name: F.participants.totalViews, ...int }
+				{ name: F.participants.totalViews, ...int },
+				{ name: F.participants.warnings, ...int }
 			]
 		},
 		{

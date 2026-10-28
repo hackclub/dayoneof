@@ -9,7 +9,7 @@ const PATTERNS = [
 	{
 		platform: 'youtube',
 		regex:
-			/youtube\.com\/(?:shorts|embed|live|v)\/([\w-]{6,})|youtube\.com\/watch\?(?:[^#\s]*&)?v=([\w-]{6,})|youtu\.be\/([\w-]{6,})/i,
+			/youtube\.com\/(?:shorts|embed|live|v)\/([\w-]{11})|youtube\.com\/watch\?(?:[^#\s]*&)?v=([\w-]{11})|youtu\.be\/([\w-]{11})/i,
 		/** @param {RegExpMatchArray} m */
 		build(m) {
 			const videoId = m[1] ?? m[2] ?? m[3];
