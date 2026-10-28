@@ -1,5 +1,5 @@
 // Counts submissions, at post time or from the cron once a pending one's age and length are known.
-import { config, requireEnv, TABLES, F, SUBMISSION_NOT_DELETED } from './config.js';
+import { config, requireEnv, TABLES, F, SUBMISSION_NOT_DELETED, isAdmin } from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import { messages, statsLine } from './messages.js';
@@ -294,8 +294,10 @@ export async function countWithOtherPlatform(primary, durationSeconds) {
 		url: f[F.submissions.url]
 	});
 	const postedAt = new Date(f[F.submissions.postedAt]);
-	if (!facts.publishedAt || isPostTooOld(facts.publishedAt, config.maxPostAgeDays, postedAt)) return;
-	if (isVideoTooShort(durationSeconds, config.minVideoSeconds)) return;
+	if (!isAdmin(f[F.submissions.slackId])) {
+		if (!facts.publishedAt || isPostTooOld(facts.publishedAt, config.maxPostAgeDays, postedAt)) return;
+		if (isVideoTooShort(durationSeconds, config.minVideoSeconds)) return;
+	}
 	const earlier = await airtable.find(
 		TABLES.submissions,
 		`AND(${airtable.eq(F.submissions.slackId, f[F.submissions.slackId])}, {${F.submissions.pendingCheck}}, {${F.submissions.primarySubmission}} = BLANK(), ${SUBMISSION_NOT_DELETED}, IS_BEFORE({${F.submissions.postedAt}}, '${f[F.submissions.postedAt]}'))`
@@ -339,12 +341,14 @@ export async function runPending() {
 			: f[F.submissions.postedAt];
 
 		/** @type {'old' | 'short' | null} */
-		const reason = isPostTooOld(facts.publishedAt, config.maxPostAgeDays, new Date(judgedFrom))
-			? 'old'
-			: isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)
-				? 'short'
-				: null;
-		if (!reason && (!facts.publishedAt || facts.durationSeconds == null)) {
+		const reason = isAdmin(slackId)
+			? null
+			: isPostTooOld(facts.publishedAt, config.maxPostAgeDays, new Date(judgedFrom))
+				? 'old'
+				: isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)
+					? 'short'
+					: null;
+		if (!reason && !isAdmin(slackId) && (!facts.publishedAt || facts.durationSeconds == null)) {
 			if (!primaryId) blocked.add(slackId);
 			const overdue = Date.now() - Date.parse(f[F.submissions.postedAt]) > PENDING_TIMEOUT_MS;
 			if (overdue && !f[F.submissions.reviewRequestedAt]) await requestReview(row);

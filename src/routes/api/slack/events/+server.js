@@ -80,7 +80,8 @@ async function handleSubmissionMessage(event) {
  * @returns {Promise<AirtableRecord | null>} the stored submission, or null if it was refused
  */
 async function handleSubmission(event, link) {
-	if (!config.submissionsOpen && !isAdmin(event.user)) {
+	const admin = isAdmin(event.user);
+	if (!config.submissionsOpen && !admin) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
 		await slack.postMessage(event.channel, messages.notLaunched(event.user), event.ts);
 		return null;
@@ -96,7 +97,7 @@ async function handleSubmission(event, link) {
 		await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
 		return null;
 	}
-	if (!isYswsEligible(participant.fields[F.participants.yswsEligible])) {
+	if (!admin && !isYswsEligible(participant.fields[F.participants.yswsEligible])) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(
 			event.channel,
@@ -116,7 +117,7 @@ async function handleSubmission(event, link) {
 
 	const { stats, facts } = await lookupVideo(link);
 
-	if (isPostTooOld(facts.publishedAt, config.maxPostAgeDays)) {
+	if (!admin && isPostTooOld(facts.publishedAt, config.maxPostAgeDays)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
 		await slack.postMessage(
 			event.channel,
@@ -126,7 +127,7 @@ async function handleSubmission(event, link) {
 		return null;
 	}
 
-	if (isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
+	if (!admin && isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
 		await slack.postMessage(
 			event.channel,
@@ -174,7 +175,10 @@ async function handleSubmission(event, link) {
 		...statsFields
 	};
 
-	if (!facts.publishedAt || facts.durationSeconds == null || (await findPendingPrimary(event.user))) {
+	if (
+		!admin &&
+		(!facts.publishedAt || facts.durationSeconds == null || (await findPendingPrimary(event.user)))
+	) {
 		await slack.addReaction(event.channel, event.ts, PENDING_REACTION);
 		const reply = await slack.postMessage(event.channel, messages.awaitingData(event.user, link.platform), event.ts);
 		return airtable.create(TABLES.submissions, {
@@ -222,12 +226,13 @@ async function addOtherPlatform(event, primary, link) {
 
 	const { stats, facts } = await lookupVideo(link);
 
+	const admin = isAdmin(event.user);
 	const submittedAt = new Date(primary.fields[F.submissions.postedAt] ?? Date.now());
-	if (isPostTooOld(facts.publishedAt, config.maxPostAgeDays, submittedAt)) {
+	if (!admin && isPostTooOld(facts.publishedAt, config.maxPostAgeDays, submittedAt)) {
 		await slack.postMessage(event.channel, messages.otherPlatformTooOld(event.user), event.ts);
 		return false;
 	}
-	if (isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
+	if (!admin && isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
 		await slack.postMessage(
 			event.channel,
 			messages.otherPlatformTooShort(event.user, config.minVideoSeconds),
@@ -235,7 +240,7 @@ async function addOtherPlatform(event, primary, link) {
 		);
 		return false;
 	}
-	const pending = !facts.publishedAt || facts.durationSeconds == null;
+	const pending = !admin && (!facts.publishedAt || facts.durationSeconds == null);
 
 	const trackedId = stats ? null : await trackPost(link.url);
 	/** @type {Record<string, unknown>} */
