@@ -50,6 +50,7 @@ function schemaFor(appEnv) {
 				{ name: F.participants.email, type: 'email' },
 				{ name: F.participants.avatar, ...text },
 				{ name: F.participants.tz, ...text },
+				{ name: F.participants.tzConfirmed, ...check },
 				{ name: F.participants.status, ...select(PARTICIPANT_STATUSES) },
 				{ name: F.participants.verificationStatus, ...text },
 				{ name: F.participants.yswsEligible, ...check },

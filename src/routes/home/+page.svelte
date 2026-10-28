@@ -58,6 +58,11 @@
 						<span class="who-name">{data.name}</span>
 					</a>
 				{/if}
+				{#if data.tzConfirmed}
+					<span class="tz" title="Your day ends at 3am in this timezone">{data.tz.replaceAll('_', ' ')}</span>
+				{:else}
+					<a class="tz" href="/timezone" title="Your day ends at 3am in this timezone. Click to confirm it.">{data.tz.replaceAll('_', ' ')}</a>
+				{/if}
 				{#if data.isReviewer}
 					<a class="ghost-btn" href="/review">Review</a>
 				{/if}
@@ -359,6 +364,12 @@
 		font-size: 0.8rem;
 		font-weight: 700;
 		color: var(--ink-soft);
+	}
+
+	.tz {
+		font-size: 0.9rem;
+		color: var(--ink-soft);
+		white-space: nowrap;
 	}
 
 	.who:hover {

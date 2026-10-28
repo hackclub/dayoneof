@@ -176,9 +176,10 @@ export async function deleteSubmission(submissionId, slackId, { rejection } = {}
 	const messageTs = fields[F.submissions.messageTs];
 	const replyTs = fields[F.submissions.replyMessageTs];
 	if (channel && replyTs) {
+		const text = rejection && messages.rejectedReply(rejection);
 		await bestEffort(rejection ? 'edit bot reply failed' : 'delete bot reply failed', () =>
-			rejection
-				? slack.updateMessage(channel, replyTs, messages.rejectedReply(rejection))
+			text
+				? slack.updateMessage(channel, replyTs, text, messages.submissionBlocks(text, participant?.fields))
 				: slack.deleteMessage(channel, replyTs)
 		);
 	}
@@ -258,7 +259,7 @@ export async function restoreSubmission(submissionId) {
 						p[F.participants.streakFreezes] ?? 0,
 						stats
 					);
-			await slack.updateMessage(channel, replyTs, text);
+			await slack.updateMessage(channel, replyTs, text, messages.submissionBlocks(text, participant?.fields));
 		});
 	}
 	if (channel && messageTs) {

@@ -63,7 +63,7 @@ export async function GET({ url, cookies }) {
 		[F.participants.email]: email,
 		[F.participants.verificationStatus]: identity.verification_status ?? 'needs_submission',
 		[F.participants.yswsEligible]: identity.ysws_eligible === true,
-		...(tz ? { [F.participants.tz]: tz } : {}),
+		...(tz && !existing?.fields[F.participants.tzConfirmed] ? { [F.participants.tz]: tz } : {}),
 		...(avatar ? { [F.participants.avatar]: avatar } : {})
 	};
 	if (existing) await airtable.update(TABLES.participants, existing.id, fields);

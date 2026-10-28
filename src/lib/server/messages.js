@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config, F } from './config.js';
 import { HELP_CHANNEL_ID } from '../help.js';
 
 const NOT_TRACKED = 'Stats: not tracked yet, check back later.';
@@ -195,6 +195,35 @@ export const messages = {
 		return remindersOn
 			? "Reminders are back on. I'll nudge you at 8pm your time if you haven't posted."
 			: "Reminders are off. I won't nudge you anymore.";
+	},
+	// Until a participant confirms their timezone, every submission reply carries the picker link.
+	/**
+	 * @param {string} text
+	 * @param {Record<string, any> | undefined} participantFields
+	 */
+	submissionBlocks(text, participantFields) {
+		/** @type {unknown[]} */
+		const blocks = [{ type: 'section', text: { type: 'mrkdwn', text } }];
+		if (participantFields?.[F.participants.tzConfirmed]) return blocks;
+		const tz = participantFields?.[F.participants.tz] || 'America/New_York';
+		blocks.push(
+			{
+				type: 'context',
+				elements: [{ type: 'mrkdwn', text: `Your day ends at 3am ${tz}. Not right? Pick yours once, it can't be changed later.` }]
+			},
+			{
+				type: 'actions',
+				elements: [
+					{
+						type: 'button',
+						action_id: 'pick_timezone',
+						text: { type: 'plain_text', text: 'Pick your timezone' },
+						url: `${config.siteUrl}/timezone`
+					}
+				]
+			}
+		);
+		return blocks;
 	},
 	/**
 	 * @param {string} text

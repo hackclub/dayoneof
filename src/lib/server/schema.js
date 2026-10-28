@@ -28,6 +28,7 @@ export const F = {
 		email: 'email',
 		avatar: 'avatar',
 		tz: 'tz',
+		tzConfirmed: 'tz_confirmed',
 		status: 'status',
 		daysCompleted: 'days_completed',
 		streakFreezes: 'streak_freezes',

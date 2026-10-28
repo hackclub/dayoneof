@@ -21,7 +21,7 @@ import {
 } from '$lib/server/pending.js';
 import { messages } from '$lib/server/messages.js';
 import { isYswsEligible } from '$lib/server/verification.js';
-import { syncParticipantTotalViews, postFields, previewFields } from '$lib/server/jobs.js';
+import { syncParticipantTotalViews, postFields, previewFields, ensureTz } from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
 import { markMessageDeleted } from '$lib/server/deletion.js';
 import { streakDay, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
@@ -88,15 +88,19 @@ async function handleSubmission(event, link) {
 	}
 
 	// Participants are only created at HCA sign-in, never here.
-	const participant = await airtable.find(
+	const found = await airtable.find(
 		TABLES.participants,
 		airtable.eq(F.participants.slackId, event.user)
 	);
-	if (!participant) {
+	if (!found) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(event.channel, messages.notSignedIn(event.user), event.ts);
 		return null;
 	}
+	const participant = await ensureTz(found);
+	/** @param {string} text */
+	const reply = (text) =>
+		slack.postMessage(event.channel, text, event.ts, messages.submissionBlocks(text, participant.fields));
 	if (!admin && !isYswsEligible(participant.fields[F.participants.yswsEligible])) {
 		await slack.addReaction(event.channel, event.ts, 'lock');
 		await slack.postMessage(
@@ -111,7 +115,7 @@ async function handleSubmission(event, link) {
 	// nothing is written and no paid work is started for it.
 	if (await findSubmissionByVideo(link.platform, link.videoId)) {
 		await slack.addReaction(event.channel, event.ts, 'x');
-		await slack.postMessage(event.channel, messages.duplicateVideo(event.user), event.ts);
+		await reply(messages.duplicateVideo(event.user));
 		return null;
 	}
 
@@ -119,21 +123,13 @@ async function handleSubmission(event, link) {
 
 	if (!admin && isPostTooOld(facts.publishedAt, config.maxPostAgeDays)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
-		await slack.postMessage(
-			event.channel,
-			messages.postTooOld(event.user, config.maxPostAgeDays),
-			event.ts
-		);
+		await reply(messages.postTooOld(event.user, config.maxPostAgeDays));
 		return null;
 	}
 
 	if (!admin && isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
-		await slack.postMessage(
-			event.channel,
-			messages.videoTooShort(event.user, config.minVideoSeconds),
-			event.ts
-		);
+		await reply(messages.videoTooShort(event.user, config.minVideoSeconds));
 		return null;
 	}
 
@@ -147,7 +143,7 @@ async function handleSubmission(event, link) {
 		if (await addOtherPlatform(event, same, link)) {
 			await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 			const original = slack.permalink(same.fields[F.submissions.channelId], same.fields[F.submissions.messageTs]);
-			await slack.postMessage(event.channel, messages.mergedIntoEarlier(event.user, original), event.ts);
+			await reply(messages.mergedIntoEarlier(event.user, original));
 		}
 		return same;
 	}
@@ -180,11 +176,11 @@ async function handleSubmission(event, link) {
 		(!facts.publishedAt || facts.durationSeconds == null || (await findPendingPrimary(event.user)))
 	) {
 		await slack.addReaction(event.channel, event.ts, PENDING_REACTION);
-		const reply = await slack.postMessage(event.channel, messages.awaitingData(event.user, link.platform), event.ts);
+		const waiting = await reply(messages.awaitingData(event.user, link.platform));
 		return airtable.create(TABLES.submissions, {
 			...submissionFields,
 			[F.submissions.pendingCheck]: true,
-			[F.submissions.replyMessageTs]: reply.ts
+			[F.submissions.replyMessageTs]: waiting.ts
 		});
 	}
 

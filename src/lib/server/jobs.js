@@ -59,6 +59,29 @@ export async function previewFields(video, fields) {
 	};
 }
 
+// Unified's count dips when it switches sources (TikTok briefly reads 0), so views never go down.
+/**
+ * @param {NonNullable<Awaited<ReturnType<typeof unified.fetchPostByPlatformId>>>} post
+ * @param {AirtableRecord} submission
+ */
+function keepHigherViews(post, submission) {
+	return { ...post, views: Math.max(post.views, submission.fields[F.submissions.views] ?? 0) };
+}
+
+// Sign-in can miss the tz when users.info fails, and without it days fall back to New York time.
+/** @param {AirtableRecord} participant */
+export async function ensureTz(participant) {
+	if (participant.fields[F.participants.tz]) return participant;
+	try {
+		const tz = (await slack.usersInfo(participant.fields[F.participants.slackId]))?.tz;
+		if (!tz) return participant;
+		return await airtable.update(TABLES.participants, participant.id, { [F.participants.tz]: tz });
+	} catch (err) {
+		console.error('tz backfill failed', err);
+		return participant;
+	}
+}
+
 /** @param {string} slackId */
 export function findParticipant(slackId) {
 	return airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, slackId));
@@ -158,8 +181,9 @@ export async function runReconcile() {
 	let frozen = 0;
 	let broken = 0;
 
-	for (const participant of participants) {
-		if (waiting.has(participant.fields[F.participants.slackId])) continue;
+	for (const listed of participants) {
+		if (waiting.has(listed.fields[F.participants.slackId])) continue;
+		const participant = await ensureTz(listed);
 		const yesterday = addDays(streakDay(participant.fields[F.participants.tz]), -1);
 		if (!(participant.fields[F.participants.lastDay] < yesterday)) continue;
 
@@ -202,9 +226,13 @@ async function mapPool(items, limit, fn) {
 // Reads run in parallel; Airtable writes and Slack posts stay sequential for their rate limits.
 /** @returns {Promise<{ viewsChecked: number, repeatsFlagged: number, submissions: AirtableRecord[] }>} */
 async function refreshViews() {
-	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, ${SUBMISSION_CHECKED})`
-	});
+	const [submissions, participants] = await Promise.all([
+		airtable.list(TABLES.submissions, {
+			filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, ${SUBMISSION_CHECKED})`
+		}),
+		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID })
+	]);
+	const participantFields = new Map(participants.map((p) => [p.fields[F.participants.slackId], p.fields]));
 	let viewsChecked = 0;
 
 	const posts = await mapPool(submissions, UNIFIED_READ_CONCURRENCY, async (submission) => {
@@ -212,7 +240,8 @@ async function refreshViews() {
 		const videoId = submission.fields[F.submissions.videoId];
 		if (!platform || !videoId) return null;
 		try {
-			return await unified.fetchPostByPlatformId(platform, videoId);
+			const post = await unified.fetchPostByPlatformId(platform, videoId);
+			return post && keepHigherViews(post, submission);
 		} catch (err) {
 			console.error('unified-socials views fetch failed', err);
 			return null;
@@ -287,7 +316,12 @@ async function refreshViews() {
 					primary.fields[F.submissions.freezesAtPost] ?? 0,
 					combineStats(fetched)
 				);
-				await slack.updateMessage(primary.fields[F.submissions.channelId], replyMessageTs, text);
+				await slack.updateMessage(
+					primary.fields[F.submissions.channelId],
+					replyMessageTs,
+					text,
+					messages.submissionBlocks(text, participantFields.get(primary.fields[F.submissions.slackId]))
+				);
 			} catch (err) {
 				console.error('failed to update submission reply with fresh stats', err);
 			}
@@ -356,7 +390,8 @@ export async function runPreviews() {
 		const video = { platform: fields[F.submissions.platform], url: fields[F.submissions.url] };
 		let post = null;
 		try {
-			post = await unified.fetchPostByPlatformId(video.platform, fields[F.submissions.videoId]);
+			const fetched = await unified.fetchPostByPlatformId(video.platform, fields[F.submissions.videoId]);
+			post = fetched && keepHigherViews(fetched, submission);
 		} catch (err) {
 			console.error('unified-socials preview fetch failed', err);
 		}
@@ -518,6 +553,13 @@ export async function runRemind({ force = false } = {}) {
 }
 
 const BACKUPS_KEPT = 24 * 30;
+export const BACKUP_FILE = /^airtable_[\d-]+_\d{4}\.json$/;
+
+// Newest first. A server that hasn't backed up yet has no backup dir.
+export async function listBackups() {
+	const names = await readdir(config.backupDir).catch(() => []);
+	return names.filter((name) => BACKUP_FILE.test(name)).sort().reverse();
+}
 
 // Snapshots every table of both environments into one timestamped JSON file, keeping 30 days.
 export async function runBackup() {
@@ -539,10 +581,7 @@ export async function runBackup() {
 		JSON.stringify({ takenAt: now, tables: snapshot })
 	);
 
-	const backups = (await readdir(config.backupDir))
-		.filter((name) => /^airtable_.*\.json$/.test(name))
-		.sort();
-	const stale = backups.slice(0, Math.max(0, backups.length - BACKUPS_KEPT));
+	const stale = (await listBackups()).slice(BACKUPS_KEPT);
 	for (const name of stale) await rm(path.join(config.backupDir, name));
 
 	return {

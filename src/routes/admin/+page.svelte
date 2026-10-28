@@ -116,6 +116,19 @@
 				<button type="submit">Sweep deleted messages</button>
 			</form>
 
+			<details>
+				<summary>Download a backup ({data.backups.length} most recent)</summary>
+				{#if data.backups.length}
+					<ul>
+						{#each data.backups as file}
+							<li><a href="/admin/backups/{file}" download>{file}</a></li>
+						{/each}
+					</ul>
+				{:else}
+					<p>No backups on this server yet.</p>
+				{/if}
+			</details>
+
 			{#if form?.error}
 				<p><strong>{form.ranJob} failed:</strong> {form.error}</p>
 			{:else if form?.ranJob}

@@ -95,6 +95,8 @@ export async function load({ locals }) {
 		isReviewer: isReviewer(session?.slackId),
 		name: me ? cap(me.fields[F.participants.name], NAME_MAX) || null : null,
 		avatar: me?.fields[F.participants.avatar] || '',
+		tz: me?.fields[F.participants.tz] || 'America/New_York',
+		tzConfirmed: !!me?.fields[F.participants.tzConfirmed],
 		verified: isYswsEligible(me?.fields[F.participants.yswsEligible]),
 		hasPosted: !!session && videos.some((v) => v.slackId === session.slackId),
 		videosPosted: videos.length,

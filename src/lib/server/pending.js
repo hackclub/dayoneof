@@ -83,8 +83,9 @@ export async function countSubmission(participant, fields, stats, pending) {
 	/** @param {string} text */
 	const reply = async (text) => {
 		const replyTs = pending?.fields[F.submissions.replyMessageTs];
-		if (!replyTs) return (await slack.postMessage(channel, text, messageTs)).ts;
-		await slack.updateMessage(channel, replyTs, text);
+		const blocks = messages.submissionBlocks(text, participant.fields);
+		if (!replyTs) return (await slack.postMessage(channel, text, messageTs, blocks)).ts;
+		await slack.updateMessage(channel, replyTs, text, blocks);
 		return replyTs;
 	};
 	if (pending) {
@@ -193,6 +194,7 @@ async function rejectPending(row, reason) {
 		await slack.postMessage(channel, text, messageTs);
 		return;
 	}
+	const blocks = messages.submissionBlocks(text, (await findParticipant(slackId))?.fields);
 	const others = await airtable.list(TABLES.submissions, {
 		filterByFormula: `AND(${airtable.eq(F.submissions.primarySubmission, row.id)}, ${SUBMISSION_NOT_DELETED})`
 	});
@@ -205,8 +207,8 @@ async function rejectPending(row, reason) {
 	await slack.removeReaction(channel, messageTs, PENDING_REACTION).catch(() => {});
 	await slack.addReaction(channel, messageTs, 'x');
 	const replyTs = f[F.submissions.replyMessageTs];
-	if (replyTs) await slack.updateMessage(channel, replyTs, text);
-	else await slack.postMessage(channel, text, messageTs);
+	if (replyTs) await slack.updateMessage(channel, replyTs, text, blocks);
+	else await slack.postMessage(channel, text, messageTs, blocks);
 }
 
 /**
@@ -253,9 +255,10 @@ async function mergePending(row, into, stats) {
 		f[F.submissions.slackId],
 		slack.permalink(into.fields[F.submissions.channelId], into.fields[F.submissions.messageTs])
 	);
+	const blocks = messages.submissionBlocks(text, participant?.fields);
 	const replyTs = f[F.submissions.replyMessageTs];
-	if (replyTs) await slack.updateMessage(channel, replyTs, text);
-	else await slack.postMessage(channel, text, messageTs);
+	if (replyTs) await slack.updateMessage(channel, replyTs, text, blocks);
+	else await slack.postMessage(channel, text, messageTs, blocks);
 }
 
 /** @param {AirtableRecord} row */

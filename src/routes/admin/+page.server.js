@@ -10,7 +10,7 @@ import {
 	SUBMISSION_NOT_DELETED
 } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
-import { runReconcile, runViews, runLeaderboard, runRemind, runBackup } from '$lib/server/jobs.js';
+import { runReconcile, runViews, runLeaderboard, runRemind, runBackup, listBackups } from '$lib/server/jobs.js';
 import { fetchPostByPlatformId } from '$lib/server/unified.js';
 import { extractLink } from '$lib/server/links.js';
 import { isYswsEligible } from '$lib/server/verification.js';
@@ -47,7 +47,7 @@ export async function load({ locals }) {
 		redirect(302, '/');
 	}
 
-	const [participants, allSubmissions, shippingRecords] = await Promise.all([
+	const [participants, allSubmissions, shippingRecords, backups] = await Promise.all([
 		airtable.list(TABLES.participants, {
 			filterByFormula: PARTICIPANT_HAS_SLACK_ID,
 			sort: [{ field: F.participants.currentStreak, direction: 'desc' }]
@@ -57,7 +57,8 @@ export async function load({ locals }) {
 		airtable.list(SHIPPING_TABLE).catch((err) => {
 			console.error('shipping list failed', err);
 			return null;
-		})
+		}),
+		listBackups()
 	]);
 	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
 	const primaries = submissions.filter((s) => !s.fields[F.submissions.primarySubmission]);
@@ -128,6 +129,7 @@ export async function load({ locals }) {
 	const submittedSlackIds = new Set(shipping.map((s) => s.slackId));
 
 	return {
+		backups: backups.slice(0, 24),
 		canNuke: appEnv !== 'prod',
 		shippingMissing: !shippingRecords,
 		shipping,
