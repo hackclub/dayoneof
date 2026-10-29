@@ -218,6 +218,12 @@ export const actions = {
 		const submission = await airtable.get(TABLES.submissions, id);
 		const f = submission.fields;
 		if (f[F.submissions.deletedAt]) return fail(409, { error: 'That video was already deleted.' });
+		if (f[F.submissions.reviewStatus]) return fail(409, { error: 'That video was already reviewed.' });
+		const note = `${decision === 'warn' ? `Warning: ${feedback}` : feedback}${fromReviewer(reviewer)}`;
+		const previous = f[F.submissions.reviewFeedback];
+		if (feedback && previous?.split('\n').includes(note)) {
+			return fail(409, { error: 'That feedback was already sent.' });
+		}
 		const slackId = f[F.submissions.slackId];
 		const channel = f[F.submissions.channelId];
 		const thread = f[F.submissions.messageTs];
@@ -246,8 +252,6 @@ export const actions = {
 		/** @type {Record<string, string>} */
 		const statuses = { pass: 'passed', warn: 'passed', star: 'starred', reject: 'rejected' };
 		const status = statuses[decision];
-		const previous = f[F.submissions.reviewFeedback];
-		const note = `${decision === 'warn' ? `Warning: ${feedback}` : feedback}${fromReviewer(reviewer)}`;
 		await airtable.update(TABLES.submissions, id, {
 			...(status
 				? {

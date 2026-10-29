@@ -205,7 +205,7 @@
 					{/if}
 				</div>
 
-				<form method="POST" action="?/review" onsubmit={confirmReject} use:enhance={submitEnhance}>
+				<form method="POST" action="?/review" autocomplete="off" onsubmit={confirmReject} use:enhance={submitEnhance}>
 					<input type="hidden" name="id" value={video.id} />
 					<label for="feedback"><h3>Feedback</h3></label>
 					<textarea
