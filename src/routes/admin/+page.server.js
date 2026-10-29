@@ -341,7 +341,7 @@ export const actions = {
 		if (!found) return fail(404, { rejectError: 'No live submission for that video.' });
 		const primaryId = found.fields[F.submissions.primarySubmission] || found.id;
 		const slackId = found.fields[F.submissions.slackId];
-		const impact = await serialize(() => deleteSubmission(primaryId, slackId, { rejection: reason }));
+		const impact = await serialize(() => deleteSubmission(primaryId, slackId, { rejection: reason, reviewer: locals.session?.slackId }));
 		if (!impact) return fail(404, { rejectError: 'That video was already deleted.' });
 		return { rejected: url, rejectImpact: impact };
 	},

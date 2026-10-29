@@ -61,6 +61,11 @@
 		if (!ok) event.preventDefault();
 	}
 
+	function confirmRevert(event: SubmitEvent) {
+		const ok = confirm('Revert this review? Its feedback messages and reaction are deleted and it goes back in the queue.');
+		if (!ok) event.preventDefault();
+	}
+
 	const submitEnhance = () => {
 		busy = true;
 		return async ({ update }: { update: () => Promise<void> }) => {
@@ -149,6 +154,9 @@
 							<a href={p.url} target="_blank" rel="noopener">{p.platform} ({formatViews(p.views)})</a>
 						{/each}
 						<a href={video.slackUrl} target="_blank" rel="noopener">Slack thread</a>
+						{#if video.unifiedUrl}
+							<a href={video.unifiedUrl} target="_blank" rel="noopener">Unified</a>
+						{/if}
 					</p>
 				</div>
 
@@ -234,10 +242,37 @@
 
 		{#if data.showReviewed}
 			<section class="panel">
-				<h2>Recently reviewed</h2>
+				<h2>Reviewers</h2>
 				<table>
 					<thead>
-						<tr><th>Who</th><th>Video</th><th>Result</th><th>By</th><th>When</th><th>Feedback</th></tr>
+						<tr><th>Reviewer</th><th>Total</th><th>Passed</th><th>Starred</th><th>Rejected</th></tr>
+					</thead>
+					<tbody>
+						{#each data.reviewers as r}
+							<tr class:selected={r.slackId === data.reviewer}>
+								<td><a href="/review?show=reviewed&reviewer={r.slackId}">{r.name || r.slackId || 'unknown'}</a></td>
+								<td>{r.total}</td>
+								<td>{r.tally.passed ?? 0}</td>
+								<td>{r.tally.starred ?? 0}</td>
+								<td>{r.tally.rejected ?? 0}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</section>
+
+			<section class="panel">
+				<h2>
+					{#if data.reviewer}
+						Reviewed by {data.reviewers.find((r) => r.slackId === data.reviewer)?.name || data.reviewer}
+						· <a href="/review?show=reviewed">Show everyone</a>
+					{:else}
+						Recently reviewed
+					{/if}
+				</h2>
+				<table>
+					<thead>
+						<tr><th>Who</th><th>Video</th><th>Result</th><th>By</th><th>When</th><th>Feedback</th><th></th></tr>
 					</thead>
 					<tbody>
 						{#each data.reviewed as r}
@@ -245,9 +280,15 @@
 								<td><a href="/user/{r.slackId}">{r.name || r.slackId}</a></td>
 								<td><a href={r.url} target="_blank" rel="noopener">{r.url}</a></td>
 								<td>{r.status}</td>
-								<td>{r.by}</td>
+								<td><a href="/review?show=reviewed&reviewer={r.by}">{r.byName || r.by}</a></td>
 								<td>{formatDate(r.at)}</td>
 								<td>{r.feedback}</td>
+								<td>
+									<form method="POST" action="?/revert" onsubmit={confirmRevert} use:enhance={submitEnhance}>
+										<input type="hidden" name="id" value={r.id} />
+										<button type="submit" class="revert" disabled={busy}>Revert</button>
+									</form>
+								</td>
 							</tr>
 						{/each}
 					</tbody>
@@ -626,5 +667,20 @@
 		padding: 6px 8px;
 		border-top: 1px dashed var(--line);
 		vertical-align: top;
+	}
+
+	.revert {
+		padding: 2px 8px;
+		font: inherit;
+		color: var(--ink);
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		cursor: pointer;
+	}
+
+	tr.selected td {
+		font-weight: 700;
+		background: var(--bg-2);
 	}
 </style>

@@ -7,6 +7,11 @@ const OTHER_PLATFORMS = 'Upload it to other platforms too! You can link them in 
 /** @type {Record<string, string>} */
 const PLATFORM_NAMES = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
 
+/** @param {string} [reviewer] */
+export function fromReviewer(reviewer) {
+	return reviewer ? ` -from <@${reviewer}>` : '';
+}
+
 /** @typedef {{ views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean }} PostStats */
 
 /** @param {PostStats | null | undefined} stats */
@@ -86,9 +91,10 @@ export const messages = {
 	/**
 	 * @param {string} slackId
 	 * @param {string} feedback
+	 * @param {string} reviewer
 	 */
-	reviewFeedback(slackId, feedback) {
-		return `<@${slackId}> feedback from the reviewers: ${feedback}`;
+	reviewFeedback(slackId, feedback, reviewer) {
+		return `<@${slackId}> feedback from the reviewers: ${feedback}${fromReviewer(reviewer)}`;
 	},
 	/**
 	 * @param {string} slackId
@@ -179,13 +185,17 @@ export const messages = {
 	/**
 	 * @param {string} day
 	 * @param {string} reason
+	 * @param {string} [reviewer]
 	 */
-	rejectedDm(day, reason) {
-		return `Your #dayoneof submission on ${day} has been rejected: ${reason}`;
+	rejectedDm(day, reason, reviewer) {
+		return `Your #dayoneof submission on ${day} has been rejected: ${reason}${fromReviewer(reviewer)}`;
 	},
-	/** @param {string} reason */
-	rejectedReply(reason) {
-		return `This submission was rejected and doesn't count toward your streak: ${reason}`;
+	/**
+	 * @param {string} reason
+	 * @param {string} [reviewer]
+	 */
+	rejectedReply(reason, reviewer) {
+		return `This submission was rejected and doesn't count toward your streak: ${reason}${fromReviewer(reviewer)}`;
 	},
 	streakBroken() {
 		return 'You missed yesterday and had no freezes left, so your streak reset. Post today to start a new one.';

@@ -83,8 +83,13 @@ export function updateMessage(channel, ts, text, blocks) {
  * @param {unknown[]} [blocks]
  */
 export async function dm(user, text, blocks) {
+	return postMessage(await dmChannel(user), text, undefined, blocks);
+}
+
+/** @param {string} user */
+export async function dmChannel(user) {
 	const { channel } = await call('conversations.open', { users: user });
-	return postMessage(channel.id, text, undefined, blocks);
+	return /** @type {string} */ (channel.id);
 }
 
 /**
@@ -142,6 +147,42 @@ export async function getMessage(channel, ts) {
 }
 
 /**
+ * @param {string} method
+ * @param {Record<string, unknown>} params
+ * @returns {Promise<SlackMessage[]>}
+ */
+async function pages(method, params) {
+	/** @type {SlackMessage[]} */
+	const all = [];
+	let cursor;
+	do {
+		const data = await call(method, { ...params, limit: 200, cursor });
+		all.push(...(data.messages ?? []));
+		cursor = data.response_metadata?.next_cursor || undefined;
+	} while (cursor);
+	return all;
+}
+
+/** @typedef {{ ts: string, text?: string, user?: string, bot_id?: string, reactions?: { name: string, users?: string[] }[] }} SlackMessage */
+
+// The parent and every reply. An unthreaded message comes back on its own.
+/**
+ * @param {string} channel
+ * @param {string} ts
+ */
+export function threadMessages(channel, ts) {
+	return pages('conversations.replies', { channel, ts });
+}
+
+/**
+ * @param {string} channel
+ * @param {string} oldest a Slack ts
+ */
+export function historySince(channel, oldest) {
+	return pages('conversations.history', { channel, oldest });
+}
+
+/**
  * @param {string} channel
  * @param {string} ts
  */
@@ -158,6 +199,15 @@ export async function usersInfo(userId) {
 /** Identifies the bot itself — used to tell "the bot joined a channel" apart from a human. */
 export async function authTest() {
 	return call('auth.test', {});
+}
+
+// Cached across requests — the bot's own id never changes for a given token.
+/** @type {string | undefined} */
+let cachedBotUserId;
+
+export async function botUserId() {
+	cachedBotUserId ??= /** @type {string} */ ((await authTest()).user_id);
+	return cachedBotUserId;
 }
 
 /**

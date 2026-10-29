@@ -1,6 +1,6 @@
 // Deleting a video only marks it: the row, its day and the streak it earned are all kept, along
 // with a snapshot of the participant before the delete, so an admin can restore it in one click.
-import { TABLES, F, SUBMISSION_NOT_DELETED } from './config.js';
+import { config, requireEnv, TABLES, F, SUBMISSION_NOT_DELETED } from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import { messages } from './messages.js';
@@ -116,14 +116,86 @@ export async function sweepDeletedMessages() {
 	return { checked: submissions.length, found };
 }
 
+/** @typedef {{ kind: 'delete', channel: string, ts: string, text: string } | { kind: 'unreact' | 'react', channel: string, ts: string, name: string }} SlackCleanup */
+
+// Takes back what a rejected video earned in Slack: its prize thread reply and announcements, and
+// the bot's checks on each platform's link, which become an x. Notes and feedback stay.
+/**
+ * @param {AirtableRecord} primary
+ * @returns {Promise<SlackCleanup[]>}
+ */
+export async function planRejectionCleanup(primary) {
+	const fields = primary.fields;
+	const channel = fields[F.submissions.channelId];
+	if (!channel) return [];
+	const bot = await slack.botUserId();
+	const group = [primary, ...(await listOtherPlatforms(primary.id, 'TRUE()'))];
+	const groupIds = new Set(group.map((s) => s.id));
+	const roots = [...new Set(group.map((s) => s.fields[F.submissions.messageTs]).filter(Boolean))];
+	const sharing = await airtable.list(TABLES.submissions, {
+		filterByFormula: `AND(${SUBMISSION_NOT_DELETED}, OR(${roots.map((ts) => airtable.eq(F.submissions.messageTs, ts)).join(', ')}))`
+	});
+	const shared = new Set(
+		sharing.filter((s) => !groupIds.has(s.id)).map((s) => s.fields[F.submissions.messageTs])
+	);
+	const slackId = fields[F.submissions.slackId];
+	const streak = fields[F.submissions.countedTowardStreak] ? fields[F.submissions.streakAtPost] : null;
+
+	/** @type {SlackCleanup[]} */
+	const plan = [];
+	const seen = new Set();
+	for (const root of roots) {
+		for (const m of await slack.threadMessages(channel, root)) {
+			if (seen.has(m.ts)) continue;
+			seen.add(m.ts);
+			if (m.user === bot && streak && m.text?.startsWith(`<@${slackId}> you just unlocked the ${streak}-day prize!`)) {
+				plan.push({ kind: 'delete', channel, ts: m.ts, text: m.text });
+				continue;
+			}
+			if (shared.has(root) || !roots.includes(m.ts)) continue;
+			for (const r of m.reactions ?? []) {
+				if (r.name !== 'x' && r.users?.includes(bot)) plan.push({ kind: 'unreact', channel, ts: m.ts, name: r.name });
+			}
+			if (!m.reactions?.some((r) => r.name === 'x' && r.users?.includes(bot))) {
+				plan.push({ kind: 'react', channel, ts: m.ts, name: 'x' });
+			}
+		}
+	}
+
+	const urls = group.map((s) => s.fields[F.submissions.url]).filter(Boolean);
+	const announceChannel = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
+	const since = String(Date.parse(fields[F.submissions.postedAt]) / 1000);
+	for (const m of await slack.historySince(announceChannel, since)) {
+		if (m.user !== bot || !m.text) continue;
+		const streakAnnounce = streak && m.text.startsWith(`<@${slackId}> just hit a ${streak}-day streak!`);
+		const viewsAnnounce =
+			m.text.startsWith(`<@${slackId}>'s video just passed`) && urls.some((url) => m.text?.includes(url));
+		if (streakAnnounce || viewsAnnounce) plan.push({ kind: 'delete', channel: announceChannel, ts: m.ts, text: m.text });
+	}
+	return plan;
+}
+
+/** @param {SlackCleanup[]} plan */
+export async function runRejectionCleanup(plan) {
+	for (const step of plan) {
+		await bestEffort(`rejection cleanup ${step.kind} failed`, () =>
+			step.kind === 'delete'
+				? slack.deleteMessage(step.channel, step.ts)
+				: step.kind === 'react'
+					? slack.addReaction(step.channel, step.ts, step.name)
+					: slack.removeReaction(step.channel, step.ts, step.name)
+		);
+	}
+}
+
 // Callers run this inside serialize(), like every other streak write. A rejection by an admin
 // undoes the streak the same way, but edits the bot reply and DMs the reason instead.
 /**
  * @param {string} submissionId
  * @param {string} slackId
- * @param {{ rejection?: string }} [options]
+ * @param {{ rejection?: string, reviewer?: string }} [options]
  */
-export async function deleteSubmission(submissionId, slackId, { rejection } = {}) {
+export async function deleteSubmission(submissionId, slackId, { rejection, reviewer } = {}) {
 	const submission = await airtable.get(TABLES.submissions, submissionId);
 	const fields = submission.fields;
 	if (fields[F.submissions.slackId] !== slackId || fields[F.submissions.deletedAt]) return null;
@@ -176,26 +248,26 @@ export async function deleteSubmission(submissionId, slackId, { rejection } = {}
 	const messageTs = fields[F.submissions.messageTs];
 	const replyTs = fields[F.submissions.replyMessageTs];
 	if (channel && replyTs) {
-		const text = rejection && messages.rejectedReply(rejection);
+		const text = rejection && messages.rejectedReply(rejection, reviewer);
 		await bestEffort(rejection ? 'edit bot reply failed' : 'delete bot reply failed', () =>
 			text
 				? slack.updateMessage(channel, replyTs, text, messages.submissionBlocks(text, participant?.fields))
 				: slack.deleteMessage(channel, replyTs)
 		);
 	}
-	if (channel && messageTs) {
+	if (rejection) {
+		await bestEffort('plan rejection cleanup failed', async () =>
+			runRejectionCleanup(await planRejectionCleanup(submission))
+		);
+	} else if (channel && messageTs) {
 		await bestEffort('remove reaction failed', () =>
 			slack.removeReaction(channel, messageTs, postReaction(fields))
 		);
-		if (!rejection) {
-			await bestEffort('add wastebasket failed', () =>
-				slack.addReaction(channel, messageTs, 'wastebasket')
-			);
-		}
+		await bestEffort('add wastebasket failed', () => slack.addReaction(channel, messageTs, 'wastebasket'));
 	}
 	if (rejection) {
 		await bestEffort('rejection dm failed', () =>
-			slack.dm(slackId, messages.rejectedDm(fields[F.submissions.day], rejection))
+			slack.dm(slackId, messages.rejectedDm(fields[F.submissions.day], rejection, reviewer))
 		);
 	}
 
@@ -264,10 +336,21 @@ export async function restoreSubmission(submissionId) {
 	}
 	if (channel && messageTs) {
 		await bestEffort('remove wastebasket failed', () =>
-			slack.removeReaction(channel, messageTs, 'wastebasket')
+			slack.removeReaction(channel, messageTs, state?.rejected ? 'x' : 'wastebasket')
 		);
 		await bestEffort('re-add reaction failed', () =>
 			slack.addReaction(channel, messageTs, postReaction(fields))
 		);
+	}
+	// A rejection marked each platform's own link too.
+	if (state?.rejected) {
+		for (const other of restored.slice(1)) {
+			const { [F.submissions.channelId]: c, [F.submissions.messageTs]: ts } = other.fields;
+			if (!c || !ts || ts === messageTs) continue;
+			await bestEffort('restore platform reaction failed', async () => {
+				await slack.removeReaction(c, ts, 'x');
+				await slack.addReaction(c, ts, 'white_check_mark');
+			});
+		}
 	}
 }

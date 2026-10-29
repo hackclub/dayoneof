@@ -414,7 +414,7 @@
 			<h2>Removed, private or unlisted</h2>
 			<p>
 				Checked against each platform's public page every 6 hours by the views job. Removed means
-				deleted or private. Unlisted is YouTube only, judged from the channel's feed. Instagram hides
+				deleted or private. Unlisted is YouTube only, read from the Data API. Instagram hides
 				posts from scrapers at times, so double-check those before acting.
 			</p>
 			{#if data.unavailable.length === 0}

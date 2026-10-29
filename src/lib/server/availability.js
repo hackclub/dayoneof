@@ -6,8 +6,6 @@ export const BROWSER_UA =
 	'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36';
 // Instagram only serves its og: tags to link-preview crawlers.
 export const CRAWLER_UA = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
-// A just-published video can take a while to show up in its channel's feed.
-const FEED_GRACE_MS = 60 * 60 * 1000;
 
 /** @typedef {'public' | 'unlisted' | 'removed'} Availability */
 
@@ -23,40 +21,12 @@ export function get(url, userAgent) {
 	});
 }
 
-// Only the newest 15 uploads are in the feed, so a missing video only counts as unlisted when it's
-// newer than the oldest one listed, or the feed holds the whole channel.
 /**
- * @param {string} videoId
- * @param {string} channelId
- * @param {string} publishedAt
- * @param {Map<string, Promise<string | null>>} feeds
- * @returns {Promise<boolean | null>}
- */
-async function isUnlisted(videoId, channelId, publishedAt, feeds) {
-	if (Date.now() - Date.parse(publishedAt) < FEED_GRACE_MS) return null;
-	if (!feeds.has(channelId)) {
-		const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`;
-		feeds.set(
-			channelId,
-			get(url, BROWSER_UA).then((res) => (res.ok ? res.text() : null))
-		);
-	}
-	const feed = await feeds.get(channelId);
-	if (!feed) return null;
-	const entries = [...feed.matchAll(/<entry>[\s\S]*?<yt:videoId>([^<]+)<[\s\S]*?<published>([^<]+)</g)];
-	if (entries.some(([, id]) => id === videoId)) return false;
-	if (entries.length < 15) return true;
-	const oldest = Math.min(...entries.map(([, , published]) => Date.parse(published)));
-	return Date.parse(publishedAt) > oldest ? true : null;
-}
-
-/**
- * @param {{ platform: string, videoId: string, url: string }} video
- * @param {{ channelId?: string | null, publishedAt?: string | null }} known from unified-socials
- * @param {Map<string, Promise<string | null>>} feeds shared across one run's checks
+ * @param {{ platform: string, url: string }} video
+ * @param {string | null | undefined} youtubePrivacy privacyStatus from the YouTube Data API
  * @returns {Promise<Availability | null>}
  */
-export async function checkAvailability({ platform, videoId, url }, known, feeds) {
+export async function checkAvailability({ platform, url }, youtubePrivacy) {
 	try {
 		if (platform === 'youtube') {
 			const res = await get(
@@ -65,9 +35,7 @@ export async function checkAvailability({ platform, videoId, url }, known, feeds
 			);
 			if ([400, 401, 403, 404].includes(res.status)) return 'removed';
 			if (!res.ok) return null;
-			if (!known.channelId || !known.publishedAt) return 'public';
-			const unlisted = await isUnlisted(videoId, known.channelId, known.publishedAt, feeds);
-			return unlisted ? 'unlisted' : 'public';
+			return youtubePrivacy === 'unlisted' ? 'unlisted' : 'public';
 		}
 
 		if (platform === 'tiktok') {

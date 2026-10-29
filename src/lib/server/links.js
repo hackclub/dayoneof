@@ -30,7 +30,9 @@ const PATTERNS = [
 		/** @param {RegExpMatchArray} m */
 		build(m) {
 			const kind = m[1].toLowerCase() === 'reels' ? 'reel' : m[1].toLowerCase();
-			return { videoId: m[2], url: `https://www.instagram.com/${kind}/${m[2]}/` };
+			// Some share links append ~28 chars to the 11-char shortcode; only the shortcode is the post.
+			const videoId = m[2].slice(0, 11);
+			return { videoId, url: `https://www.instagram.com/${kind}/${videoId}/` };
 		}
 	}
 ];

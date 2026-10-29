@@ -14,6 +14,7 @@ import { tablesFor, shippingTableFor } from './schema.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import * as unified from './unified.js';
+import * as youtube from './youtube.js';
 import { messages, statsLine } from './messages.js';
 import { serialize } from './queue.js';
 import { streakDay, addDays, settleMissedDays, compareStreaks, viewMilestoneCrossed, prizeFor } from './streak.js';
@@ -61,8 +62,10 @@ export async function previewFields(video, fields) {
 
 // Unified's count dips when it switches sources (TikTok briefly reads 0), so views never go down.
 /**
- * @param {NonNullable<Awaited<ReturnType<typeof unified.fetchPostByPlatformId>>>} post
+ * @template {{ views: number }} T
+ * @param {T} post
  * @param {AirtableRecord} submission
+ * @returns {T}
  */
 function keepHigherViews(post, submission) {
 	return { ...post, views: Math.max(post.views, submission.fields[F.submissions.views] ?? 0) };
@@ -250,21 +253,37 @@ async function refreshViews() {
 
 	const postById = new Map(submissions.map((s, i) => [s.id, posts[i]]));
 
+	const youtubeCounts = await youtube
+		.fetchCounts(
+			submissions
+				.filter((s) => s.fields[F.submissions.platform] === 'youtube' && s.fields[F.submissions.videoId])
+				.map((s) => s.fields[F.submissions.videoId])
+		)
+		.catch((err) => {
+			console.error('youtube data api counts fetch failed', err);
+			return new Map();
+		});
+	// YouTube counts come from the Data API; unified still supplies everything else it has.
+	/** @param {AirtableRecord} submission @returns {import('./messages.js').PostStats | null} */
+	const statsFor = (submission) => {
+		const post = postById.get(submission.id) ?? null;
+		const counts =
+			submission.fields[F.submissions.platform] === 'youtube'
+				? youtubeCounts.get(submission.fields[F.submissions.videoId])
+				: undefined;
+		if (!counts) return post;
+		const base = post ?? { shares: null, watchHours: null, watchHoursEstimated: false };
+		const likes = counts.likes ?? post?.likes ?? submission.fields[F.submissions.likes] ?? 0;
+		return keepHigherViews({ ...base, views: counts.views, likes }, submission);
+	};
+
 	const checkedBefore = Date.now() - AVAILABILITY_INTERVAL_MS;
-	/** @type {Map<string, Promise<string | null>>} */
-	const feeds = new Map();
 	const availability = await mapPool(submissions, AVAILABILITY_CONCURRENCY, async (submission) => {
 		const fields = submission.fields;
 		if (Date.parse(fields[F.submissions.availabilityCheckedAt] ?? '') > checkedBefore) return null;
-		const post = postById.get(submission.id);
 		return checkAvailability(
-			{
-				platform: fields[F.submissions.platform],
-				videoId: fields[F.submissions.videoId],
-				url: fields[F.submissions.url]
-			},
-			{ channelId: post?.channelId, publishedAt: post?.publishedAt },
-			feeds
+			{ platform: fields[F.submissions.platform], url: fields[F.submissions.url] },
+			youtubeCounts.get(fields[F.submissions.videoId])?.privacy
 		);
 	});
 	const availabilityById = new Map(submissions.map((s, i) => [s.id, availability[i]]));
@@ -277,18 +296,20 @@ async function refreshViews() {
 	const same = (a, b) => (blank(a) ? blank(b) : a === b);
 
 	for (const { primary, rows } of groupByVideo(submissions)) {
-		const fetched = rows.flatMap((s) => postById.get(s.id) ?? []);
+		const fetched = rows.flatMap((s) => statsFor(s) ?? []);
 		const viewsBefore = totalViews(rows);
 		const replyStatsBefore = primary.fields[F.submissions.replyStats] ?? '';
 		const replyStats = fetched.length ? statsLine(combineStats(fetched)) : replyStatsBefore;
 
 		for (const submission of rows) {
 			const post = postById.get(submission.id);
-			if (post) viewsChecked++;
+			const stats = statsFor(submission);
+			if (stats) viewsChecked++;
 			const available = availabilityById.get(submission.id);
 			/** @type {Record<string, unknown>} */
 			const changes = {
 				...(post ? postFields(post) : {}),
+				...(stats ? { [F.submissions.views]: stats.views, [F.submissions.likes]: stats.likes } : {}),
 				...(submission === primary && fetched.length ? { [F.submissions.replyStats]: replyStats } : {})
 			};
 			if (available) {
@@ -438,6 +459,9 @@ const LEADERBOARD_TZ = 'America/New_York';
 
 // Refreshes every submission's stats first so the boards reflect tonight's numbers. The cron can
 // fire more often than daily: without force it only posts at 9pm Eastern once submissions open.
+// Until unified-socials refreshes these posts hourly, their views can trail the platforms by a day.
+const VIEWS_LAG_NOTE = '_Views sync about once a day, so newer videos may be behind what the app shows._';
+
 /** @param {{ force?: boolean }} [options] */
 export async function runLeaderboard({ force = false } = {}) {
 	if (!force && (!config.submissionsOpen || localHour(LEADERBOARD_TZ) !== LEADERBOARD_HOUR)) {
@@ -484,8 +508,8 @@ export async function runLeaderboard({ force = false } = {}) {
 
 	const announceChannelId = requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId);
 	await slack.postMessage(announceChannelId, `*Longest active streaks*\n${streakLines}`);
-	await slack.postMessage(announceChannelId, `*Most total views*\n${viewLines}`);
-	await slack.postMessage(announceChannelId, `*Highest viewed videos*\n${videoLines}`);
+	await slack.postMessage(announceChannelId, `*Most total views*\n${viewLines}\n${VIEWS_LAG_NOTE}`);
+	await slack.postMessage(announceChannelId, `*Highest viewed videos*\n${videoLines}\n${VIEWS_LAG_NOTE}`);
 
 	// The board posts once a day, so "today" is anyone whose milestone landed in the last 24 hours.
 	const dayAgo = Date.now() - 24 * 60 * 60 * 1000;

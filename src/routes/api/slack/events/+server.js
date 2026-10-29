@@ -296,18 +296,10 @@ async function handleThreadReply(event) {
 	if (added) await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 }
 
-// Cached across requests — the bot's own id never changes for a given token.
-/** @type {string | undefined} */
-let botUserId;
-
 // Greets the channel when the bot itself is invited; every other member joining is ignored.
 /** @param {SlackEvent} event */
 async function handleMemberJoined(event) {
-	if (!botUserId) {
-		const auth = await slack.authTest();
-		botUserId = auth.user_id;
-	}
-	if (event.user !== botUserId) return;
+	if (event.user !== (await slack.botUserId())) return;
 	await slack.postMessage(event.channel, 'dayoneof bot is here!');
 }
 

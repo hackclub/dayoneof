@@ -154,7 +154,8 @@ export function validateShipping(v: ShippingValues) {
 	if (!zip) {
 		if (!NO_POSTAL_CODE.has(v.country)) errors.zip = 'Enter your ZIP / postal code.';
 	} else if (postal ? !postal.test(zip) : !/^[A-Z\d][A-Z\d -]{1,9}$/i.test(zip)) {
-		errors.zip = "That doesn't look like a valid postal code for this country.";
+		const name = COUNTRIES.find((c) => c.value === v.country)?.label ?? 'this country';
+		errors.zip = `That doesn't look like a valid postal code for ${name}. Is your country set right?`;
 	}
 
 	if (!isPastDate(v.birthday)) errors.birthday = 'Enter a valid date of birth.';

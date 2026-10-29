@@ -45,6 +45,14 @@ test('normalizes an Instagram reel link', async () => {
 	});
 });
 
+test('trims the suffix some Instagram share links add to the shortcode', async () => {
+	const link = await extractLink(
+		'<https://www.instagram.com/what.todoinaday/reel/DfCiWHBB95XzO2vAwEsT_-03JkOk9i2R77piG80/>'
+	);
+	assert.equal(link?.url, 'https://www.instagram.com/reel/DfCiWHBB95X/');
+	assert.equal(link?.videoId, 'DfCiWHBB95X');
+});
+
 test('normalizes a TikTok link, keeping the username', async () => {
 	const link = await extractLink(
 		'<https://www.tiktok.com/@starthackclub/video/7685814420957580575?_r=1|tiktok.com/@starthackclub/video/…>'
