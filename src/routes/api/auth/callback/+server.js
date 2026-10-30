@@ -1,5 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
-import { config, requireEnv, TABLES, F } from '$lib/server/config.js';
+import { config, requireEnv, TABLES, F, appEnv } from '$lib/server/config.js';
+import { HELP_CHANNEL_ID } from '$lib/help.js';
 import { exchangeCode, fetchMe } from '$lib/server/hca.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
@@ -69,12 +70,19 @@ export async function GET({ url, cookies }) {
 	if (existing) await airtable.update(TABLES.participants, existing.id, fields);
 	else await airtable.create(TABLES.participants, fields);
 
-	const submissionChannelId = requireEnv('SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId);
-	slack
-		.inviteToChannel(submissionChannelId, [slackId])
-		.catch((err) => {
-			if (!String(err.message).includes('already_in_channel')) console.error('channel invite failed', err);
+	const channelIds = [
+		requireEnv('SLACK_SUBMISSION_CHANNEL_ID', config.submissionChannelId),
+		requireEnv('SLACK_ANNOUNCE_CHANNEL_ID', config.announceChannelId),
+		// The help channel is the real one, so dev sign-ins stay out of it.
+		...(appEnv === 'prod' ? [HELP_CHANNEL_ID] : [])
+	];
+	for (const channelId of channelIds) {
+		slack.inviteToChannel(channelId, [slackId]).catch((err) => {
+			if (!String(err.message).includes('already_in_channel')) {
+				console.error('channel invite failed', channelId, err);
+			}
 		});
+	}
 
 	setSessionCookie(cookies, slackId);
 	redirect(302, safeNextPath(next) ?? '/home');
