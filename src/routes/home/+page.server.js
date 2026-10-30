@@ -83,11 +83,14 @@ export async function load({ locals }) {
 	const byVideo = videos.filter((v) => v.views > 0).sort((a, b) => b.views - a.views).slice(0, BOARD_SIZE);
 
 	const session = locals.session;
-	// A first sign-in lands before the stale participant list has refreshed to include them.
-	const me = session
-		? (participants.find((p) => p.fields[F.participants.slackId] === session.slackId) ??
-			(await airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, session.slackId))))
+	// The cached list can miss a first sign-in or a just-confirmed timezone, so those re-fetch.
+	const cached = session
+		? participants.find((p) => p.fields[F.participants.slackId] === session.slackId)
 		: null;
+	const me =
+		session && !cached?.fields[F.participants.tzConfirmed]
+			? await airtable.find(TABLES.participants, airtable.eq(F.participants.slackId, session.slackId))
+			: cached;
 
 	return {
 		session,

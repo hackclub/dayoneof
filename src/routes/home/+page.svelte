@@ -4,6 +4,7 @@
 	import { numberTape, sprite } from '$lib/asset_sheet';
 	import { HELP_URL } from '$lib/help';
 	import PlatformSwitch from '$lib/platform_switch.svelte';
+	import TimezoneModal from '../timezone/timezone_modal.svelte';
 
 	let { data } = $props();
 
@@ -265,6 +266,10 @@
 		</aside>
 	</div>
 </div>
+
+{#if data.session && !data.tzConfirmed}
+	<TimezoneModal current={data.tz} />
+{/if}
 
 <style>
 	.dash {

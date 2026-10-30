@@ -144,8 +144,23 @@
 		padding-left: 2.6rem;
 	}
 	.control input {
-		padding-right: 2.4rem;
+		width: 100%;
+		font: inherit;
+		font-size: 1rem;
+		color: var(--ink);
+		background: var(--bg-2);
+		border: 2px solid var(--line);
+		border-radius: 10px;
+		padding: 0.6rem 2.4rem 0.6rem 0.85rem;
+		outline: none;
+		transition: border-color 0.12s ease;
 		cursor: var(--cursor-pointer);
+	}
+	.control input:focus {
+		border-color: var(--ink);
+	}
+	.control.invalid input {
+		border-color: var(--accent);
 	}
 	.caret {
 		position: absolute;

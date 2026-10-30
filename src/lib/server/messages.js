@@ -215,24 +215,15 @@ export const messages = {
 		/** @type {unknown[]} */
 		const blocks = [{ type: 'section', text: { type: 'mrkdwn', text } }];
 		if (participantFields?.[F.participants.tzConfirmed]) return blocks;
-		const tz = participantFields?.[F.participants.tz] || 'America/New_York';
-		blocks.push(
-			{
-				type: 'context',
-				elements: [{ type: 'mrkdwn', text: `Your day ends at 3am ${tz}. Not right? Pick yours once, it can't be changed later.` }]
-			},
-			{
-				type: 'actions',
-				elements: [
-					{
-						type: 'button',
-						action_id: 'pick_timezone',
-						text: { type: 'plain_text', text: 'Pick your timezone' },
-						url: `${config.siteUrl}/timezone`
-					}
-				]
-			}
-		);
+		blocks.push({
+			type: 'context',
+			elements: [
+				{
+					type: 'mrkdwn',
+					text: `Please confirm your timezone on the site! <${config.siteUrl}/timezone|Pick your timezone>`
+				}
+			]
+		});
 		return blocks;
 	},
 	/**
