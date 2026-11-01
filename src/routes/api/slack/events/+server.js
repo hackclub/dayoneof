@@ -37,6 +37,7 @@ import { streakDay, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js'
  *   ts: string,
  *   thread_ts?: string,
  *   deleted_ts?: string,
+ *   message?: { subtype?: string, ts?: string },
  *   previous_message?: { user?: string, bot_id?: string }
  * }} SlackEvent
  */
@@ -304,14 +305,17 @@ async function handleMemberJoined(event) {
 }
 
 // A deleted submission message is flagged for the admin page and its bot reply deleted.
-/** @param {SlackEvent} event */
-async function handleMessageDeleted(event) {
+/**
+ * @param {SlackEvent} event
+ * @param {string | undefined} deletedTs
+ */
+async function handleMessageDeleted(event, deletedTs) {
 	const previous = event.previous_message;
-	if (!previous?.user || previous.bot_id || !event.deleted_ts) return;
+	if (!previous?.user || previous.bot_id || !deletedTs) return;
 
 	// A message linking several platforms stored a submission for each.
 	const submissions = await airtable.list(TABLES.submissions, {
-		filterByFormula: airtable.eq(F.submissions.messageTs, event.deleted_ts)
+		filterByFormula: airtable.eq(F.submissions.messageTs, deletedTs)
 	});
 	for (const submission of submissions) await markMessageDeleted(submission);
 }
@@ -324,7 +328,11 @@ async function handleEvent(event) {
 
 	if (event.type === 'message') {
 		if (event.channel !== config.submissionChannelId) return;
-		if (event.subtype === 'message_deleted') return handleMessageDeleted(event);
+		if (event.subtype === 'message_deleted') return handleMessageDeleted(event, event.deleted_ts);
+		// A deleted message with thread replies arrives as an edit into a tombstone instead.
+		if (event.subtype === 'message_changed' && event.message?.subtype === 'tombstone') {
+			return handleMessageDeleted(event, event.message.ts);
+		}
 		// Edits, joins and the bot's own replies all arrive here as message events.
 		if (event.subtype || event.bot_id) return;
 		if (event.thread_ts && event.thread_ts !== event.ts) {
