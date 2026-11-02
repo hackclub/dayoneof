@@ -17,6 +17,8 @@ const API = 'https://api.airtable.com/v0';
 const PEOPLE_COUNT = 15;
 const SEED_PREFIX = 'USEED';
 const MAX_POSTS_PER_PERSON = 9;
+// Every Nth seeded submission is starred, so the home wall's starred view has something to show.
+const STAR_EVERY = 5;
 // Shortform only: a reel, a Short or a TikTok, never a 40-minute upload that happens to be tracked.
 const MAX_DURATION_SECONDS = 180;
 
@@ -288,7 +290,14 @@ async function main() {
 				[F.submissions.archiveUrl]: video.archiveUrl,
 				[F.submissions.unifiedId]: video.unifiedId,
 				[F.submissions.streakAtPost]: Math.max(1, streak - n),
-				[F.submissions.freezesAtPost]: freezes
+				[F.submissions.freezesAtPost]: freezes,
+				...(counter % STAR_EVERY === 0
+					? {
+							[F.submissions.reviewStatus]: 'starred',
+							[F.submissions.reviewedBy]: 'seed',
+							[F.submissions.reviewedAt]: new Date().toISOString()
+						}
+					: {})
 			});
 		}
 
@@ -368,7 +377,8 @@ async function main() {
 
 	console.log(
 		`seeded ${participants.length} participants, ${submissions.length} submissions ` +
-			`(+${others.length} other platforms) and ` +
+			`(${submissions.filter((s) => s[F.submissions.reviewStatus] === 'starred').length} starred, ` +
+			`+${others.length} other platforms) and ` +
 			`${shipping.length} shipping addresses into ${baseId}`
 	);
 	console.log('done');

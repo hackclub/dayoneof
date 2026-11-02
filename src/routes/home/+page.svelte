@@ -8,12 +8,13 @@
 
 	let { data } = $props();
 
-	type Sort = 'date' | 'views';
+	type Sort = 'date' | 'views' | 'starred';
 	type Tab = 'streak' | 'people' | 'videos';
 
 	const sorts: { key: Sort; label: string }[] = [
 		{ key: 'date', label: 'Newest' },
-		{ key: 'views', label: 'Most viewed' }
+		{ key: 'views', label: 'Most viewed' },
+		{ key: 'starred', label: '⭐ Starred' }
 	];
 
 	const tabs: { key: Tab; label: string }[] = [
@@ -26,10 +27,18 @@
 	let tab = $state<Tab>('streak');
 	let picked = $state<Record<string, string>>({});
 
-	const heading = $derived(sort === 'views' ? 'Most viewed reels' : 'Newest reels');
+	const headings: Record<Sort, string> = {
+		date: 'Newest reels',
+		views: 'Most viewed reels',
+		starred: 'Starred reels'
+	};
 
 	const videos = $derived(
-		sort === 'views' ? [...data.videos].sort((a, b) => b.views - a.views) : data.videos
+		sort === 'views'
+			? [...data.videos].sort((a, b) => b.views - a.views)
+			: sort === 'starred'
+				? data.videos.filter((v) => v.starred)
+				: data.videos
 	);
 </script>
 
@@ -140,7 +149,7 @@
 	<div class="columns">
 		<section class="feed">
 			<div class="feed-head">
-				<h1>{heading}</h1>
+				<h1>{headings[sort]}</h1>
 				<div class="segmented" role="group" aria-label="Sort videos">
 					{#each sorts as option}
 						<button
@@ -157,7 +166,11 @@
 			</div>
 
 			{#if videos.length === 0}
-				<p class="empty">No videos yet. Post a link in the Slack channel to start the wall!</p>
+				<p class="empty">
+					{sort === 'starred'
+						? 'No starred reels yet. The reviewers star the best ones, so check back soon!'
+						: 'No videos yet. Post a link in the Slack channel to start the wall!'}
+				</p>
 			{:else}
 				<div class="grid">
 					{#each videos as video, i (video.key)}
@@ -165,7 +178,9 @@
 							video.platforms.find((p) => p.platform === picked[video.key]) ?? video.platforms[0]}
 						<article class="card" class:starred={video.starred}>
 							<a class="tile" href={shown.url} target="_blank" rel="noopener">
-								{#if video.starred}<span class="star" title="Starred by the reviewers">⭐</span>{/if}
+								{#if video.starred}
+									<span class="star" title="Starred by the reviewers" style={sprite('pin')}></span>
+								{/if}
 								{#if shown.thumbnail}
 									<!-- Lazy images inside the scrolling grid never start loading in Chrome until it
 									     scrolls, so the first screenful is eager and the rest lazy. -->
@@ -180,6 +195,9 @@
 								{/if}
 								<span class="play" aria-hidden="true"><span style={sprite('badge_arrow')}></span></span>
 								<span class="tile-foot">
+									{#if video.starred}
+										<span class="starred-label taped" style={numberTape('starred', i)}>Starred</span>
+									{/if}
 									{#if shown.title}<span class="tile-title">{shown.title}</span>{/if}
 									<span class="tile-views">{formatViews(video.views)} views</span>
 								</span>
@@ -605,18 +623,36 @@
 	}
 
 	.card.starred .tile {
+		background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%) padding-box, #f5c518;
 		box-shadow:
 			0 0 0 4px #f5c518,
-			4px 5px 0 var(--shadow);
+			6px 7px 0 var(--accent);
+	}
+
+	.card.starred .tile:hover {
+		box-shadow:
+			0 0 0 4px #f5c518,
+			9px 10px 0 var(--accent);
 	}
 
 	.star {
 		position: absolute;
-		top: 8px;
-		right: 8px;
+		top: 6px;
+		right: 6px;
 		z-index: 2;
-		font-size: 1.4rem;
-		filter: drop-shadow(1px 2px 0 var(--shadow));
+		width: clamp(2.2rem, 3.4vh, 3rem);
+		height: clamp(2.2rem, 3.4vh, 3rem);
+		transform: rotate(14deg);
+		filter: drop-shadow(2px 3px 0 var(--shadow));
+	}
+
+	.starred-label {
+		align-self: flex-start;
+		margin: 0 0 0.3rem 0.2rem;
+		font-size: clamp(0.8rem, 0.85vw, 0.95rem);
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
 	}
 
 	.card:nth-child(odd) .tile {
