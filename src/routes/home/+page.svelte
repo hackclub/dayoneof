@@ -55,7 +55,7 @@
 
 <div class="dash day-one">
 	<header class="bar">
-		<a class="brand" href="/home">Day One Of</a>
+		<a class="brand" href="/home">Day One Of{#if data.isDev}<span class="dev-tag">(DEV)</span>{/if}</a>
 		<div class="bar-right">
 			<span class="posted taped" style={numberTape('videos posted')}>{data.videosPosted} video{data.videosPosted === 1 ? '' : 's'} posted</span>
 			{#if data.session}
@@ -585,11 +585,11 @@
 		color: var(--accent-ink);
 	}
 
-	/* Five fixed columns: tile width follows the column, and 9:16 gives the height, so tracks never
+	/* Six fixed columns: tile width follows the column, and 9:16 gives the height, so tracks never
 	   stretch — a wall of three videos keeps the same tiles as a wall of thirty. */
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(6, minmax(0, 1fr));
 		grid-auto-rows: max-content;
 		align-content: start;
 		gap: var(--tile-gap);

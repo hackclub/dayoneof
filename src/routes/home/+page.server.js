@@ -101,7 +101,10 @@ export async function load({ locals }) {
 		tz: me?.fields[F.participants.tz] || 'America/New_York',
 		tzConfirmed: !!me?.fields[F.participants.tzConfirmed],
 		verified: isYswsEligible(me?.fields[F.participants.yswsEligible]),
-		hasPosted: !!session && videos.some((v) => v.slackId === session.slackId),
+		hasPosted:
+			!!session &&
+			(count(me?.fields[F.participants.daysCompleted]) > 0 ||
+				allSubmissions.some((s) => s.fields[F.submissions.slackId] === session.slackId)),
 		videosPosted: videos.length,
 		videos,
 		byStreak,

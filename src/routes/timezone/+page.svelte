@@ -29,7 +29,7 @@
 
 <div class="page day-one">
 	<header class="bar">
-		<a class="brand" href="/home">Day One Of</a>
+		<a class="brand" href="/home">Day One Of{#if data.isDev}<span class="dev-tag">(DEV)</span>{/if}</a>
 		<a class="ghost-btn" href="/api/auth/logout">Sign out</a>
 	</header>
 

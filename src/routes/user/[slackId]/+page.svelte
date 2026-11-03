@@ -58,7 +58,7 @@
 
 <div class="dash day-one">
 	<header class="bar">
-		<a class="brand" href="/home">Day One Of</a>
+		<a class="brand" href="/home">Day One Of{#if data.isDev}<span class="dev-tag">(DEV)</span>{/if}</a>
 		<div class="bar-right">
 			{#if data.session}
 				<a class="ghost-btn" href="/api/auth/logout">Sign out</a>

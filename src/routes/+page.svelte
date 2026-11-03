@@ -171,6 +171,7 @@
 				<div class="hero-copy">
 					<h1 class="wordmark">
 						<img src={wordmark} alt="Day one of anything you want." width="349" height="251" fetchpriority="high" />
+						{#if data.isDev}<span class="dev-tag">(DEV)</span>{/if}
 					</h1>
 					<p class="sub">
 						Most people spend too much time scrolling. Post content instead, and get prizes for it.
@@ -561,6 +562,8 @@
 	}
 
 	.wordmark {
+		display: flex;
+		align-items: center;
 		font-size: 1em;
 	}
 

@@ -13,7 +13,7 @@
 		"test": "node --test \"test/**/*.test.js\"",
 		"setup:airtable": "node --env-file=.env scripts/setup_airtable.js",
 		"setup:slack": "node --env-file=.env scripts/slack_manifest.js",
-		"seed:dev": "node --env-file=.env scripts/seed_dev.js"
+		"mirror:dev": "node --env-file=.env scripts/mirror_dev.js"
 	},
 	"devDependencies": {
 		"@fontsource/figtree": "^5.3.0",

@@ -52,6 +52,15 @@
 {@render children()}
 
 <style>
+	:global(.dev-tag) {
+		margin-left: 0.4em;
+		font-family: var(--font-hand), sans-serif;
+		font-size: 1.6em;
+		font-weight: 800;
+		color: #d62828;
+		vertical-align: middle;
+	}
+
 	:global(html, body) {
 		margin: 0;
 		padding: 0;
