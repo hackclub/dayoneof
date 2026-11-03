@@ -7,6 +7,15 @@ const OTHER_PLATFORMS = 'Upload it to other platforms too! You can link them in 
 /** @type {Record<string, string>} */
 const PLATFORM_NAMES = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
 
+const NUDGE_REEL_URL = 'https://www.instagram.com/reel/DfQG0eVhhuv/';
+// Redirects to a freshly signed thumbnail; the og:image URLs expire after a few days.
+const NUDGE_REEL_THUMB_URL = 'https://www.instagram.com/p/DfQG0eVhhuv/media/?size=l';
+const NUDGE_SHOUTOUTS = [
+	'https://www.instagram.com/reel/DfOWgW_iNUw/',
+	'https://www.youtube.com/watch?v=_x1-gTdwZ7Q',
+	'https://www.youtube.com/watch?v=quxUg0_tU-w'
+];
+
 /** @param {string} [reviewer] */
 export function fromReviewer(reviewer) {
 	return reviewer ? ` -from <@${reviewer}>` : '';
@@ -196,6 +205,33 @@ export const messages = {
 	 */
 	rejectedReply(reason, reviewer) {
 		return `This submission was rejected and doesn't count toward your streak: ${reason}${fromReviewer(reviewer)}`;
+	},
+	nudgeIntro() {
+		return `hey!! you signed up for day one of but haven't posted your first video yet. day one is the hardest part, so here's <${NUDGE_REEL_URL}|what you're getting into>`;
+	},
+	// danger is the only red Slack allows, the closest match to the site's accent.
+	/** @param {string} text */
+	nudgeIntroBlocks(text) {
+		return [
+			{ type: 'section', text: { type: 'mrkdwn', text } },
+			{ type: 'image', image_url: NUDGE_REEL_THUMB_URL, alt_text: 'the day one of reel' },
+			{
+				type: 'actions',
+				elements: [
+					{ type: 'button', text: { type: 'plain_text', text: 'watch the reel' }, url: NUDGE_REEL_URL, style: 'danger' }
+				]
+			}
+		];
+	},
+	nudgeBody() {
+		const [a, b, c] = NUDGE_SHOUTOUTS;
+		return `nobody starts out good at this. people who started on day one have already gotten way better, just look at <${a}|this>, <${b}|this> and <${c}|this>!! you can <${config.siteUrl}/home?sort=starred|explore all the starred reels on the site> too.
+
+it doesn't need to be polished. film whatever you're building, learning or up to today, put it on youtube shorts, tiktok or instagram, and drop the link in <#${config.submissionChannelId}>.
+
+post 2 days and you get stickers. a week gets you a t-shirt, then socks + a pin at 15 days and an orpheus plushie at 25. the most-viewed creator also gets a $500 fund
+
+post today and you're on day one!! stuck on what to film? ask in <#${HELP_CHANNEL_ID}>.`;
 	},
 	streakBroken() {
 		return 'You missed yesterday and had no freezes left, so your streak reset. Post today to start a new one.';

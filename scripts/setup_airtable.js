@@ -62,6 +62,7 @@ function schemaFor(appEnv) {
 				{ name: F.participants.lastMilestoneAt, ...when },
 				{ name: F.participants.remindersOff, ...check },
 				{ name: F.participants.lastReminderDay, ...text },
+				{ name: F.participants.nudgedAt, ...when },
 				{ name: F.participants.lastDay, ...text },
 				{ name: F.participants.totalViews, ...int },
 				{ name: F.participants.warnings, ...int }

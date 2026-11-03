@@ -39,6 +39,7 @@ export const F = {
 		lastMilestoneAt: 'last_milestone_at',
 		remindersOff: 'reminders_off',
 		lastReminderDay: 'last_reminder_day',
+		nudgedAt: 'nudged_at',
 		lastDay: 'last_day',
 		totalViews: 'total_views',
 		warnings: 'warnings'

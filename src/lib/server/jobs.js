@@ -589,6 +589,49 @@ export async function runRemind({ force = false } = {}) {
 	return { sent };
 }
 
+const NUDGE_HOUR = 16;
+const NUDGE_AFTER_DAYS = 3;
+// Everyone who signed up before this already got the one-off from scripts/nudge_unposted.js.
+const NUDGE_SINCE = Date.parse('2026-11-03T15:00:00Z');
+
+export async function runNudge() {
+	if (!config.submissionsOpen) return { nudged: 0 };
+
+	const participants = await airtable.list(TABLES.participants, {
+		filterByFormula: `AND(${PARTICIPANT_HAS_SLACK_ID}, NOT({${F.participants.remindersOff}}), {${F.participants.nudgedAt}} = BLANK())`
+	});
+
+	let nudged = 0;
+	for (const participant of participants) {
+		const signedUp = Date.parse(participant.createdTime ?? '');
+		const days = (Date.now() - signedUp) / 86_400_000;
+		if (!(signedUp >= NUDGE_SINCE) || days < NUDGE_AFTER_DAYS) continue;
+		if (localHour(participant.fields[F.participants.tz]) !== NUDGE_HOUR) continue;
+
+		const slackId = participant.fields[F.participants.slackId];
+		const posted = await airtable.find(
+			TABLES.submissions,
+			`AND(${airtable.eq(F.submissions.slackId, slackId)}, ${SUBMISSION_NOT_DELETED})`
+		);
+		if (posted) continue;
+
+		// Caught per person so one bad DM doesn't stop the rest; it's retried at the next NUDGE_HOUR.
+		try {
+			const intro = messages.nudgeIntro();
+			await slack.dmWithoutUnfurls(slackId, intro, messages.nudgeIntroBlocks(intro));
+			await slack.dmWithoutUnfurls(slackId, messages.nudgeBody());
+			await airtable.update(TABLES.participants, participant.id, {
+				[F.participants.nudgedAt]: new Date().toISOString()
+			});
+			nudged++;
+		} catch (err) {
+			console.error('nudge failed', slackId, err);
+		}
+	}
+
+	return { nudged };
+}
+
 const BACKUPS_KEPT = 24 * 30;
 export const BACKUP_FILE = /^airtable_[\d-]+_\d{4}\.json$/;
 

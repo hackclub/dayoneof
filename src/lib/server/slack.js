@@ -86,6 +86,22 @@ export async function dm(user, text, blocks) {
 	return postMessage(await dmChannel(user), text, undefined, blocks);
 }
 
+// For DMs whose links shouldn't expand into previews.
+/**
+ * @param {string} user
+ * @param {string} text
+ * @param {unknown[]} [blocks]
+ */
+export async function dmWithoutUnfurls(user, text, blocks) {
+	return call('chat.postMessage', {
+		channel: await dmChannel(user),
+		text,
+		blocks,
+		unfurl_links: false,
+		unfurl_media: false
+	});
+}
+
 /** @param {string} user */
 export async function dmChannel(user) {
 	const { channel } = await call('conversations.open', { users: user });
