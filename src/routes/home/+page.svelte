@@ -23,7 +23,8 @@
 		{ key: 'videos', label: 'Top videos' }
 	];
 
-	let sort = $state<Sort>('date');
+	const linkedSort = page.url.searchParams.get('sort');
+	let sort = $state<Sort>(sorts.find((s) => s.key === linkedSort)?.key ?? 'date');
 	let tab = $state<Tab>('streak');
 	let picked = $state<Record<string, string>>({});
 
