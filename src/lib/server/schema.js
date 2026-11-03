@@ -101,6 +101,7 @@ export const F = {
 		zip: 'zip',
 		country: 'country',
 		birthday: 'birthday',
+		shirtSize: 'shirt_size',
 		shippedPrizes: 'shipped_prizes',
 		submittedAt: 'submitted_at'
 	}

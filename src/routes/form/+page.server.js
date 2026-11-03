@@ -4,6 +4,7 @@ import { findParticipant } from '$lib/server/jobs.js';
 import { findShipping, saveShipping } from '$lib/server/shipping.js';
 import { prizesUnlocked } from '$lib/server/streak.js';
 import { validateShipping } from '$lib/regions';
+import { SHIRT_PRIZE } from '$lib/prizes';
 
 const MAX_LENGTH = 200;
 
@@ -31,7 +32,8 @@ export async function load({ locals }) {
 			state: s[F.shipping.state] ?? '',
 			zip: s[F.shipping.zip] ?? '',
 			country: s[F.shipping.country] ?? '',
-			birthday: s[F.shipping.birthday] ?? ''
+			birthday: s[F.shipping.birthday] ?? '',
+			shirtSize: s[F.shipping.shirtSize] ?? ''
 		}
 	};
 }
@@ -55,21 +57,24 @@ export const actions = {
 			state: field('state'),
 			zip: field('zip'),
 			country: field('country'),
-			birthday: field('birthday')
+			birthday: field('birthday'),
+			shirtSize: field('shirtSize')
 		};
 
-		const errors = validateShipping(values);
-		if (Object.keys(errors).length) return fail(400, { errors, values });
-
 		const participant = await findParticipant(slackId);
-		if (!prizesUnlocked(participant?.fields[F.participants.lastMilestone]).length) {
+		const prizes = prizesUnlocked(participant?.fields[F.participants.lastMilestone]);
+		const errors = validateShipping(values, prizes.includes(SHIRT_PRIZE));
+		if (Object.keys(errors).length) return fail(400, { errors, values });
+		if (!prizes.length) {
 			return fail(403, { error: "You haven't unlocked a prize yet.", values });
 		}
 
 		await saveShipping(
 			slackId,
 			Object.fromEntries(
-				Object.entries(values).map(([key, value]) => [F.shipping[/** @type {keyof typeof values} */ (key)], value])
+				Object.entries(values)
+					.filter(([key]) => key !== 'shirtSize' || prizes.includes(SHIRT_PRIZE))
+					.map(([key, value]) => [F.shipping[/** @type {keyof typeof values} */ (key)], value])
 			)
 		);
 		return { success: true };

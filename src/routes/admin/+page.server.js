@@ -19,9 +19,127 @@ import { serialize } from '$lib/server/queue.js';
 import { prizesUnlocked, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
 import { groupByVideo } from '$lib/server/videos.js';
 import { runPending, approvePending } from '$lib/server/pending.js';
+import { PRIZES, SHIRT_PRIZE } from '$lib/prizes.js';
 
 const LOW_LIKES = 5;
 const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
+const STATS_TZ = 'America/New_York';
+
+/** @param {string | undefined} iso */
+const easternDate = (iso) =>
+	iso ? new Intl.DateTimeFormat('en-CA', { timeZone: STATS_TZ }).format(new Date(iso)) : '';
+
+/**
+ * @param {Map<any, number>} map
+ * @param {string | number} key
+ * @param {number} [by]
+ */
+function bump(map, key, by = 1) {
+	map.set(key, (map.get(key) ?? 0) + by);
+}
+
+/**
+ * @param {import('$lib/server/airtable.js').AirtableRecord[]} participants
+ * @param {import('$lib/server/airtable.js').AirtableRecord[]} submissions live ones only
+ * @param {import('$lib/server/airtable.js').AirtableRecord[]} days
+ * @param {import('$lib/server/airtable.js').AirtableRecord[]} shipping
+ */
+function programStats(participants, submissions, days, shipping) {
+	const pf = F.participants;
+	const sf = F.submissions;
+	/** @param {string} status */
+	const withStatus = (status) =>
+		participants.filter((p) => (p.fields[pf.status] ?? 'notStarted') === status).length;
+	const live = participants.filter((p) => (p.fields[pf.currentStreak] ?? 0) > 0);
+	const primaries = submissions.filter((s) => !s.fields[sf.primarySubmission]);
+
+	/** @type {Map<string, { posted: number, frozen: number, missed: number, videos: number, links: number, views: number, signups: number }>} */
+	const byDate = new Map();
+	/** @param {string} date */
+	const row = (date) => {
+		if (!byDate.has(date)) {
+			byDate.set(date, { posted: 0, frozen: 0, missed: 0, videos: 0, links: 0, views: 0, signups: 0 });
+		}
+		return /** @type {NonNullable<ReturnType<typeof byDate.get>>} */ (byDate.get(date));
+	};
+	for (const d of days) {
+		const status = d.fields[F.days.status];
+		const date = d.fields[F.days.date];
+		if (d.fields[F.days.deletedAt] || !date || !['posted', 'frozen', 'missed'].includes(status)) continue;
+		row(date)[/** @type {'posted' | 'frozen' | 'missed'} */ (status)]++;
+	}
+	for (const s of submissions) {
+		const date = s.fields[sf.day];
+		if (!date) continue;
+		const r = row(date);
+		r.links++;
+		r.views += s.fields[sf.views] ?? 0;
+		if (!s.fields[sf.primarySubmission]) r.videos++;
+	}
+	for (const p of participants) {
+		const date = easternDate(p.createdTime);
+		if (date) row(date).signups++;
+	}
+
+	const streaks = new Map();
+	for (const p of live) bump(streaks, p.fields[pf.currentStreak]);
+	const daysCompleted = new Map();
+	for (const p of participants) {
+		const n = p.fields[pf.daysCompleted] ?? 0;
+		if (n > 0) bump(daysCompleted, n);
+	}
+	const platforms = new Map();
+	const platformViews = new Map();
+	for (const s of submissions) {
+		bump(platforms, s.fields[sf.platform]);
+		bump(platformViews, s.fields[sf.platform], s.fields[sf.views] ?? 0);
+	}
+	const reviews = new Map();
+	for (const s of primaries) bump(reviews, s.fields[sf.reviewStatus] ?? 'unreviewed');
+
+	const shirtSlackIds = new Set(
+		participants
+			.filter((p) => prizesUnlocked(p.fields[pf.lastMilestone]).includes(SHIRT_PRIZE))
+			.map((p) => p.fields[pf.slackId])
+	);
+	const shirtForms = shipping.filter((s) => shirtSlackIds.has(s.fields[F.shipping.slackId]));
+	/** @param {Map<string | number, number>} map */
+	const sorted = (map) => [...map].sort((a, b) => Number(a[0]) - Number(b[0]));
+
+	return {
+		signups: participants.length,
+		verified: participants.filter((p) => isYswsEligible(p.fields[pf.yswsEligible])).length,
+		started: participants.filter((p) => (p.fields[pf.daysCompleted] ?? 0) > 0).length,
+		live: live.length,
+		active: withStatus('active'),
+		frozen: withStatus('frozen'),
+		broken: withStatus('broken'),
+		notStarted: withStatus('notStarted'),
+		averageStreak: live.length
+			? Math.round((live.reduce((sum, p) => sum + p.fields[pf.currentStreak], 0) / live.length) * 10) / 10
+			: 0,
+		longestStreak: Math.max(0, ...live.map((p) => p.fields[pf.currentStreak])),
+		videos: primaries.length,
+		links: submissions.length,
+		views: submissions.reduce((sum, s) => sum + (s.fields[sf.views] ?? 0), 0),
+		likes: submissions.reduce((sum, s) => sum + (s.fields[sf.likes] ?? 0), 0),
+		milestones: PRIZES.map((p) => ({
+			...p,
+			reached: participants.filter((x) => (x.fields[pf.lastMilestone] ?? 0) >= p.milestone).length
+		})),
+		shippingForms: shipping.length,
+		shirtsUnlocked: shirtSlackIds.size,
+		shirtSizesIn: shirtForms.filter((s) => s.fields[F.shipping.shirtSize]).length,
+		shirtFormsMissingSize: shirtForms.filter((s) => !s.fields[F.shipping.shirtSize]).length,
+		platforms: [...platforms].map(([platform, links]) => ({ platform, links, views: platformViews.get(platform) ?? 0 })),
+		reviews: [...reviews].map(([status, count]) => ({ status, count })),
+		streaks: sorted(streaks).map(([streak, count]) => ({ streak, count })),
+		daysCompleted: sorted(daysCompleted).map(([days, count]) => ({ days, count })),
+		byDate: [...byDate]
+			.sort((a, b) => (a[0] < b[0] ? 1 : -1))
+			.map(([date, r]) => ({ date, ...r, alive: r.posted + r.frozen }))
+	};
+}
 
 /** @param {import('./$types').RequestEvent['locals']} locals */
 function requireAdmin(locals) {
@@ -47,7 +165,7 @@ export async function load({ locals }) {
 		redirect(302, '/');
 	}
 
-	const [participants, allSubmissions, shippingRecords, backups] = await Promise.all([
+	const [participants, allSubmissions, shippingRecords, backups, days] = await Promise.all([
 		airtable.list(TABLES.participants, {
 			filterByFormula: PARTICIPANT_HAS_SLACK_ID,
 			sort: [{ field: F.participants.currentStreak, direction: 'desc' }]
@@ -58,7 +176,8 @@ export async function load({ locals }) {
 			console.error('shipping list failed', err);
 			return null;
 		}),
-		listBackups()
+		listBackups(),
+		airtable.list(TABLES.days)
 	]);
 	const submissions = allSubmissions.filter((s) => !s.fields[F.submissions.deletedAt]);
 	const primaries = submissions.filter((s) => !s.fields[F.submissions.primarySubmission]);
@@ -118,6 +237,7 @@ export async function load({ locals }) {
 					f[F.shipping.country]
 				].filter(Boolean),
 				birthday: f[F.shipping.birthday] ?? '',
+				shirtSize: f[F.shipping.shirtSize] ?? '',
 				submittedAt: f[F.shipping.submittedAt] ?? '',
 				eligible,
 				stars: starsBySlackId.get(f[F.shipping.slackId]) ?? 0,
@@ -131,6 +251,7 @@ export async function load({ locals }) {
 	return {
 		backups: backups.slice(0, 24),
 		canNuke: appEnv !== 'prod',
+		stats: programStats(participants, submissions, days, shippingRecords ?? []),
 		shippingMissing: !shippingRecords,
 		shipping,
 		awaitingAddress: participants

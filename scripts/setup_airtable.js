@@ -16,6 +16,7 @@ import {
 	PARTICIPANT_STATUSES
 } from '../src/lib/server/schema.js';
 import { PRIZE_NAMES } from '../src/lib/server/streak.js';
+import { SHIRT_SIZES } from '../src/lib/prizes.js';
 
 const META = 'https://api.airtable.com/v0/meta/bases';
 
@@ -132,6 +133,7 @@ function schemaFor(appEnv) {
 				{ name: F.shipping.zip, ...text },
 				{ name: F.shipping.country, ...text },
 				{ name: F.shipping.birthday, type: 'date', options: { dateFormat: { name: 'iso' } } },
+				{ name: F.shipping.shirtSize, ...select(SHIRT_SIZES) },
 				{ name: F.shipping.shippedPrizes, ...multiSelect(PRIZE_NAMES) },
 				{ name: F.shipping.submittedAt, ...when }
 			]

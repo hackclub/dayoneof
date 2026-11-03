@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { SHIRT_PRIZE } from '$lib/prizes';
+
 	let { data, form } = $props();
 
 	function confirmNuke(event: SubmitEvent) {
@@ -52,6 +54,114 @@
 		{/if}
 
 		<section>
+			<h2>Program stats</h2>
+			<p>
+				Live submissions only. Views are each link's latest count. Signup dates are Eastern; streak
+				days are each participant's own day.
+			</p>
+			<div class="stats">
+				<div><strong>{data.stats.signups}</strong> signups</div>
+				<div><strong>{data.stats.verified}</strong> verified</div>
+				<div><strong>{data.stats.started}</strong> ever posted</div>
+				<div><strong>{data.stats.live}</strong> live streaks</div>
+				<div><strong>{data.stats.active}</strong> active</div>
+				<div><strong>{data.stats.frozen}</strong> frozen</div>
+				<div><strong>{data.stats.broken}</strong> broken</div>
+				<div><strong>{data.stats.notStarted}</strong> not started</div>
+				<div><strong>{data.stats.averageStreak}</strong> avg live streak</div>
+				<div><strong>{data.stats.longestStreak}</strong> longest streak</div>
+				<div><strong>{data.stats.videos}</strong> videos</div>
+				<div><strong>{data.stats.links}</strong> links</div>
+				<div><strong>{data.stats.views.toLocaleString()}</strong> views</div>
+				<div><strong>{data.stats.likes.toLocaleString()}</strong> likes</div>
+				<div><strong>{data.stats.shippingForms}</strong> shipping forms</div>
+				<div>
+					<strong>{data.stats.shirtSizesIn}/{data.stats.shirtsUnlocked}</strong> shirt sizes in
+					({data.stats.shirtFormsMissingSize} forms missing one)
+				</div>
+			</div>
+
+			<h3>Milestones reached</h3>
+			<p>
+				{#each data.stats.milestones as m, i}{i ? ' · ' : ''}{m.milestone} days ({m.name}): <strong>{m.reached}</strong>{/each}
+			</p>
+
+			<h3>Per platform</h3>
+			<p>
+				{#each data.stats.platforms as p, i}{i ? ' · ' : ''}{p.platform}: <strong>{p.links}</strong> links, {p.views.toLocaleString()} views{/each}
+			</p>
+
+			<h3>Reviews</h3>
+			<p>
+				{#each data.stats.reviews as r, i}{i ? ' · ' : ''}{r.status}: <strong>{r.count}</strong>{/each}
+			</p>
+
+			<h3>Current streaks</h3>
+			<table>
+				<thead>
+					<tr>
+						<th>Streak</th>
+						{#each data.stats.streaks as s}<th>{s.streak}</th>{/each}
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>People</td>
+						{#each data.stats.streaks as s}<td>{s.count}</td>{/each}
+					</tr>
+				</tbody>
+			</table>
+
+			<h3>Days posted (all time)</h3>
+			<table>
+				<thead>
+					<tr>
+						<th>Days</th>
+						{#each data.stats.daysCompleted as d}<th>{d.days}</th>{/each}
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>People</td>
+						{#each data.stats.daysCompleted as d}<td>{d.count}</td>{/each}
+					</tr>
+				</tbody>
+			</table>
+
+			<h3>Per day</h3>
+			<table>
+				<thead>
+					<tr>
+						<th>Day</th>
+						<th>Posted</th>
+						<th>Frozen</th>
+						<th>Missed</th>
+						<th>Streaks alive</th>
+						<th>Videos</th>
+						<th>Links</th>
+						<th>Views</th>
+						<th>Signups</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each data.stats.byDate as d}
+						<tr>
+							<td>{d.date}</td>
+							<td>{d.posted}</td>
+							<td>{d.frozen}</td>
+							<td>{d.missed}</td>
+							<td>{d.alive}</td>
+							<td>{d.videos}</td>
+							<td>{d.links}</td>
+							<td>{d.views.toLocaleString()}</td>
+							<td>{d.signups}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</section>
+
+		<section>
 			<h2>Jobs</h2>
 			<ul>
 				<li>
@@ -68,8 +178,8 @@
 					<strong>leaderboard</strong>: refreshes view counts from unified-socials for every
 					submission (editing each submission's original reply in place with the fresh numbers),
 					then posts the streak, views, and top-videos boards to the announce channel, plus a message
-					mentioning anyone who unlocked a prize in the last 24 hours (skipped if nobody did). The cron
-					only posts at 9pm Eastern once submissions open; the button below always posts.
+					mentioning anyone who unlocked a prize since the last board (skipped if nobody did). The cron
+					only posts at 9pm Eastern every other day once submissions open; the button below always posts.
 				</li>
 				<li>
 					<strong>remind</strong>: once submissions open, the hourly cron DMs anyone with a streak
@@ -251,6 +361,7 @@
 							<th>Email</th>
 							<th>Address</th>
 							<th>Birthday</th>
+							<th>Shirt</th>
 							<th>Unlocked</th>
 							<th>Stars</th>
 							<th>Shipped</th>
@@ -270,6 +381,7 @@
 									{#each s.address as line}<div>{line}</div>{/each}
 								</td>
 								<td>{s.birthday}</td>
+								<td>{s.shirtSize || (s.eligible.includes(SHIRT_PRIZE) ? 'missing' : '')}</td>
 								<td>{s.eligible.join(', ') || 'none'}</td>
 								<td>{s.stars}</td>
 								<td>{s.shipped.join(', ') || 'none'}</td>
@@ -678,6 +790,18 @@
 
 	.inline {
 		display: inline;
+	}
+
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		gap: 10px 16px;
+		color: var(--ink-soft);
+	}
+
+	.stats strong {
+		display: block;
+		font-size: 1.4rem;
 	}
 
 	button {

@@ -456,15 +456,21 @@ function numbered(records, line) {
 const REMINDER_HOUR = 20;
 const LEADERBOARD_HOUR = 21;
 const LEADERBOARD_TZ = 'America/New_York';
+const LEADERBOARD_EVERY_DAYS = 2;
 
 // Refreshes every submission's stats first so the boards reflect tonight's numbers. The cron can
-// fire more often than daily: without force it only posts at 9pm Eastern once submissions open.
+// fire more often: without force it only posts at 9pm Eastern every other day once submissions open.
 // Until unified-socials refreshes these posts hourly, their views can trail the platforms by a day.
 const VIEWS_LAG_NOTE = '_Views sync about once a day, so newer videos may be behind what the app shows._';
 
 /** @param {{ force?: boolean }} [options] */
 export async function runLeaderboard({ force = false } = {}) {
-	if (!force && (!config.submissionsOpen || localHour(LEADERBOARD_TZ) !== LEADERBOARD_HOUR)) {
+	if (
+		!force &&
+		(!config.submissionsOpen ||
+			localHour(LEADERBOARD_TZ) !== LEADERBOARD_HOUR ||
+			!isLeaderboardDay(LEADERBOARD_TZ))
+	) {
 		return { skipped: true };
 	}
 	const { viewsChecked, submissions } = await refreshViews();
@@ -511,10 +517,10 @@ export async function runLeaderboard({ force = false } = {}) {
 	await slack.postMessage(announceChannelId, `*Most total views*\n${viewLines}\n${VIEWS_LAG_NOTE}`);
 	await slack.postMessage(announceChannelId, `*Highest viewed videos*\n${videoLines}\n${VIEWS_LAG_NOTE}`);
 
-	// The board posts once a day, so "today" is anyone whose milestone landed in the last 24 hours.
-	const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+	// Covers every milestone since the previous board, which went up LEADERBOARD_EVERY_DAYS ago.
+	const since = Date.now() - LEADERBOARD_EVERY_DAYS * 24 * 60 * 60 * 1000;
 	const unlocked = participants.filter(
-		(p) => Date.parse(p.fields[F.participants.lastMilestoneAt] ?? '') > dayAgo
+		(p) => Date.parse(p.fields[F.participants.lastMilestoneAt] ?? '') > since
 	);
 	if (unlocked.length) {
 		const lines = unlocked
@@ -523,7 +529,7 @@ export async function runLeaderboard({ force = false } = {}) {
 				return `<@${p.fields[F.participants.slackId]}> · ${milestone}-day prize (${prizeFor(milestone)})`;
 			})
 			.join('\n');
-		await slack.postMessage(announceChannelId, `*Prizes unlocked today* 🎉\n${lines}`);
+		await slack.postMessage(announceChannelId, `*Prizes unlocked since the last board* 🎉\n${lines}`);
 	}
 
 	return {
@@ -533,6 +539,13 @@ export async function runLeaderboard({ force = false } = {}) {
 		videoEntries: byVideo.length,
 		prizesUnlocked: unlocked.length
 	};
+}
+
+// Odd days since the epoch, so the 2026-11-02 board is followed by 2026-11-04.
+/** @param {string} tz */
+function isLeaderboardDay(tz) {
+	const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+	return (Date.parse(date) / 86_400_000) % LEADERBOARD_EVERY_DAYS === 1;
 }
 
 /** @param {string | undefined} tz */

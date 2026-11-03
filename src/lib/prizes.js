@@ -5,3 +5,6 @@ export const PRIZES = [
 	{ milestone: 15, name: 'Socks + pin' },
 	{ milestone: 25, name: 'Plushie' }
 ];
+
+export const SHIRT_PRIZE = 'T-shirt';
+export const SHIRT_SIZES = ['S', 'M', 'L'];

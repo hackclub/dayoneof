@@ -1,4 +1,6 @@
 // Country and state lists for the prize shipping form. Shared by the page and its server action.
+import { SHIRT_SIZES } from './prizes.js';
+
 export type Option = { value: string; label: string; icon?: string };
 
 const COUNTRY_CODES = `AD AE AF AG AI AL AM AO AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ
@@ -115,6 +117,7 @@ export type ShippingValues = {
 	zip: string;
 	country: string;
 	birthday: string;
+	shirtSize?: string;
 };
 
 function isPastDate(value: string) {
@@ -129,7 +132,7 @@ function isPastDate(value: string) {
 }
 
 /** Runs in the browser before submit and again on the server, so both reject the same input. */
-export function validateShipping(v: ShippingValues) {
+export function validateShipping(v: ShippingValues, needsShirt = false) {
 	const errors: Record<string, string> = {};
 	const states = STATES[v.country];
 	const postal = POSTAL_CODE[v.country];
@@ -159,5 +162,6 @@ export function validateShipping(v: ShippingValues) {
 	}
 
 	if (!isPastDate(v.birthday)) errors.birthday = 'Enter a valid date of birth.';
+	if (needsShirt && !SHIRT_SIZES.includes(v.shirtSize ?? '')) errors.shirtSize = 'Pick a shirt size.';
 	return errors;
 }

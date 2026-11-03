@@ -3,7 +3,7 @@
 	import { enhance } from '$app/forms';
 	import { COUNTRIES, STATES, NO_POSTAL_CODE, DEFAULT_COUNTRY, validateShipping } from '$lib/regions';
 	import { sprite, tape } from '$lib/asset_sheet';
-	import { PRIZES } from '$lib/prizes';
+	import { PRIZES, SHIRT_PRIZE, SHIRT_SIZES } from '$lib/prizes';
 	import { HELP_URL } from '$lib/help';
 	import tshirtimage from '$lib/assets/tshirtimage.webp';
 	import orpheusplushie from '$lib/assets/orpheusplushie.webp';
@@ -39,6 +39,9 @@
 	let zip = $state(initial?.zip ?? '');
 	let country = $state(initial?.country || DEFAULT_COUNTRY);
 	let birthday = $state(initial?.birthday ?? '');
+	let shirtSize = $state(initial?.shirtSize ?? '');
+	const needsShirt = $derived(data.prizes.includes(SHIRT_PRIZE));
+	const shirtOptions = SHIRT_SIZES.map((size) => ({ value: size, label: size }));
 	let submitting = $state(false);
 	// Once a submit is blocked, errors re-check live so they clear as each field is fixed.
 	let attempted = $state(false);
@@ -53,8 +56,9 @@
 			state: stateValue,
 			zip,
 			country,
-			birthday
-		})
+			birthday,
+			shirtSize
+		}, needsShirt)
 	);
 	const errors: Record<string, string> = $derived(
 		attempted ? clientErrors : (form?.errors ?? {})
@@ -287,6 +291,20 @@
 						<DatePicker id="birthday" name="birthday" invalid={!!errors.birthday} bind:value={birthday} />
 						{#if errors.birthday}<p class="error">{errors.birthday}</p>{/if}
 					</div>
+
+					{#if needsShirt}
+						<div class="field">
+							<label for="shirtSize">Shirt size <span class="req">*</span></label>
+							<Picker
+								id="shirtSize"
+								name="shirtSize"
+								options={shirtOptions}
+								invalid={!!errors.shirtSize}
+								bind:value={shirtSize}
+							/>
+							{#if errors.shirtSize}<p class="error">{errors.shirtSize}</p>{/if}
+						</div>
+					{/if}
 
 					{#if form?.error}<p class="error">{form.error}</p>{/if}
 					{#if form?.error || Object.keys(errors).length}

@@ -1,6 +1,6 @@
 import { config } from './config.js';
 
-/** @typedef {{ id: string, fields: Record<string, any> }} AirtableRecord */
+/** @typedef {{ id: string, createdTime?: string, fields: Record<string, any> }} AirtableRecord */
 /** @typedef {{ field: string, direction?: 'asc' | 'desc' }} SortRule */
 
 /** @param {string} table */
