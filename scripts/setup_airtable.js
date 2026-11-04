@@ -116,7 +116,9 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.reviewStatus, ...select(REVIEW_STATUSES) },
 				{ name: F.submissions.reviewedBy, ...text },
 				{ name: F.submissions.reviewedAt, ...when },
-				{ name: F.submissions.reviewFeedback, type: 'multilineText' }
+				{ name: F.submissions.reviewFeedback, type: 'multilineText' },
+				{ name: F.submissions.escalatedBy, ...text },
+				{ name: F.submissions.escalatedAt, ...when }
 			]
 		},
 		{

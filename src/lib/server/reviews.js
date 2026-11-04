@@ -80,6 +80,8 @@ export async function revertReview(submissionId) {
 		[F.submissions.reviewStatus]: null,
 		[F.submissions.reviewedBy]: '',
 		[F.submissions.reviewedAt]: null,
-		[F.submissions.reviewFeedback]: ''
+		[F.submissions.reviewFeedback]: '',
+		[F.submissions.escalatedBy]: '',
+		[F.submissions.escalatedAt]: null
 	});
 }

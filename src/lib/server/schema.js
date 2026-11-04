@@ -87,7 +87,9 @@ export const F = {
 		reviewStatus: 'review_status',
 		reviewedBy: 'reviewed_by',
 		reviewedAt: 'reviewed_at',
-		reviewFeedback: 'review_feedback'
+		reviewFeedback: 'review_feedback',
+		escalatedBy: 'escalated_by',
+		escalatedAt: 'escalated_at'
 	},
 	shipping: {
 		slackId: 'slack_id',

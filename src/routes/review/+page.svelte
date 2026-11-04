@@ -1,16 +1,24 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import { formatDate, formatViews } from '$lib/format';
 
 	let { data, form } = $props();
 
 	type Details = { caption: string; note: string };
+	type Presence = {
+		viewers: { slackId: string; id: string }[];
+		decisions: Record<string, { by: string; decision: string }>;
+	};
+
+	const PRESENCE_EVERY_MS = 8000;
 
 	let index = $state(0);
 	let feedback = $state('');
 	let busy = $state(false);
 	let archiveFailed = $state<Record<string, boolean>>({});
 	let details = $state<Record<string, Details | null>>({});
+	let presence = $state<Presence>({ viewers: [], decisions: {} });
 
 	const count = $derived(data.videos.length);
 	const at = $derived(Math.min(index, Math.max(0, count - 1)));
@@ -18,6 +26,32 @@
 	const prev = $derived(at > 0 ? data.videos[at - 1] : null);
 	const next = $derived(at < count - 1 ? data.videos[at + 1] : null);
 	const useArchive = $derived(!!video?.archiveUrl && !archiveFailed[video.id]);
+
+	const nameOf = (slackId: string) => data.names[slackId] ?? slackId;
+	const othersOn = (id: string | undefined) =>
+		presence.viewers.filter((v) => v.id === id && v.slackId !== data.me).map((v) => nameOf(v.slackId));
+	const doneByOther = (id: string | undefined) => {
+		const d = id ? presence.decisions[id] : undefined;
+		return d && d.by !== data.me ? d : null;
+	};
+	const online = $derived([
+		...new Set(presence.viewers.filter((v) => v.slackId !== data.me).map((v) => nameOf(v.slackId)))
+	]);
+	const watching = $derived(othersOn(video?.id));
+	const decided = $derived(doneByOther(video?.id));
+	// Admins still make the call on a video someone just sent for an extra decision.
+	const locked = $derived(!!decided && !(data.admin && decided.decision === 'escalate'));
+	const nextFree = $derived(
+		data.videos.findIndex((v, i) => i > at && !othersOn(v.id).length && !doneByOther(v.id))
+	);
+
+	const decisionText: Record<string, string> = {
+		pass: 'passed',
+		warn: 'passed with a warning',
+		star: 'starred',
+		reject: 'rejected',
+		escalate: 'sent for an extra decision'
+	};
 
 	const impactText: Record<string, (r: { streak: number; freezes: number }) => string> = {
 		today: (r) => `It's today's video: their streak drops to ${r.streak}, and they can repost before 3am.`,
@@ -41,11 +75,31 @@
 		loadDetails(prev?.id);
 	});
 
+	async function heartbeat(id: string) {
+		const res = await fetch('/review/presence', { method: 'POST', body: JSON.stringify({ id }) }).catch(() => null);
+		if (res?.ok) presence = await res.json();
+	}
+
+	$effect(() => {
+		const id = video?.id ?? '';
+		heartbeat(id);
+		const timer = setInterval(() => heartbeat(id), PRESENCE_EVERY_MS);
+		return () => clearInterval(timer);
+	});
+
+	function leave() {
+		navigator.sendBeacon('/review/presence', JSON.stringify({ id: '' }));
+	}
+
 	function go(step: number) {
 		const target = at + step;
 		if (target < 0 || target >= count) return;
 		index = target;
 		feedback = '';
+	}
+
+	function goNextFree() {
+		if (nextFree !== -1) go(nextFree - at);
 	}
 
 	function onKey(event: KeyboardEvent) {
@@ -55,28 +109,29 @@
 		if (event.key === 'ArrowRight') go(1);
 	}
 
-	function confirmReject(event: SubmitEvent) {
-		if ((event.submitter as HTMLButtonElement | null)?.value !== 'reject') return;
-		const ok = confirm(`Reject this video? ${impactText[video.rejection.impact](video.rejection)}`);
-		if (!ok) event.preventDefault();
-	}
+	const rejectQuestion = (submitter: HTMLElement | null) =>
+		(submitter as HTMLButtonElement | null)?.value === 'reject'
+			? `Reject this video? ${impactText[video.rejection.impact](video.rejection)}`
+			: '';
+	const revertQuestion = () =>
+		'Revert this review? Its feedback messages and reaction are deleted and it goes back in the queue.';
 
-	function confirmRevert(event: SubmitEvent) {
-		const ok = confirm('Revert this review? Its feedback messages and reaction are deleted and it goes back in the queue.');
-		if (!ok) event.preventDefault();
-	}
-
-	const submitEnhance = () => {
-		busy = true;
-		return async ({ update }: { update: () => Promise<void> }) => {
-			await update();
-			feedback = '';
-			busy = false;
+	// Confirms here rather than in onsubmit: enhance's own submit listener ignores preventDefault.
+	const submitEnhance =
+		(question: (submitter: HTMLElement | null) => string): SubmitFunction =>
+		({ submitter, cancel }) => {
+			const ask = question(submitter);
+			if (ask && !confirm(ask)) return cancel();
+			busy = true;
+			return async ({ update }) => {
+				await update();
+				feedback = '';
+				busy = false;
+			};
 		};
-	};
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onpagehide={leave} />
 
 <svelte:head>
 	<title>Review · Day One Of</title>
@@ -89,6 +144,7 @@
 			<h1>Review</h1>
 			<p>
 				{#if count}<strong>{at + 1}</strong> of {count} to review · ← → to move ·{/if}
+				{#if online.length}<span class="online">👀 Also reviewing: {online.join(', ')}</span> ·{/if}
 				<a href={data.showReviewed ? '/review' : '/review?show=reviewed'}>
 					{data.showReviewed ? 'Hide reviewed' : 'Recently reviewed'}
 				</a>
@@ -104,7 +160,7 @@
 
 				<button class="peek" type="button" onclick={() => go(-1)} disabled={!prev} aria-label="Previous video">
 					{#if prev?.thumbnail}<img src={prev.thumbnail} alt="" />{/if}
-					{#if prev}<span>{prev.name}</span>{/if}
+					{#if prev}<span>{prev.name}{othersOn(prev.id).length ? ' · 👀' : ''}</span>{/if}
 				</button>
 
 				{#key video.id}
@@ -133,7 +189,7 @@
 
 				<button class="peek" type="button" onclick={() => go(1)} disabled={!next} aria-label="Next video">
 					{#if next?.thumbnail}<img src={next.thumbnail} alt="" />{/if}
-					{#if next}<span>{next.name}</span>{/if}
+					{#if next}<span>{next.name}{othersOn(next.id).length ? ' · 👀' : ''}</span>{/if}
 				</button>
 
 				<button class="arrow" type="button" onclick={() => go(1)} disabled={!next} aria-label="Next video"
@@ -142,6 +198,23 @@
 			</div>
 
 			<section class="panel">
+				{#if decided}
+					<p class="presence taken">
+						{nameOf(decided.by)} just {decisionText[decided.decision] ?? 'reviewed'} this video.
+						{#if nextFree !== -1}<button type="button" onclick={goNextFree}>Next free video →</button>{/if}
+					</p>
+				{:else if watching.length}
+					<p class="presence">
+						👀 {watching.join(', ')} {watching.length === 1 ? 'is' : 'are'} looking at this video too.
+						{#if nextFree !== -1}<button type="button" onclick={goNextFree}>Next free video →</button>{/if}
+					</p>
+				{/if}
+				{#if video.escalation}
+					<div class="escalation">
+						<strong>{video.escalation.byName} asked for an extra decision.</strong>
+						{#each video.escalation.notes as note}<p class="quote">{note}</p>{/each}
+					</div>
+				{/if}
 				<div class="who">
 					<h2><a href="/user/{video.slackId}">{video.name}</a></h2>
 					<p>
@@ -205,7 +278,7 @@
 					{/if}
 				</div>
 
-				<form method="POST" action="?/review" autocomplete="off" onsubmit={confirmReject} use:enhance={submitEnhance}>
+				<form method="POST" action="?/review" autocomplete="off" use:enhance={submitEnhance(rejectQuestion)}>
 					<input type="hidden" name="id" value={video.id} />
 					<label for="feedback"><h3>Feedback</h3></label>
 					<textarea
@@ -213,27 +286,53 @@
 						name="feedback"
 						rows="4"
 						bind:value={feedback}
-						placeholder="Optional for star and pass. Posted as the bot in their thread. Required to warn, and to reject as the reason."
+						placeholder={data.admin
+							? 'Optional for star and pass. Posted as the bot in their thread. Required to warn, and to reject as the reason.'
+							: "Optional for pass. Posted as the bot in their thread. Required to warn. With extra decision it's a private note to the admins instead."}
 					></textarea>
 
 					<div class="decide">
-						<button type="submit" name="decision" value="reject" class="reject" disabled={busy || !feedback.trim()}
-							>Reject</button
-						>
-						<button type="submit" name="decision" value="feedback" class="quiet" disabled={busy || !feedback.trim()}
-							>Just send feedback</button
+						{#if data.admin}
+							<button
+								type="submit"
+								name="decision"
+								value="reject"
+								class="reject"
+								disabled={busy || locked || !feedback.trim()}>Reject</button
+							>
+						{:else}
+							<button type="submit" name="decision" value="escalate" class="escalate" disabled={busy || locked}
+								>Extra decision</button
+							>
+						{/if}
+						<button
+							type="submit"
+							name="decision"
+							value="feedback"
+							class="quiet"
+							disabled={busy || locked || !feedback.trim()}>Just send feedback</button
 						>
 						<span class="spacer"></span>
-						<button type="submit" name="decision" value="warn" class="warn" disabled={busy || !feedback.trim()}
-							>Pass with warning</button
+						<button
+							type="submit"
+							name="decision"
+							value="warn"
+							class="warn"
+							disabled={busy || locked || !feedback.trim()}>Pass with warning</button
 						>
-						<button type="submit" name="decision" value="pass" disabled={busy}>Pass</button>
-						<button type="submit" name="decision" value="star" class="star" disabled={busy}>⭐ Star</button>
+						<button type="submit" name="decision" value="pass" disabled={busy || locked}>Pass</button>
+						{#if data.admin}
+							<button type="submit" name="decision" value="star" class="star" disabled={busy || locked}>⭐ Star</button>
+						{/if}
 					</div>
-					<p class="impact">
-						<strong>If rejected:</strong>
-						{impactText[video.rejection.impact](video.rejection)}
-					</p>
+					{#if data.admin}
+						<p class="impact">
+							<strong>If rejected:</strong>
+							{impactText[video.rejection.impact](video.rejection)}
+						</p>
+					{:else}
+						<p class="impact">Not sure, or think it should be rejected or starred? Extra decision passes it to an admin.</p>
+					{/if}
 				</form>
 			</section>
 		{:else}
@@ -284,7 +383,7 @@
 								<td>{formatDate(r.at)}</td>
 								<td>{r.feedback}</td>
 								<td>
-									<form method="POST" action="?/revert" onsubmit={confirmRevert} use:enhance={submitEnhance}>
+									<form method="POST" action="?/revert" use:enhance={submitEnhance(revertQuestion)}>
 										<input type="hidden" name="id" value={r.id} />
 										<button type="submit" class="revert" disabled={busy}>Revert</button>
 									</form>
@@ -620,6 +719,53 @@
 		background: #c0392b;
 		border-color: #922b21;
 		box-shadow: inset 0 -5px 0 #922b21;
+	}
+
+	.decide .escalate {
+		color: var(--ink);
+		background: transparent;
+		border-style: dashed;
+		box-shadow: none;
+	}
+
+	.presence {
+		font-weight: 700;
+		color: #6b4b00;
+		background: #ffe9a8;
+		border-radius: 10px;
+		padding: 8px 12px;
+		margin: 0 0 14px;
+	}
+
+	.presence.taken {
+		color: #922b21;
+		background: #f9d6d2;
+	}
+
+	.presence button {
+		font: inherit;
+		margin-left: 8px;
+		padding: 2px 10px;
+		color: var(--ink);
+		background: var(--bg);
+		border: 1px solid currentColor;
+		border-radius: 6px;
+		cursor: var(--cursor-pointer);
+	}
+
+	.escalation {
+		margin-bottom: 14px;
+		padding: 8px 12px;
+		border: 2px dashed var(--ink);
+		border-radius: 10px;
+	}
+
+	.escalation .quote {
+		margin-top: 4px;
+	}
+
+	.online {
+		font-weight: 700;
 	}
 
 	.decide .warn {

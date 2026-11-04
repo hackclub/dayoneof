@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { config, isReviewer, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
+import { config, isReviewer, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { messages, fromReviewer } from '$lib/server/messages.js';
@@ -10,12 +10,15 @@ import { isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
 import { approvePending } from '$lib/server/pending.js';
 import { findParticipant } from '$lib/server/jobs.js';
 import { REVIEW_REACTIONS, revertReview } from '$lib/server/reviews.js';
+import { claim, release, decided, undecided } from '$lib/server/presence.js';
 
 /** @typedef {import('$lib/server/airtable.js').AirtableRecord} AirtableRecord */
 
 const LOW_LIKES = 5;
 const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
 const REVIEWED_SHOWN = 30;
+const ESCALATION_PREFIX = 'Extra decision: ';
+const ADMIN_ONLY = ['reject', 'star'];
 const UNIFIED_WEB_URL = config.unifiedSocialsApiUrl.replace(/\/api\/v1\/?$/, '');
 
 /** @type {Record<string, (id: string) => string>} */
@@ -79,7 +82,9 @@ function rejection(participant, primary) {
 }
 
 export async function load({ locals, url }) {
-	if (!isReviewer(locals.session?.slackId)) redirect(302, '/');
+	const me = locals.session?.slackId ?? '';
+	if (!isReviewer(me)) redirect(302, '/');
+	const admin = isAdmin(me);
 	const showReviewed = url.searchParams.get('show') === 'reviewed';
 	const reviewer = url.searchParams.get('reviewer') ?? '';
 
@@ -97,10 +102,12 @@ export async function load({ locals, url }) {
 			(!s.fields[F.submissions.pendingCheck] || s.fields[F.submissions.reviewRequestedAt])
 	);
 	const groups = groupByVideo(live);
+	// Videos sent for an extra decision only go to admins, who see them first.
 	const held = (/** @type {AirtableRecord} */ s) => Number(!!s.fields[F.submissions.pendingCheck]);
+	const escalated = (/** @type {AirtableRecord} */ s) => Number(!!s.fields[F.submissions.escalatedAt]);
 	const queue = groups
-		.filter(({ primary }) => !primary.fields[F.submissions.reviewStatus])
-		.sort((a, b) => held(b.primary) - held(a.primary));
+		.filter(({ primary }) => !primary.fields[F.submissions.reviewStatus] && (admin || !escalated(primary)))
+		.sort((a, b) => escalated(b.primary) - escalated(a.primary) || held(b.primary) - held(a.primary));
 	const allReviewed = allSubmissions
 		.filter((s) => s.fields[F.submissions.reviewStatus] && !s.fields[F.submissions.primarySubmission])
 		.sort((a, b) => (a.fields[F.submissions.reviewedAt] < b.fields[F.submissions.reviewedAt] ? 1 : -1));
@@ -118,7 +125,7 @@ export async function load({ locals, url }) {
 	}
 	/** @param {string} slackId */
 	const nameOf = (slackId) => byId.get(slackId)?.fields[F.participants.name] ?? '';
-	/** @param {AirtableRecord} s */
+	/** @type {(s: AirtableRecord) => string} */
 	const showFeedback = (s) =>
 		(s.fields[F.submissions.reviewFeedback] ?? '').replace(
 			/<@(\w+)>/g,
@@ -168,9 +175,24 @@ export async function load({ locals, url }) {
 					day: s.fields[F.submissions.day],
 					url: s.fields[F.submissions.url],
 					title: s.fields[F.submissions.title] ?? '',
-					status: s.fields[F.submissions.reviewStatus] ?? (s.fields[F.submissions.deletedAt] ? 'deleted' : ''),
+					status:
+						s.fields[F.submissions.reviewStatus] ??
+						(s.fields[F.submissions.deletedAt]
+							? 'deleted'
+							: s.fields[F.submissions.escalatedAt]
+								? 'extra decision'
+								: ''),
 					feedback: showFeedback(s)
 				})),
+			escalation: f[F.submissions.escalatedAt]
+				? {
+						byName: nameOf(f[F.submissions.escalatedBy] ?? '') || f[F.submissions.escalatedBy],
+						notes: showFeedback(primary)
+							.split('\n')
+							.filter((line) => line.startsWith(ESCALATION_PREFIX))
+							.map((line) => line.slice(ESCALATION_PREFIX.length))
+					}
+				: null,
 			rejection: participant
 				? rejection(participant, primary)
 				: { impact: 'none', streak: 0, freezes: 0 }
@@ -179,6 +201,9 @@ export async function load({ locals, url }) {
 
 	return {
 		videos,
+		me,
+		admin,
+		names: Object.fromEntries(config.reviewerSlackIds.map((id) => [id, nameOf(id) || id])),
 		showReviewed,
 		reviewer,
 		reviewers: showReviewed
@@ -214,67 +239,96 @@ export const actions = {
 		const id = String(data.get('id'));
 		const decision = String(data.get('decision'));
 		const feedback = String(data.get('feedback') ?? '').trim();
+		const admin = isAdmin(reviewer);
+		if (ADMIN_ONLY.includes(decision) && !admin) return fail(403, { error: 'Only admins can reject or star.' });
 
-		const submission = await airtable.get(TABLES.submissions, id);
-		const f = submission.fields;
-		if (f[F.submissions.deletedAt]) return fail(409, { error: 'That video was already deleted.' });
-		if (f[F.submissions.reviewStatus]) return fail(409, { error: 'That video was already reviewed.' });
-		const note = `${decision === 'warn' ? `Warning: ${feedback}` : feedback}${fromReviewer(reviewer)}`;
-		const previous = f[F.submissions.reviewFeedback];
-		if (feedback && previous?.split('\n').includes(note)) {
-			return fail(409, { error: 'That feedback was already sent.' });
+		if (!claim(id)) return fail(409, { error: 'Another reviewer is submitting a decision on that video right now.' });
+		try {
+			return await decide({ id, decision, feedback, reviewer, admin });
+		} finally {
+			release(id);
 		}
-		const slackId = f[F.submissions.slackId];
-		const channel = f[F.submissions.channelId];
-		const thread = f[F.submissions.messageTs];
-
-		if (decision === 'feedback' || decision === 'pass' || decision === 'star' || decision === 'warn') {
-			if ((decision === 'feedback' || decision === 'warn') && !feedback) {
-				return fail(400, { error: 'Write some feedback first.' });
-			}
-			if (decision !== 'feedback' && f[F.submissions.pendingCheck]) await approvePending(id);
-			if (feedback) await slack.postMessage(channel, messages.reviewFeedback(slackId, feedback, reviewer), thread);
-			if (decision === 'warn') {
-				const participant = await findParticipant(slackId);
-				if (participant) {
-					await airtable.update(TABLES.participants, participant.id, {
-						[F.participants.warnings]: (participant.fields[F.participants.warnings] ?? 0) + 1
-					});
-				}
-			}
-		} else if (decision === 'reject') {
-			if (!feedback) return fail(400, { error: 'Rejecting needs a reason, written in the feedback box.' });
-			await serialize(() => deleteSubmission(id, slackId, { rejection: feedback, reviewer }));
-		} else {
-			return fail(400, { error: 'Unknown decision.' });
-		}
-
-		/** @type {Record<string, string>} */
-		const statuses = { pass: 'passed', warn: 'passed', star: 'starred', reject: 'rejected' };
-		const status = statuses[decision];
-		await airtable.update(TABLES.submissions, id, {
-			...(status
-				? {
-						[F.submissions.reviewStatus]: status,
-						[F.submissions.reviewedBy]: reviewer,
-						[F.submissions.reviewedAt]: new Date().toISOString()
-					}
-				: {}),
-			...(feedback
-				? { [F.submissions.reviewFeedback]: previous ? `${previous}\n${note}` : note }
-				: {})
-		});
-		if (REVIEW_REACTIONS[decision]) {
-			await slack.addReaction(channel, thread, REVIEW_REACTIONS[decision]).catch((err) => {
-				console.error('review reaction failed', err);
-			});
-		}
-		return { done: decision };
 	},
 	revert: async ({ request, locals }) => {
 		requireReviewer(locals);
 		const id = String((await request.formData()).get('id'));
-		await serialize(() => revertReview(id));
+		if (!claim(id)) return fail(409, { error: 'Another reviewer is working on that video right now.' });
+		try {
+			await serialize(() => revertReview(id));
+		} finally {
+			release(id);
+		}
+		undecided(id);
 		return { reverted: id };
 	}
 };
+
+/** @param {{ id: string, decision: string, feedback: string, reviewer: string, admin: boolean }} review */
+async function decide({ id, decision, feedback, reviewer, admin }) {
+	const submission = await airtable.get(TABLES.submissions, id);
+	const f = submission.fields;
+	if (f[F.submissions.deletedAt]) return fail(409, { error: 'That video was already deleted.' });
+	if (f[F.submissions.reviewStatus]) {
+		const by = f[F.submissions.reviewedBy];
+		return fail(409, { error: `That video was already reviewed${by && by !== reviewer ? ' by someone else' : ''}.` });
+	}
+	if (f[F.submissions.escalatedAt] && !admin) {
+		return fail(409, { error: 'That video was already sent for an extra decision.' });
+	}
+	const prefixes = /** @type {Record<string, string>} */ ({ warn: 'Warning: ', escalate: ESCALATION_PREFIX });
+	const note = `${prefixes[decision] ?? ''}${feedback}${fromReviewer(reviewer)}`;
+	const previous = f[F.submissions.reviewFeedback];
+	if (feedback && previous?.split('\n').includes(note)) {
+		return fail(409, { error: 'That feedback was already sent.' });
+	}
+	const slackId = f[F.submissions.slackId];
+	const channel = f[F.submissions.channelId];
+	const thread = f[F.submissions.messageTs];
+
+	if (decision === 'feedback' || decision === 'pass' || decision === 'star' || decision === 'warn') {
+		if ((decision === 'feedback' || decision === 'warn') && !feedback) {
+			return fail(400, { error: 'Write some feedback first.' });
+		}
+		if (decision !== 'feedback' && f[F.submissions.pendingCheck]) await approvePending(id);
+		if (feedback) await slack.postMessage(channel, messages.reviewFeedback(slackId, feedback, reviewer), thread);
+		if (decision === 'warn') {
+			const participant = await findParticipant(slackId);
+			if (participant) {
+				await airtable.update(TABLES.participants, participant.id, {
+					[F.participants.warnings]: (participant.fields[F.participants.warnings] ?? 0) + 1
+				});
+			}
+		}
+	} else if (decision === 'reject') {
+		if (!feedback) return fail(400, { error: 'Rejecting needs a reason, written in the feedback box.' });
+		await serialize(() => deleteSubmission(id, slackId, { rejection: feedback, reviewer }));
+	} else if (decision !== 'escalate') {
+		return fail(400, { error: 'Unknown decision.' });
+	}
+
+	/** @type {Record<string, string>} */
+	const statuses = { pass: 'passed', warn: 'passed', star: 'starred', reject: 'rejected' };
+	const status = statuses[decision];
+	await airtable.update(TABLES.submissions, id, {
+		...(status
+			? {
+					[F.submissions.reviewStatus]: status,
+					[F.submissions.reviewedBy]: reviewer,
+					[F.submissions.reviewedAt]: new Date().toISOString()
+				}
+			: {}),
+		...(feedback
+			? { [F.submissions.reviewFeedback]: previous ? `${previous}\n${note}` : note }
+			: {}),
+		...(decision === 'escalate'
+			? { [F.submissions.escalatedBy]: reviewer, [F.submissions.escalatedAt]: new Date().toISOString() }
+			: {})
+	});
+	if (decision !== 'feedback') decided(id, reviewer, decision);
+	if (REVIEW_REACTIONS[decision]) {
+		await slack.addReaction(channel, thread, REVIEW_REACTIONS[decision]).catch((err) => {
+			console.error('review reaction failed', err);
+		});
+	}
+	return { done: decision };
+}
