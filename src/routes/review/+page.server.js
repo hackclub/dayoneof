@@ -17,8 +17,13 @@ import { claim, release, decided, undecided } from '$lib/server/presence.js';
 const LOW_LIKES = 5;
 const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
 const REVIEWED_SHOWN = 30;
-const ESCALATION_PREFIX = 'Extra decision: ';
+// Reviewers who aren't admins can only suggest these; an admin makes the call. "Extra decision"
+// notes are from before suggestions said which way they leaned.
 const ADMIN_ONLY = ['reject', 'star'];
+/** @param {string} suggestion */
+const suggestPrefix = (suggestion) => `Suggest ${suggestion}: `;
+const LEGACY_PREFIX = 'Extra decision: ';
+const SUGGESTION_NOTE = /(?:Suggest (reject|star)|Extra decision): ([\s\S]*?) -from <@(\w+)>/g;
 const UNIFIED_WEB_URL = config.unifiedSocialsApiUrl.replace(/\/api\/v1\/?$/, '');
 
 /** @type {Record<string, (id: string) => string>} */
@@ -88,9 +93,10 @@ export async function load({ locals, url }) {
 	const showReviewed = url.searchParams.get('show') === 'reviewed';
 	const reviewer = url.searchParams.get('reviewer') ?? '';
 
+	// Cached so the reload after each decision is instant; this process's own writes land in it right away.
 	const [participants, allSubmissions] = await Promise.all([
-		airtable.list(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
-		airtable.list(TABLES.submissions, {
+		airtable.listCached(TABLES.participants, { filterByFormula: PARTICIPANT_HAS_SLACK_ID }),
+		airtable.listCached(TABLES.submissions, {
 			sort: [{ field: F.submissions.postedAt, direction: 'asc' }]
 		})
 	]);
@@ -125,12 +131,11 @@ export async function load({ locals, url }) {
 	}
 	/** @param {string} slackId */
 	const nameOf = (slackId) => byId.get(slackId)?.fields[F.participants.name] ?? '';
-	/** @type {(s: AirtableRecord) => string} */
-	const showFeedback = (s) =>
-		(s.fields[F.submissions.reviewFeedback] ?? '').replace(
-			/<@(\w+)>/g,
-			(/** @type {string} */ _, /** @type {string} */ id) => `@${nameOf(id) || id}`
-		);
+	/** @param {string} text */
+	const showMentions = (text) =>
+		text.replace(/<@(\w+)>/g, (/** @type {string} */ _, /** @type {string} */ id) => `@${nameOf(id) || id}`);
+	/** @param {AirtableRecord} s */
+	const showFeedback = (s) => showMentions(s.fields[F.submissions.reviewFeedback] ?? '');
 
 	/** @type {Map<string, AirtableRecord[]>} */
 	const postsBy = new Map();
@@ -180,17 +185,23 @@ export async function load({ locals, url }) {
 						(s.fields[F.submissions.deletedAt]
 							? 'deleted'
 							: s.fields[F.submissions.escalatedAt]
-								? 'extra decision'
+								? 'suggested'
 								: ''),
 					feedback: showFeedback(s)
 				})),
 			escalation: f[F.submissions.escalatedAt]
 				? {
 						byName: nameOf(f[F.submissions.escalatedBy] ?? '') || f[F.submissions.escalatedBy],
-						notes: showFeedback(primary)
-							.split('\n')
-							.filter((line) => line.startsWith(ESCALATION_PREFIX))
-							.map((line) => line.slice(ESCALATION_PREFIX.length))
+						// text is the raw note an admin can reuse; shown has names in place of mentions.
+						notes: [...String(f[F.submissions.reviewFeedback] ?? '').matchAll(SUGGESTION_NOTE)].map(
+							([, suggest, text, by]) => ({
+								suggest: suggest ?? '',
+								text,
+								by,
+								byName: nameOf(by) || by,
+								shown: showMentions(text)
+							})
+						)
 					}
 				: null,
 			rejection: participant
@@ -239,12 +250,22 @@ export const actions = {
 		const id = String(data.get('id'));
 		const decision = String(data.get('decision'));
 		const feedback = String(data.get('feedback') ?? '').trim();
+		const author = String(data.get('author') ?? '');
 		const admin = isAdmin(reviewer);
-		if (ADMIN_ONLY.includes(decision) && !admin) return fail(403, { error: 'Only admins can reject or star.' });
+		if (author && !admin) return fail(403, { error: 'Only admins can approve a suggestion.' });
+		const suggestion = !admin && ADMIN_ONLY.includes(decision) ? decision : '';
 
 		if (!claim(id)) return fail(409, { error: 'Another reviewer is submitting a decision on that video right now.' });
 		try {
-			return await decide({ id, decision, feedback, reviewer, admin });
+			return await decide({
+				id,
+				decision: suggestion ? 'suggest' : decision,
+				suggestion,
+				feedback,
+				approver: reviewer,
+				admin,
+				author
+			});
 		} finally {
 			release(id);
 		}
@@ -263,19 +284,28 @@ export const actions = {
 	}
 };
 
-/** @param {{ id: string, decision: string, feedback: string, reviewer: string, admin: boolean }} review */
-async function decide({ id, decision, feedback, reviewer, admin }) {
+// With an author, an admin is approving that reviewer's suggestion, so it goes out as theirs.
+/**
+ * @param {{ id: string, decision: string, suggestion: string, feedback: string, approver: string, admin: boolean, author: string }} review
+ */
+async function decide({ id, decision, suggestion, feedback, approver, admin, author }) {
 	const submission = await airtable.get(TABLES.submissions, id);
 	const f = submission.fields;
+	const saved = String(f[F.submissions.reviewFeedback] ?? '');
+	const suggested = (/** @type {string} */ prefix) => saved.includes(`${prefix}${feedback}${fromReviewer(author)}`);
+	if (author && !suggested(suggestPrefix(decision)) && !suggested(LEGACY_PREFIX)) {
+		return fail(409, { error: "That suggestion doesn't match what's saved anymore." });
+	}
+	const reviewer = author || approver;
 	if (f[F.submissions.deletedAt]) return fail(409, { error: 'That video was already deleted.' });
 	if (f[F.submissions.reviewStatus]) {
 		const by = f[F.submissions.reviewedBy];
 		return fail(409, { error: `That video was already reviewed${by && by !== reviewer ? ' by someone else' : ''}.` });
 	}
 	if (f[F.submissions.escalatedAt] && !admin) {
-		return fail(409, { error: 'That video was already sent for an extra decision.' });
+		return fail(409, { error: 'That video was already sent to an admin.' });
 	}
-	const prefixes = /** @type {Record<string, string>} */ ({ warn: 'Warning: ', escalate: ESCALATION_PREFIX });
+	const prefixes = /** @type {Record<string, string>} */ ({ warn: 'Warning: ', suggest: suggestPrefix(suggestion) });
 	const note = `${prefixes[decision] ?? ''}${feedback}${fromReviewer(reviewer)}`;
 	const previous = f[F.submissions.reviewFeedback];
 	if (feedback && previous?.split('\n').includes(note)) {
@@ -299,10 +329,10 @@ async function decide({ id, decision, feedback, reviewer, admin }) {
 				});
 			}
 		}
-	} else if (decision === 'reject') {
+	} else if (decision === 'reject' || (decision === 'suggest' && suggestion === 'reject')) {
 		if (!feedback) return fail(400, { error: 'Rejecting needs a reason, written in the feedback box.' });
-		await serialize(() => deleteSubmission(id, slackId, { rejection: feedback, reviewer }));
-	} else if (decision !== 'escalate') {
+		if (decision === 'reject') await serialize(() => deleteSubmission(id, slackId, { rejection: feedback, reviewer }));
+	} else if (decision !== 'suggest') {
 		return fail(400, { error: 'Unknown decision.' });
 	}
 
@@ -317,14 +347,15 @@ async function decide({ id, decision, feedback, reviewer, admin }) {
 					[F.submissions.reviewedAt]: new Date().toISOString()
 				}
 			: {}),
-		...(feedback
+		// A suggestion is saved even without a message, so admins can see which way it leaned.
+		...(feedback || decision === 'suggest'
 			? { [F.submissions.reviewFeedback]: previous ? `${previous}\n${note}` : note }
 			: {}),
-		...(decision === 'escalate'
+		...(decision === 'suggest'
 			? { [F.submissions.escalatedBy]: reviewer, [F.submissions.escalatedAt]: new Date().toISOString() }
 			: {})
 	});
-	if (decision !== 'feedback') decided(id, reviewer, decision);
+	if (decision !== 'feedback') decided(id, approver, suggestion ? `suggest-${suggestion}` : decision);
 	if (REVIEW_REACTIONS[decision]) {
 		await slack.addReaction(channel, thread, REVIEW_REACTIONS[decision]).catch((err) => {
 			console.error('review reaction failed', err);

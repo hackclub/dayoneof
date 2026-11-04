@@ -1,49 +1,82 @@
 <script lang="ts">
 	import { HELP_URL } from '$lib/help';
-	import reeltop from '$lib/assets/reeltop.mp4';
-	import reeltopThumb from '$lib/assets/reeltop_thumb.jpg';
-	import reelmid from '$lib/assets/reelmid.mp4';
-	import reelmidThumb from '$lib/assets/reelmid_thumb.jpg';
-	import reelbot from '$lib/assets/reelbot.mp4';
-	import reelbotThumb from '$lib/assets/reelbot_thumb.jpg';
 	import tshirtimage from '$lib/assets/tshirtimage.webp';
 	import orpheusplushie from '$lib/assets/orpheusplushie.webp';
 	import socks from '$lib/assets/socks.webp';
 	import heidisticker from '$lib/assets/heidisticker.webp';
 	import sticker2 from '$lib/assets/sticker2.webp';
 	import wordmark from '$lib/assets/wordmark.webp';
+	import reelDarshCover from '$lib/assets/reel_darsh_cover.jpg';
 	import { holdingTape, numberTape, sprite, tape } from '$lib/asset_sheet';
 	import { formatViews } from '$lib/format';
-	import { page } from '$app/state';
+	import { SITE_URL } from '$lib/site';
 
 	let { data } = $props();
 
+	const title = 'Day One Of: post a video every day, win Hack Club prizes';
 	const description =
 		'Post a short-form video every day for a month and earn free prizes. A Hack Club challenge for teens 13–18.';
-	const structuredData = $derived({
-		'@context': 'https://schema.org',
-		'@type': 'WebSite',
-		name: 'Day One Of',
-		url: `${page.url.origin}/`,
-		description,
-		publisher: { '@type': 'Organization', name: 'Hack Club', url: 'https://hackclub.com' }
-	});
 
-	// The posters are frames pulled out of each video with ffmpeg.
+	// Participants' reels, played from the unified-socials archive rather than Instagram.
 	const reels = [
-		{ src: reeltop, poster: reeltopThumb },
-		{ src: reelmid, poster: reelmidThumb },
-		{ src: reelbot, poster: reelbotThumb }
+		{
+			src: 'https://archive.hackclub.com/archive/4fJ31/yt-dlp',
+			poster: 'https://archive.hackclub.com/thumb/4fJ31',
+			handle: 'speed',
+			url: 'https://www.instagram.com/reel/DfF6yAfzvzB/'
+		},
+		{
+			src: 'https://archive.hackclub.com/gallery/oV2FH/file/001.mp4',
+			// A frame from 7.4s, since the archive's thumbnail cuts the title off.
+			poster: reelDarshCover,
+			handle: 'darsh.builds',
+			url: 'https://www.instagram.com/p/DfQG0eVhhuv/'
+		},
+		{
+			src: 'https://archive.hackclub.com/archive/iGsEh/yt-dlp',
+			poster: 'https://archive.hackclub.com/thumb/iGsEh',
+			handle: 'fizzyf15h',
+			url: 'https://www.instagram.com/reel/DfOWgW_iNUw/'
+		}
 	];
 	let reelIndex = $state(1);
 	const prevIndex = $derived((reelIndex - 1 + reels.length) % reels.length);
 	const nextIndex = $derived((reelIndex + 1) % reels.length);
 
-	// Starts muted and paused; swapping reels resets both.
+	// Starts paused with sound on, so a click plays it out loud; swapping reels pauses again.
 	let paused = $state(true);
-	let muted = $state(true);
-	let currentTime = $state(0);
+	let muted = $state(false);
 	let duration = $state(0);
+
+	let currentTime = $state(0);
+	let reelVideo = $state<HTMLVideoElement>();
+	let seekable = $state(false);
+
+	// Some archives are served without range requests, so the browser can't seek them and the scrub
+	// bar only shows progress. Checked on the element directly since it can load before hydration.
+	$effect(() => {
+		const video = reelVideo;
+		if (!video) return;
+		const check = () => (seekable = video.seekable.length > 0 && video.seekable.end(0) > 0);
+		check();
+		video.addEventListener('loadedmetadata', check);
+		video.addEventListener('progress', check);
+		return () => {
+			video.removeEventListener('loadedmetadata', check);
+			video.removeEventListener('progress', check);
+		};
+	});
+
+	// Not bind:currentTime, which seeks to 0 on mount and so swaps the poster for the first frame.
+	function scrub(event: Event & { currentTarget: HTMLInputElement }) {
+		currentTime = Number(event.currentTarget.value);
+		if (reelVideo) reelVideo.currentTime = currentTime;
+	}
+
+	function timeLeft(seconds: number) {
+		const s = Math.max(0, Math.ceil(seconds));
+		return `-${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+	}
 
 	function showReel(index: number) {
 		reelIndex = index;
@@ -137,23 +170,58 @@
 		}
 		ideaIndex = next;
 	}
+
+	const structuredData = {
+		'@context': 'https://schema.org',
+		'@graph': [
+			{
+				'@type': 'WebSite',
+				name: 'Day One Of',
+				url: `${SITE_URL}/`,
+				description,
+				publisher: { '@id': 'https://hackclub.com/#organization' }
+			},
+			{
+				'@type': 'Organization',
+				'@id': 'https://hackclub.com/#organization',
+				name: 'Hack Club',
+				url: 'https://hackclub.com',
+				logo: `${SITE_URL}/LOGO.png`
+			},
+			{
+				'@type': 'FAQPage',
+				mainEntity: faqItems
+					.filter((item) => item.a)
+					.map((item) => ({
+						'@type': 'Question',
+						name: item.q,
+						acceptedAnswer: { '@type': 'Answer', text: item.a }
+					}))
+			}
+		]
+	};
+	// Escaped so no answer text can close the script tag early.
+	const structuredDataJson = JSON.stringify(structuredData).replace(/</g, '\\u003c');
 </script>
 
 <svelte:head>
-	<title>Day One Of</title>
+	<title>{title}</title>
 	<meta name="description" content={description} />
-	<link rel="canonical" href="{page.url.origin}/" />
+	<link rel="canonical" href="{SITE_URL}/" />
+	<link rel="preconnect" href="https://archive.hackclub.com" />
 	<meta property="og:type" content="website" />
-	<meta property="og:url" content="{page.url.origin}/" />
-	<meta property="og:title" content="Day One Of" />
+	<meta property="og:url" content="{SITE_URL}/" />
+	<meta property="og:title" content={title} />
 	<meta property="og:description" content={description} />
-	<meta property="og:image" content="{page.url.origin}/og-image.png" />
+	<meta property="og:image" content="{SITE_URL}/og-image.png" />
+	<meta property="og:image:width" content="1024" />
+	<meta property="og:image:height" content="1024" />
 	<meta property="og:image:alt" content="Day One Of logo" />
 	<meta name="twitter:card" content="summary" />
-	<meta name="twitter:title" content="Day One Of" />
+	<meta name="twitter:title" content={title} />
 	<meta name="twitter:description" content={description} />
-	<meta name="twitter:image" content="{page.url.origin}/og-image.png" />
-	{@html `<script type="application/ld+json">${JSON.stringify(structuredData)}</script>`}
+	<meta name="twitter:image" content="{SITE_URL}/og-image.png" />
+	{@html `<script type="application/ld+json">${structuredDataJson}</script>`}
 </svelte:head>
 
 <svelte:window bind:scrollY />
@@ -217,6 +285,7 @@
 						<span class="screen">
 							<img src={reels[nextIndex].poster} alt="" />
 						</span>
+						<span class="credit">by @{reels[nextIndex].handle}</span>
 					</button>
 					<button
 						type="button"
@@ -228,16 +297,20 @@
 						<span class="screen">
 							<img src={reels[prevIndex].poster} alt="" />
 						</span>
+						<span class="credit">by @{reels[prevIndex].handle}</span>
 					</button>
 					<div class="reel-card front">
 						<span class="tape-strip holding" style={holdingTape('reel', 2)}></span>
 						<div class="screen">
 							{#key reelIndex}
-								<!-- svelte-ignore a11y_media_has_caption -->
+								<!-- The play button below is the keyboard way in; clicking the video is a shortcut. -->
+								<!-- svelte-ignore a11y_media_has_caption, a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 								<video
+									onclick={() => (paused = !paused)}
+									bind:this={reelVideo}
 									bind:paused
 									bind:muted
-									bind:currentTime
+									ontimeupdate={(e) => (currentTime = e.currentTarget.currentTime)}
 									bind:duration
 									src={reels[reelIndex].src}
 									poster={reels[reelIndex].poster}
@@ -268,13 +341,16 @@
 									min="0"
 									max={duration || 0}
 									step="0.05"
-									disabled={!duration}
-									bind:value={currentTime}
+									disabled={!duration || !seekable}
+									value={currentTime}
+									oninput={scrub}
 									aria-label="Skip through reel"
 								/>
+								{#if duration}<span class="reel-time">{timeLeft(duration - currentTime)}</span>{/if}
 
 								<button
-									class="reel-btn"
+									class="reel-sound"
+									class:off={muted}
 									type="button"
 									onclick={() => (muted = !muted)}
 									aria-label={muted ? 'Unmute reel' : 'Mute reel'}
@@ -287,9 +363,13 @@
 											<path d="M16 9a4.5 4.5 0 0 1 0 6" fill="none" />
 										{/if}
 									</svg>
+									<span class="sound-word">sound</span>{muted ? 'off' : 'on'}
 								</button>
 							</div>
 						</div>
+						<a class="credit" href={reels[reelIndex].url} target="_blank" rel="noopener"
+							>by @{reels[reelIndex].handle}</a
+						>
 					</div>
 				</div>
 			</section>
@@ -569,7 +649,7 @@
 
 	.wordmark img {
 		display: block;
-		width: clamp(13em, 16vw + 7em, 21em);
+		width: clamp(13em, 16vw / var(--zoom) + 7em, 21em);
 		height: auto;
 	}
 
@@ -761,6 +841,45 @@
 		outline-offset: 3px;
 	}
 
+	/* Written in the card's bottom margin, like a caption on a polaroid. */
+	.credit {
+		position: absolute;
+		left: 0.8em;
+		right: 0.8em;
+		bottom: 0.3em;
+		font-family: var(--font-hand);
+		font-weight: 700;
+		font-size: 1.05em;
+		color: var(--ink);
+		text-decoration: none;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	a.credit:hover {
+		color: var(--accent);
+	}
+
+	/* The front card covers the inner side of each back card's margin. */
+	.reel-card.back-a,
+	.reel-card.back-b {
+		padding-bottom: 1.2em;
+	}
+
+	.back-a .credit,
+	.back-b .credit {
+		bottom: 0.25em;
+		font-size: 0.75em;
+		line-height: 1;
+	}
+
+	/* Its left side is under the front card, so it's pinned right to stay readable. */
+	.back-a .credit {
+		left: auto;
+		right: 0.5em;
+	}
+
 	.screen {
 		display: block;
 		width: 100%;
@@ -845,7 +964,49 @@
 		transform: rotate(-10deg) scale(1.1);
 	}
 
-	.reel-btn svg {
+	.front .screen video {
+		cursor: var(--cursor-pointer);
+	}
+
+	.reel-time {
+		flex: 0 0 auto;
+		font-size: 0.7rem;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink);
+	}
+
+	.reel-sound {
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 0.7rem;
+		font-weight: 800;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--ink);
+		padding: 2px 7px 2px 4px;
+		border: 2px solid var(--ink);
+		border-radius: 6px 3px 5px 3px/3px 6px 3px 5px;
+		cursor: var(--cursor-pointer);
+	}
+
+	.sound-word {
+		margin-right: 0.3em;
+	}
+
+	.reel-sound.off {
+		color: var(--accent-ink);
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.reel-sound:hover {
+		transform: rotate(-3deg);
+	}
+
+	.reel-sound svg {
 		width: 0.95rem;
 		height: 0.95rem;
 		fill: currentColor;
@@ -902,6 +1063,7 @@
 	}
 
 	.reel-btn:focus-visible,
+	.reel-sound:focus-visible,
 	.reel-scrub:focus-visible {
 		outline: 2px solid var(--accent);
 		outline-offset: 2px;
@@ -973,7 +1135,7 @@
 		position: absolute;
 		right: 34px;
 		bottom: 28px;
-		width: clamp(90px, 9vw, 124px);
+		width: clamp(90px, 9vw / var(--zoom), 124px);
 		transform: rotate(-7deg);
 		filter: drop-shadow(3px 4px 0 var(--shadow));
 		transition:
@@ -1427,8 +1589,8 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 10px;
-		margin: 40px calc(50% - 50vw) -60px;
-		padding: 28px max(20px, 50vw - 50%) 44px;
+		margin: 40px calc(50% - 50vw / var(--zoom)) -60px;
+		padding: 28px max(20px, 50vw / var(--zoom) - 50%) 44px;
 		background: var(--grain), #e6cf92;
 		color: var(--ink-soft);
 		font-size: 0.85rem;
@@ -1466,11 +1628,29 @@
 	/* Desktop hero grows with the viewport while its last line of copy stays above the fold. The
 	   height terms are measured slopes (px of hero per px of font); the vw term covers narrow
 	   columns, where the copy wraps more. */
+	/* The page reads best a size up, as it does at 120% browser zoom. Zoom scales viewport units
+	   too, so every vw and dvh on the page is divided by --zoom to stay true to the window. From
+	   913px only, which is the 760px breakpoint at 120%, so phones keep their size. */
+	.day-one {
+		--zoom: 1;
+	}
+
+	@media (min-width: 913px) {
+		.day-one {
+			--zoom: 1.2;
+			zoom: var(--zoom);
+		}
+	}
+
 	@media (min-width: 761px) {
 		.hero {
 			font-size: clamp(
 				12px,
-				min((100dvh - 161px) / 33.25, (100dvh + 11px) / 44, 0.49vw + 10.2px),
+				min(
+					(100dvh / var(--zoom) - 161px) / 33.25,
+					(100dvh / var(--zoom) + 11px) / 44,
+					0.49vw / var(--zoom) + 10.2px
+				),
 				20px
 			);
 		}
@@ -1484,6 +1664,32 @@
 
 		.prize-box {
 			padding-bottom: 120px;
+		}
+
+		/* Narrower and off to the left, so both back cards' credits peek out: the top one's beside
+		   the front card, the bottom one's below it. */
+		.reel-card.front {
+			width: 14em;
+			left: 0.2em;
+		}
+
+		.reel-card.back-a,
+		.reel-card.back-b {
+			width: 10.5em;
+		}
+
+		.reel-card.back-a {
+			right: 0.4em;
+			transform: rotate(3deg);
+		}
+
+		.reel-card.back-a:hover,
+		.reel-card.back-a:focus-visible {
+			transform: rotate(2deg) translateY(-6px);
+		}
+
+		.sound-word {
+			display: none;
 		}
 	}
 

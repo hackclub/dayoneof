@@ -3,10 +3,14 @@
 	import { page } from '$app/state';
 	import { numberTape, sprite } from '$lib/asset_sheet';
 	import { HELP_URL } from '$lib/help';
+	import { SITE_URL } from '$lib/site';
 	import PlatformSwitch from '$lib/platform_switch.svelte';
 	import TimezoneModal from '../timezone/timezone_modal.svelte';
 
 	let { data } = $props();
+
+	const homeDescription =
+		"Every video posted in Hack Club's Day One Of challenge, plus the longest streaks, top creators, and most-viewed videos.";
 
 	type Sort = 'date' | 'views' | 'starred';
 	type Tab = 'streak' | 'people' | 'videos';
@@ -44,12 +48,16 @@
 </script>
 
 <svelte:head>
-	<title>Day One Of</title>
-	<meta
-		name="description"
-		content="Every video posted in Hack Club's Day One Of challenge, plus the longest streaks, top creators, and most-viewed videos."
-	/>
-	<link rel="canonical" href="{page.url.origin}/home" />
+	<title>Every video and streak · Day One Of</title>
+	<meta name="description" content={homeDescription} />
+	<link rel="canonical" href="{SITE_URL}/home" />
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content="{SITE_URL}/home" />
+	<meta property="og:title" content="Every video and streak · Day One Of" />
+	<meta property="og:description" content={homeDescription} />
+	<meta property="og:image" content="{SITE_URL}/og-image.png" />
+	<meta property="og:image:alt" content="Day One Of logo" />
+	<meta name="twitter:card" content="summary" />
 	<link rel="preconnect" href="https://archive.hackclub.com" />
 </svelte:head>
 

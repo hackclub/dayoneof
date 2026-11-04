@@ -7,11 +7,13 @@
 
 	type Details = { caption: string; note: string };
 	type Presence = {
-		viewers: { slackId: string; id: string }[];
+		viewers: { slackId: string; id: string; drafting: boolean }[];
 		decisions: Record<string, { by: string; decision: string }>;
 	};
 
-	const PRESENCE_EVERY_MS = 8000;
+	const PRESENCE_EVERY_MS = 4000;
+	// A double click shouldn't also decide the video that slides in under the cursor.
+	const DOUBLE_CLICK_MS = 600;
 
 	let index = $state(0);
 	let feedback = $state('');
@@ -19,38 +21,49 @@
 	let archiveFailed = $state<Record<string, boolean>>({});
 	let details = $state<Record<string, Details | null>>({});
 	let presence = $state<Presence>({ viewers: [], decisions: {} });
-
-	const count = $derived(data.videos.length);
-	const at = $derived(Math.min(index, Math.max(0, count - 1)));
-	const video = $derived(data.videos[at]);
-	const prev = $derived(at > 0 ? data.videos[at - 1] : null);
-	const next = $derived(at < count - 1 ? data.videos[at + 1] : null);
-	const useArchive = $derived(!!video?.archiveUrl && !archiveFailed[video.id]);
+	let saving = $state<Record<string, boolean>>({});
+	let saveError = $state('');
+	let notice = $state('');
+	let lastDecisionAt = 0;
+	let placed = false;
 
 	const nameOf = (slackId: string) => data.names[slackId] ?? slackId;
-	const othersOn = (id: string | undefined) =>
-		presence.viewers.filter((v) => v.id === id && v.slackId !== data.me).map((v) => nameOf(v.slackId));
+	const others = (id: string | undefined) => presence.viewers.filter((v) => v.id === id && v.slackId !== data.me);
+	const othersOn = (id: string | undefined) => others(id).map((v) => nameOf(v.slackId));
 	const doneByOther = (id: string | undefined) => {
 		const d = id ? presence.decisions[id] : undefined;
 		return d && d.by !== data.me ? d : null;
 	};
+	// Someone else's decision drops a video from everyone's queue, except a suggestion for admins.
+	const settled = (id: string) => {
+		const d = doneByOther(id);
+		return !!d && !(data.admin && d.decision.startsWith('suggest-'));
+	};
+	const isFree = (id: string) => !others(id).length && !doneByOther(id);
+
+	const queue = $derived(data.videos.filter((v) => !saving[v.id] && !settled(v.id)));
+	const count = $derived(queue.length);
+	const at = $derived(Math.min(index, Math.max(0, count - 1)));
+	const video = $derived(queue[at]);
+	const prev = $derived(at > 0 ? queue[at - 1] : null);
+	const next = $derived(at < count - 1 ? queue[at + 1] : null);
+	const useArchive = $derived(!!video?.archiveUrl && !archiveFailed[video.id]);
+
 	const online = $derived([
 		...new Set(presence.viewers.filter((v) => v.slackId !== data.me).map((v) => nameOf(v.slackId)))
 	]);
-	const watching = $derived(othersOn(video?.id));
+	const watching = $derived(others(video?.id));
+	const drafting = $derived(!!feedback.trim());
 	const decided = $derived(doneByOther(video?.id));
-	// Admins still make the call on a video someone just sent for an extra decision.
-	const locked = $derived(!!decided && !(data.admin && decided.decision === 'escalate'));
-	const nextFree = $derived(
-		data.videos.findIndex((v, i) => i > at && !othersOn(v.id).length && !doneByOther(v.id))
-	);
+	const nextFree = $derived(queue.findIndex((v, i) => i > at && isFree(v.id)));
 
 	const decisionText: Record<string, string> = {
 		pass: 'passed',
 		warn: 'passed with a warning',
 		star: 'starred',
 		reject: 'rejected',
-		escalate: 'sent for an extra decision'
+		'suggest-reject': 'suggested rejecting',
+		'suggest-star': 'suggested starring'
 	};
 
 	const impactText: Record<string, (r: { streak: number; freezes: number }) => string> = {
@@ -75,15 +88,33 @@
 		loadDetails(prev?.id);
 	});
 
-	async function heartbeat(id: string) {
-		const res = await fetch('/review/presence', { method: 'POST', body: JSON.stringify({ id }) }).catch(() => null);
-		if (res?.ok) presence = await res.json();
+	async function heartbeat(id: string, drafting: boolean) {
+		const res = await fetch('/review/presence', { method: 'POST', body: JSON.stringify({ id, drafting }) }).catch(
+			() => null
+		);
+		if (!res?.ok) return;
+		const was = video;
+		presence = await res.json();
+		if (was && settled(was.id) && !saving[was.id]) {
+			const d = doneByOther(was.id);
+			notice = `${nameOf(d?.by ?? '')} just ${decisionText[d?.decision ?? ''] ?? 'reviewed'} ${was.name}'s video, so you've moved on to the next one.`;
+			feedback = '';
+		}
+		// Start on a video nobody else has open, so two reviewers opening the page don't overlap.
+		if (!placed) {
+			placed = true;
+			if (video && !isFree(video.id)) {
+				const free = queue.findIndex((v) => isFree(v.id));
+				if (free !== -1) index = free;
+			}
+		}
 	}
 
 	$effect(() => {
 		const id = video?.id ?? '';
-		heartbeat(id);
-		const timer = setInterval(() => heartbeat(id), PRESENCE_EVERY_MS);
+		const draft = drafting;
+		heartbeat(id, draft);
+		const timer = setInterval(() => heartbeat(id, draft), PRESENCE_EVERY_MS);
 		return () => clearInterval(timer);
 	});
 
@@ -96,6 +127,8 @@
 		if (target < 0 || target >= count) return;
 		index = target;
 		feedback = '';
+		notice = '';
+		placed = true;
 	}
 
 	function goNextFree() {
@@ -110,11 +143,37 @@
 	}
 
 	const rejectQuestion = (submitter: HTMLElement | null) =>
-		(submitter as HTMLButtonElement | null)?.value === 'reject'
+		data.admin && (submitter as HTMLButtonElement | null)?.value === 'reject'
 			? `Reject this video? ${impactText[video.rejection.impact](video.rejection)}`
 			: '';
 	const revertQuestion = () =>
 		'Revert this review? Its feedback messages and reaction are deleted and it goes back in the queue.';
+
+	// Moves on to the next video straight away and saves in the background. If the save fails,
+	// the video comes back with its feedback so nothing is lost.
+	const reviewEnhance: SubmitFunction = (input) => {
+		const { submitter, formData, cancel } = input;
+		if (formData.get('decision') === 'feedback') return submitEnhance(() => '')(input);
+		const ask = rejectQuestion(submitter);
+		if (Date.now() - lastDecisionAt < DOUBLE_CLICK_MS || (ask && !confirm(ask))) return cancel();
+		lastDecisionAt = Date.now();
+		const reviewed = video;
+		const sent = feedback;
+		saving[reviewed.id] = true;
+		feedback = '';
+		saveError = '';
+		return async ({ result, update }) => {
+			if (result.type === 'success' || result.type === 'redirect') return update({ reset: false });
+			delete saving[reviewed.id];
+			const back = queue.findIndex((v) => v.id === reviewed.id);
+			if (back !== -1) {
+				index = back;
+				feedback = sent;
+			}
+			const reason = result.type === 'failure' ? result.data?.error : result.error?.message;
+			saveError = `Couldn't save your decision on ${reviewed.name}'s video: ${reason ?? 'something went wrong'}`;
+		};
+	};
 
 	// Confirms here rather than in onsubmit: enhance's own submit listener ignores preventDefault.
 	const submitEnhance =
@@ -150,7 +209,9 @@
 				</a>
 			</p>
 		</header>
-		{#if form?.error}<p class="error">{form.error}</p>{/if}
+		{#if notice}<p class="notice">{notice}</p>{/if}
+		{#if saveError}<p class="error">{saveError}</p>
+		{:else if form?.error}<p class="error">{form.error}</p>{/if}
 
 		{#if video}
 			<div class="carousel">
@@ -199,20 +260,45 @@
 
 			<section class="panel">
 				{#if decided}
-					<p class="presence taken">
+					<p class="presence">
 						{nameOf(decided.by)} just {decisionText[decided.decision] ?? 'reviewed'} this video.
 						{#if nextFree !== -1}<button type="button" onclick={goNextFree}>Next free video →</button>{/if}
 					</p>
 				{:else if watching.length}
-					<p class="presence">
-						👀 {watching.join(', ')} {watching.length === 1 ? 'is' : 'are'} looking at this video too.
+					<p class="presence" class:taken={watching.some((v) => v.drafting)}>
+						{#each watching as v, i}{i ? ', ' : ''}{nameOf(v.slackId)}{v.drafting ? ' (writing feedback)' : ''}{/each}
+						{watching.length === 1 ? 'is' : 'are'} on this video too.
 						{#if nextFree !== -1}<button type="button" onclick={goNextFree}>Next free video →</button>{/if}
 					</p>
 				{/if}
 				{#if video.escalation}
 					<div class="escalation">
-						<strong>{video.escalation.byName} asked for an extra decision.</strong>
-						{#each video.escalation.notes as note}<p class="quote">{note}</p>{/each}
+						{#each video.escalation.notes as note}
+							<strong
+								>{note.byName}
+								{note.suggest === 'reject'
+									? 'suggests rejecting this.'
+									: note.suggest === 'star'
+										? 'suggests starring this.'
+										: 'asked for an extra decision.'}</strong
+							>
+							{#if note.shown}<p class="quote">{note.shown} -from @{note.byName}</p>{/if}
+							<form method="POST" action="?/review" class="decide" use:enhance={reviewEnhance}>
+								<input type="hidden" name="id" value={video.id} />
+								<input type="hidden" name="feedback" value={note.text} />
+								<input type="hidden" name="author" value={note.by} />
+								{#if note.suggest !== 'star'}
+									<button type="submit" name="decision" value="reject" class="reject" disabled={busy || !note.text}
+										>Approve rejection</button
+									>
+								{/if}
+								{#if note.suggest !== 'reject'}
+									<button type="submit" name="decision" value="star" class="star" disabled={busy}>⭐ Approve star</button>
+								{/if}
+							</form>
+						{:else}
+							<strong>{video.escalation.byName} sent this to an admin.</strong>
+						{/each}
 					</div>
 				{/if}
 				<div class="who">
@@ -278,7 +364,7 @@
 					{/if}
 				</div>
 
-				<form method="POST" action="?/review" autocomplete="off" use:enhance={submitEnhance(rejectQuestion)}>
+				<form method="POST" action="?/review" autocomplete="off" use:enhance={reviewEnhance}>
 					<input type="hidden" name="id" value={video.id} />
 					<label for="feedback"><h3>Feedback</h3></label>
 					<textarea
@@ -288,29 +374,19 @@
 						bind:value={feedback}
 						placeholder={data.admin
 							? 'Optional for star and pass. Posted as the bot in their thread. Required to warn, and to reject as the reason.'
-							: "Optional for pass. Posted as the bot in their thread. Required to warn. With extra decision it's a private note to the admins instead."}
+							: 'Optional for pass and star. Posted as the bot in their thread. Required to warn, and to reject as the reason. Reject and star go to an admin first.'}
 					></textarea>
 
 					<div class="decide">
-						{#if data.admin}
-							<button
-								type="submit"
-								name="decision"
-								value="reject"
-								class="reject"
-								disabled={busy || locked || !feedback.trim()}>Reject</button
-							>
-						{:else}
-							<button type="submit" name="decision" value="escalate" class="escalate" disabled={busy || locked}
-								>Extra decision</button
-							>
-						{/if}
+						<button type="submit" name="decision" value="reject" class="reject" disabled={busy || !feedback.trim()}
+							>{data.admin ? 'Reject' : 'Suggest reject'}</button
+						>
 						<button
 							type="submit"
 							name="decision"
 							value="feedback"
 							class="quiet"
-							disabled={busy || locked || !feedback.trim()}>Just send feedback</button
+							disabled={busy || !feedback.trim()}>Just send feedback</button
 						>
 						<span class="spacer"></span>
 						<button
@@ -318,21 +394,18 @@
 							name="decision"
 							value="warn"
 							class="warn"
-							disabled={busy || locked || !feedback.trim()}>Pass with warning</button
+							disabled={busy || !feedback.trim()}>Pass with warning</button
 						>
-						<button type="submit" name="decision" value="pass" disabled={busy || locked}>Pass</button>
-						{#if data.admin}
-							<button type="submit" name="decision" value="star" class="star" disabled={busy || locked}>⭐ Star</button>
-						{/if}
+						<button type="submit" name="decision" value="pass" disabled={busy}>Pass</button>
+						<button type="submit" name="decision" value="star" class="star" disabled={busy}
+							>⭐ {data.admin ? 'Star' : 'Suggest star'}</button
+						>
 					</div>
-					{#if data.admin}
-						<p class="impact">
-							<strong>If rejected:</strong>
-							{impactText[video.rejection.impact](video.rejection)}
-						</p>
-					{:else}
-						<p class="impact">Not sure, or think it should be rejected or starred? Extra decision passes it to an admin.</p>
-					{/if}
+					<p class="impact">
+						<strong>If rejected:</strong>
+						{impactText[video.rejection.impact](video.rejection)}
+						{#if !data.admin}An admin approves rejections and stars before they happen.{/if}
+					</p>
 				</form>
 			</section>
 		{:else}
@@ -721,13 +794,6 @@
 		box-shadow: inset 0 -5px 0 #922b21;
 	}
 
-	.decide .escalate {
-		color: var(--ink);
-		background: transparent;
-		border-style: dashed;
-		box-shadow: none;
-	}
-
 	.presence {
 		font-weight: 700;
 		color: #6b4b00;
@@ -762,6 +828,10 @@
 
 	.escalation .quote {
 		margin-top: 4px;
+	}
+
+	.notice {
+		font-weight: 700;
 	}
 
 	.online {

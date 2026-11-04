@@ -1,10 +1,10 @@
 // Who's looking at which video on /review, and what was just decided, so reviewers working at the
 // same time can see each other. In-process only, like serialize(), so the app runs as one replica.
 
-const VIEWER_TTL_MS = 20_000;
+const VIEWER_TTL_MS = 12_000;
 const DECISION_TTL_MS = 15 * 60_000;
 
-/** @type {Map<string, { id: string, at: number }>} */
+/** @type {Map<string, { id: string, drafting: boolean, at: number }>} */
 const viewers = new Map();
 /** @type {Map<string, { by: string, decision: string, at: number }>} */
 const decisions = new Map();
@@ -14,9 +14,10 @@ const claimed = new Set();
 /**
  * @param {string} reviewer
  * @param {string} id
+ * @param {boolean} drafting
  */
-export function view(reviewer, id) {
-	if (id) viewers.set(reviewer, { id, at: Date.now() });
+export function view(reviewer, id, drafting) {
+	if (id) viewers.set(reviewer, { id, drafting, at: Date.now() });
 	else viewers.delete(reviewer);
 }
 
@@ -39,7 +40,7 @@ export function snapshot() {
 	for (const [reviewer, v] of viewers) if (now - v.at > VIEWER_TTL_MS) viewers.delete(reviewer);
 	for (const [id, d] of decisions) if (now - d.at > DECISION_TTL_MS) decisions.delete(id);
 	return {
-		viewers: [...viewers].map(([slackId, v]) => ({ slackId, id: v.id })),
+		viewers: [...viewers].map(([slackId, v]) => ({ slackId, id: v.id, drafting: v.drafting })),
 		decisions: Object.fromEntries([...decisions].map(([id, d]) => [id, { by: d.by, decision: d.decision }]))
 	};
 }

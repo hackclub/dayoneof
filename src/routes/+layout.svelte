@@ -40,6 +40,7 @@
 
 <svelte:head>
 	<link rel="icon" href="/favicon.png" type="image/png" />
+	<link rel="apple-touch-icon" href="/LOGO.png" />
 	<link rel="preload" href={figtree400} as="font" type="font/woff2" crossorigin="anonymous" />
 	<link rel="preload" href={figtree600} as="font" type="font/woff2" crossorigin="anonymous" />
 	<link rel="preload" href={shantell600} as="font" type="font/woff2" crossorigin="anonymous" />
@@ -88,7 +89,8 @@
 		--cursor-pointer: url('/cursor_pointer.png') 11 10, pointer;
 		--cursor-text: url('/cursor_text.png') 19 20, text;
 
-		min-height: 100dvh;
+		/* --zoom is set by pages that zoom .day-one, which scales viewport units along with it. */
+		min-height: calc(100dvh / var(--zoom, 1));
 		box-sizing: border-box;
 		overflow-x: hidden;
 		color-scheme: light;
@@ -105,14 +107,14 @@
 			320px 320px,
 			15px 15px,
 			9px 9px,
-			62vw 62vw,
-			55vw 55vw;
+			calc(62vw / var(--zoom, 1)) calc(62vw / var(--zoom, 1)),
+			calc(55vw / var(--zoom, 1)) calc(55vw / var(--zoom, 1));
 		background-position:
 			0 0,
 			0 0,
 			4px 6px,
-			-18vw -12vh,
-			112vw 90vh;
+			calc(-18vw / var(--zoom, 1)) calc(-12vh / var(--zoom, 1)),
+			calc(112vw / var(--zoom, 1)) calc(90vh / var(--zoom, 1));
 		background-repeat: repeat, repeat, repeat, no-repeat, no-repeat;
 		background-attachment: scroll, scroll, scroll, fixed, fixed;
 	}
