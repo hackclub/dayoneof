@@ -17,8 +17,10 @@ const STOP_WORDS = new Set(
 	)
 );
 
+// Instagram posts with no caption are titled "Video by <account>", identical across all of them.
 /** @param {string} title */
 export function captionKey(title) {
+	if (/^video by \S+$/i.test(title.trim())) return '';
 	return title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
 }
 

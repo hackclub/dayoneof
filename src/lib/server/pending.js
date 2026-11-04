@@ -20,13 +20,14 @@ const TRACKED_PENDING_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const SAME_VIDEO_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 // A poster's recent video of the same length that isn't on this platform yet is the same upload.
+// platforms holds every link in the post, so a video already on one of them is a different one.
 /**
  * @param {string} slackId
- * @param {string} platform
+ * @param {string[]} platforms
  * @param {number | null} durationSeconds
  * @param {string} before ISO time; only videos submitted earlier count
  */
-export async function findSameVideo(slackId, platform, durationSeconds, before) {
+export async function findSameVideo(slackId, platforms, durationSeconds, before) {
 	if (durationSeconds == null) return null;
 	const since = new Date(Date.parse(before) - SAME_VIDEO_WINDOW_MS).toISOString();
 	const recent = await airtable.list(TABLES.submissions, {
@@ -34,7 +35,7 @@ export async function findSameVideo(slackId, platform, durationSeconds, before) 
 	});
 	const videoOf = (/** @type {AirtableRecord} */ s) => s.fields[F.submissions.primarySubmission] || s.id;
 	const onPlatform = new Set(
-		recent.filter((s) => s.fields[F.submissions.platform] === platform).map(videoOf)
+		recent.filter((s) => platforms.includes(s.fields[F.submissions.platform])).map(videoOf)
 	);
 	return (
 		recent
@@ -361,9 +362,19 @@ export async function runPending() {
 			continue;
 		}
 
+		const others = !reason && !primaryId
+			? await airtable.list(TABLES.submissions, {
+					filterByFormula: `AND(${airtable.eq(F.submissions.primarySubmission, row.id)}, ${SUBMISSION_NOT_DELETED})`
+				})
+			: [];
 		const same =
 			!reason && !primaryId
-				? await findSameVideo(slackId, link.platform, facts.durationSeconds, f[F.submissions.postedAt])
+				? await findSameVideo(
+						slackId,
+						[link.platform, ...others.map((s) => s.fields[F.submissions.platform])],
+						facts.durationSeconds,
+						f[F.submissions.postedAt]
+					)
 				: null;
 
 		try {

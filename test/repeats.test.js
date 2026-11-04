@@ -31,3 +31,12 @@ test('flags a later upload of the same video and skips its own other platforms',
 	assert.deepEqual([...repeats.keys()], ['recC']);
 	assert.equal(repeats.get('recC')?.of.id, 'recA');
 });
+
+test('a placeholder "Video by <account>" caption is not a match', async () => {
+	const rows = [
+		row('recA', { day: '2026-11-02', platform: 'instagram', duration_seconds: 30.6, title: 'Video by foragingremlin' }),
+		row('recB', { day: '2026-11-03', platform: 'instagram', duration_seconds: 30.4, title: 'Video by foragingremlin' })
+	];
+	const repeats = await findRepeats(rows, '2026-11-03', async () => null);
+	assert.equal(repeats.size, 0);
+});

@@ -70,7 +70,7 @@ async function handleSubmissionMessage(event) {
 		await slack.postMessage(event.channel, messages.unsupportedLink(event.user), event.ts);
 		return;
 	}
-	const primary = await handleSubmission(event, link);
+	const primary = await handleSubmission(event, link, others);
 	if (!primary) return;
 	for (const other of others) await addOtherPlatform(event, primary, other);
 }
@@ -78,9 +78,10 @@ async function handleSubmissionMessage(event) {
 /**
  * @param {SlackEvent} event
  * @param {Link} link
+ * @param {Link[]} others the post's other links
  * @returns {Promise<AirtableRecord | null>} the stored submission, or null if it was refused
  */
-async function handleSubmission(event, link) {
+async function handleSubmission(event, link, others) {
 	const admin = isAdmin(event.user);
 	if (!config.submissionsOpen && !admin) {
 		await slack.addReaction(event.channel, event.ts, 'hourglass');
@@ -136,7 +137,7 @@ async function handleSubmission(event, link) {
 
 	const same = await findSameVideo(
 		event.user,
-		link.platform,
+		[link.platform, ...others.map((o) => o.platform)],
 		facts.durationSeconds,
 		new Date().toISOString()
 	);
