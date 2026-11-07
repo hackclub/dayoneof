@@ -18,7 +18,8 @@
 		today: 'their day is open again until 3am',
 		freeze: 'a freeze covered the day',
 		break: 'their streak was reset',
-		none: "it didn't count toward their streak"
+		none: "it didn't count toward their streak",
+		transfer: 'their other video from that day counts instead'
 	};
 
 	function confirmReject(event: SubmitEvent) {

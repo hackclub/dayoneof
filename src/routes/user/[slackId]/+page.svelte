@@ -40,14 +40,16 @@
 			'This video kept your streak alive on a past day. Deleting it spends one of your streak freezes on that day and your streak drops by one.',
 		break:
 			'This video kept your streak alive on a past day and you have no freezes left. Deleting it BREAKS YOUR STREAK and resets it to 0.',
-		none: "This video didn't count toward your streak, so your streak won't change."
+		none: "This video didn't count toward your streak, so your streak won't change.",
+		transfer: "Your other video from that day will count instead, so your streak won't change."
 	});
 
 	const deletedText: Record<string, string> = {
 		today: 'Video deleted. Post another before 3am to keep your streak going.',
 		freeze: 'Video deleted. A streak freeze covered that day.',
 		break: 'Video deleted. Your streak was reset.',
-		none: 'Video deleted.'
+		none: 'Video deleted.',
+		transfer: 'Video deleted. Your other video from that day counts instead.'
 	};
 </script>
 

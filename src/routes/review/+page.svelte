@@ -71,7 +71,8 @@
 		freeze: (r) =>
 			`It's from a past day: a freeze covers it, and their streak drops to ${r.streak} with ${r.freezes} freeze${r.freezes === 1 ? '' : 's'} left.`,
 		break: () => 'It\'s from a past day and they have no freezes left, so their streak resets to 0.',
-		none: () => "It didn't count toward their streak, so their streak won't change."
+		none: () => "It didn't count toward their streak, so their streak won't change.",
+		transfer: () => "Their other video from that day counts instead, so their streak won't change."
 	};
 
 	async function loadDetails(id: string | undefined) {

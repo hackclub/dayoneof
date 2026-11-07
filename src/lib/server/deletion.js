@@ -1,6 +1,14 @@
 // Deleting a video only marks it: the row, its day and the streak it earned are all kept, along
 // with a snapshot of the participant before the delete, so an admin can restore it in one click.
-import { config, requireEnv, TABLES, F, SUBMISSION_NOT_DELETED } from './config.js';
+import {
+	config,
+	requireEnv,
+	TABLES,
+	F,
+	SUBMISSION_NOT_DELETED,
+	SUBMISSION_IS_PRIMARY,
+	SUBMISSION_CHECKED
+} from './config.js';
 import * as airtable from './airtable.js';
 import * as slack from './slack.js';
 import { messages } from './messages.js';
@@ -35,6 +43,38 @@ export function deletionPlan(participant, submission) {
 		submission.fields[F.submissions.day],
 		streakDay(p[F.participants.tz])
 	);
+}
+
+// The participant's earliest other video that day, which takes over the streak if this one's rejected.
+/**
+ * @param {AirtableRecord[]} submissions
+ * @param {AirtableRecord} submission
+ */
+export function sameDayBackup(submissions, submission) {
+	const { [F.submissions.slackId]: slackId, [F.submissions.day]: day } = submission.fields;
+	return (
+		submissions
+			.filter(
+				(s) =>
+					s.id !== submission.id &&
+					s.fields[F.submissions.slackId] === slackId &&
+					s.fields[F.submissions.day] === day &&
+					!s.fields[F.submissions.deletedAt] &&
+					!s.fields[F.submissions.primarySubmission] &&
+					!s.fields[F.submissions.countedTowardStreak] &&
+					!s.fields[F.submissions.pendingCheck]
+			)
+			.sort((a, b) => (a.fields[F.submissions.postedAt] < b.fields[F.submissions.postedAt] ? -1 : 1))[0] ?? null
+	);
+}
+
+/** @param {AirtableRecord} submission */
+async function findSameDayBackup(submission) {
+	const { [F.submissions.slackId]: slackId, [F.submissions.day]: day } = submission.fields;
+	const candidates = await airtable.list(TABLES.submissions, {
+		filterByFormula: `AND(${airtable.eq(F.submissions.slackId, slackId)}, ${airtable.eq(F.submissions.day, day)}, ${SUBMISSION_NOT_DELETED}, ${SUBMISSION_IS_PRIMARY}, ${SUBMISSION_CHECKED})`
+	});
+	return sameDayBackup(candidates, submission);
 }
 
 /**
@@ -81,6 +121,42 @@ async function fetchStats(submission) {
 	});
 }
 
+// Swaps a same-day video's reaction and reply between counting toward the streak and not.
+/**
+ * @param {AirtableRecord} submission with its new fields
+ * @param {AirtableRecord | null} participant
+ */
+async function relabelSameDay(submission, participant) {
+	const fields = submission.fields;
+	const counted = !!fields[F.submissions.countedTowardStreak];
+	const channel = fields[F.submissions.channelId];
+	const messageTs = fields[F.submissions.messageTs];
+	const replyTs = fields[F.submissions.replyMessageTs];
+	if (!channel) return;
+	if (messageTs) {
+		await bestEffort('swap same-day reaction failed', async () => {
+			await slack.removeReaction(channel, messageTs, counted ? 'repeat' : 'white_check_mark');
+			await slack.addReaction(channel, messageTs, counted ? 'white_check_mark' : 'repeat');
+		});
+	}
+	if (replyTs) {
+		await bestEffort('rewrite same-day reply failed', async () => {
+			const group = [submission, ...(await listOtherPlatforms(submission.id, SUBMISSION_NOT_DELETED))];
+			const stats = combineStats((await Promise.all(group.map(fetchStats))).filter((post) => post != null));
+			const p = participant?.fields ?? {};
+			const text = counted
+				? messages.streakUpdate(fields[F.submissions.streakAtPost] ?? 0, fields[F.submissions.freezesAtPost] ?? 0, stats)
+				: messages.duplicatePost(
+						fields[F.submissions.slackId],
+						p[F.participants.currentStreak] ?? 0,
+						p[F.participants.streakFreezes] ?? 0,
+						stats
+					);
+			await slack.updateMessage(channel, replyTs, text, messages.submissionBlocks(text, participant?.fields));
+		});
+	}
+}
+
 /** @param {Record<string, any>} fields */
 function postReaction(fields) {
 	if (fields[F.submissions.pendingCheck]) return PENDING_REACTION;
@@ -122,9 +198,10 @@ export async function sweepDeletedMessages() {
 // the bot's checks on each platform's link, which become an x. Notes and feedback stay.
 /**
  * @param {AirtableRecord} primary
+ * @param {boolean} [keepStreak] another video took over the day, so its streak announcements stay
  * @returns {Promise<SlackCleanup[]>}
  */
-export async function planRejectionCleanup(primary) {
+export async function planRejectionCleanup(primary, keepStreak = false) {
 	const fields = primary.fields;
 	const channel = fields[F.submissions.channelId];
 	if (!channel) return [];
@@ -139,7 +216,8 @@ export async function planRejectionCleanup(primary) {
 		sharing.filter((s) => !groupIds.has(s.id)).map((s) => s.fields[F.submissions.messageTs])
 	);
 	const slackId = fields[F.submissions.slackId];
-	const streak = fields[F.submissions.countedTowardStreak] ? fields[F.submissions.streakAtPost] : null;
+	const streak =
+		fields[F.submissions.countedTowardStreak] && !keepStreak ? fields[F.submissions.streakAtPost] : null;
 
 	/** @type {SlackCleanup[]} */
 	const plan = [];
@@ -189,7 +267,8 @@ export async function runRejectionCleanup(plan) {
 }
 
 // Callers run this inside serialize(), like every other streak write. A rejection by an admin
-// undoes the streak the same way, but edits the bot reply and DMs the reason instead.
+// undoes the streak the same way, but edits the bot reply and DMs the reason instead. Either way,
+// another video from that day counts in its place if there is one.
 /**
  * @param {string} submissionId
  * @param {string} slackId
@@ -207,7 +286,22 @@ export async function deleteSubmission(submissionId, slackId, { rejection, revie
 	/** @type {Record<string, any> | null} */
 	let participantFields = null;
 
-	if (participant && fields[F.submissions.countedTowardStreak]) {
+	const backup =
+		participant && fields[F.submissions.countedTowardStreak]
+			? await findSameDayBackup(submission)
+			: null;
+	/** @type {AirtableRecord | null} */
+	let promoted = null;
+
+	if (backup) {
+		impact = 'transfer';
+		state = { transferredTo: backup.id };
+		promoted = await airtable.update(TABLES.submissions, backup.id, {
+			[F.submissions.countedTowardStreak]: true,
+			[F.submissions.streakAtPost]: fields[F.submissions.streakAtPost],
+			[F.submissions.freezesAtPost]: fields[F.submissions.freezesAtPost]
+		});
+	} else if (participant && fields[F.submissions.countedTowardStreak]) {
 		const p = participant.fields;
 		const next = deletionPlan(participant, submission);
 		impact = next.impact;
@@ -257,7 +351,7 @@ export async function deleteSubmission(submissionId, slackId, { rejection, revie
 	}
 	if (rejection) {
 		await bestEffort('plan rejection cleanup failed', async () =>
-			runRejectionCleanup(await planRejectionCleanup(submission))
+			runRejectionCleanup(await planRejectionCleanup(submission, !!promoted))
 		);
 	} else if (channel && messageTs) {
 		await bestEffort('remove reaction failed', () =>
@@ -265,6 +359,7 @@ export async function deleteSubmission(submissionId, slackId, { rejection, revie
 		);
 		await bestEffort('add wastebasket failed', () => slack.addReaction(channel, messageTs, 'wastebasket'));
 	}
+	if (promoted) await relabelSameDay(promoted, participant);
 	if (rejection) {
 		await bestEffort('rejection dm failed', () =>
 			slack.dm(slackId, messages.rejectedDm(fields[F.submissions.day], rejection, reviewer))
@@ -282,10 +377,29 @@ export async function restoreSubmission(submissionId) {
 	const fields = submission.fields;
 	if (!fields[F.submissions.deletedAt]) return;
 
-	const state = fields[F.submissions.preDeleteState]
+	let state = fields[F.submissions.preDeleteState]
 		? JSON.parse(fields[F.submissions.preDeleteState])
 		: null;
+	const rejected = !!state?.rejected;
 	const participant = await findParticipant(fields[F.submissions.slackId]);
+
+	// The video that took over the day stops counting. If it was rejected since, its own undo now
+	// belongs to this video, which holds the day again.
+	while (state?.transferredTo) {
+		const backup = await airtable.get(TABLES.submissions, state.transferredTo);
+		const held =
+			backup.fields[F.submissions.deletedAt] && backup.fields[F.submissions.preDeleteState]
+				? JSON.parse(backup.fields[F.submissions.preDeleteState])
+				: null;
+		const demoted = await airtable.update(TABLES.submissions, backup.id, {
+			[F.submissions.countedTowardStreak]: false,
+			[F.submissions.streakAtPost]: null,
+			[F.submissions.freezesAtPost]: null,
+			...(held ? { [F.submissions.preDeleteState]: held.rejected ? JSON.stringify({ rejected: true }) : '' } : {})
+		});
+		if (!demoted.fields[F.submissions.deletedAt]) await relabelSameDay(demoted, participant);
+		state = held ? { ...held, rejected } : { rejected };
+	}
 
 	if (state?.replacementDayId) {
 		await airtable.update(TABLES.days, state.replacementDayId, {

@@ -1,7 +1,7 @@
 import { error, fail } from '@sveltejs/kit';
 import { TABLES, F, PARTICIPANT_HAS_SLACK_ID } from '$lib/server/config.js';
 import * as airtable from '$lib/server/airtable.js';
-import { deleteSubmission, deletionPlan } from '$lib/server/deletion.js';
+import { deleteSubmission, deletionPlan, sameDayBackup } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
 import { groupByVideo, videoPlatforms } from '$lib/server/videos.js';
 
@@ -43,9 +43,11 @@ export async function load({ params, locals }) {
 			views,
 			countedTowardStreak: !!s.fields[F.submissions.countedTowardStreak],
 			deleteImpact:
-				isMe && s.fields[F.submissions.countedTowardStreak]
-					? deletionPlan(participant, s).impact
-					: 'none'
+				!isMe || !s.fields[F.submissions.countedTowardStreak]
+					? 'none'
+					: sameDayBackup(allSubmissions, s)
+						? 'transfer'
+						: deletionPlan(participant, s).impact
 		}))
 	};
 }

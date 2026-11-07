@@ -3,7 +3,7 @@ import { config, isReviewer, isAdmin, TABLES, F, PARTICIPANT_HAS_SLACK_ID } from
 import * as airtable from '$lib/server/airtable.js';
 import * as slack from '$lib/server/slack.js';
 import { messages, fromReviewer } from '$lib/server/messages.js';
-import { deleteSubmission, deletionPlan } from '$lib/server/deletion.js';
+import { deleteSubmission, deletionPlan, sameDayBackup } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
 import { groupByVideo } from '$lib/server/videos.js';
 import { isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
@@ -73,9 +73,17 @@ function flagsFor(primary, rows) {
 /**
  * @param {AirtableRecord} participant
  * @param {AirtableRecord} primary
+ * @param {AirtableRecord[]} submissions
  */
-function rejection(participant, primary) {
+function rejection(participant, primary, submissions) {
 	if (!primary.fields[F.submissions.countedTowardStreak]) return { impact: 'none', streak: 0, freezes: 0 };
+	if (sameDayBackup(submissions, primary)) {
+		return {
+			impact: 'transfer',
+			streak: participant.fields[F.participants.currentStreak] ?? 0,
+			freezes: participant.fields[F.participants.streakFreezes] ?? 0
+		};
+	}
 	const plan = deletionPlan(participant, primary);
 	return {
 		impact: plan.impact,
@@ -205,7 +213,7 @@ export async function load({ locals, url }) {
 					}
 				: null,
 			rejection: participant
-				? rejection(participant, primary)
+				? rejection(participant, primary, allSubmissions)
 				: { impact: 'none', streak: 0, freezes: 0 }
 		};
 	});
