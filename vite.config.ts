@@ -16,7 +16,9 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter()
+			adapter: adapter(),
+			// Slack posts interactions form-encoded with no Origin; hooks.server.js does the check
+			csrf: { checkOrigin: false }
 		})
 	]
 });
