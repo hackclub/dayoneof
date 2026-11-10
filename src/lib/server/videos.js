@@ -30,6 +30,12 @@ export function groupByVideo(submissions) {
 		});
 }
 
+// TikTok and some YouTube links carry the account's @handle, for posts unified-socials hasn't read yet.
+/** @param {string} url */
+function handleFromUrl(url) {
+	return url.match(/\/@([\w.-]+)/)?.[1] ?? '';
+}
+
 // What the site shows for each platform, most viewed first so it's the one shown by default.
 /** @param {AirtableRecord[]} rows */
 export function videoPlatforms(rows) {
@@ -37,6 +43,7 @@ export function videoPlatforms(rows) {
 		.map((s) => ({
 			platform: String(s.fields[F.submissions.platform] ?? ''),
 			url: String(s.fields[F.submissions.url] ?? ''),
+			handle: String(s.fields[F.submissions.accountHandle] || handleFromUrl(String(s.fields[F.submissions.url] ?? ''))),
 			title: String(s.fields[F.submissions.title] ?? ''),
 			thumbnail: String(s.fields[F.submissions.thumbnailUrl] ?? ''),
 			views: Number(s.fields[F.submissions.views] ?? 0)

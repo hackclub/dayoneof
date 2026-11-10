@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import { formatDate, formatViews } from '$lib/format';
 
@@ -14,6 +16,7 @@
 	const PRESENCE_EVERY_MS = 4000;
 	// A double click shouldn't also decide the video that slides in under the cursor.
 	const DOUBLE_CLICK_MS = 600;
+	const REVIEWED_PAGE = 30;
 
 	let index = $state(0);
 	let feedback = $state('');
@@ -24,6 +27,7 @@
 	let saving = $state<Record<string, boolean>>({});
 	let saveError = $state('');
 	let notice = $state('');
+	let loadingMore = false;
 	let lastDecisionAt = 0;
 	let placed = false;
 
@@ -74,6 +78,8 @@
 		none: () => "It didn't count toward their streak, so their streak won't change.",
 		transfer: () => "Their other video from that day counts instead, so their streak won't change."
 	};
+	const impactOf = (r: { impact: string; streak: number; freezes: number; earnedFreeze: boolean }) =>
+		`${impactText[r.impact](r)}${r.earnedFreeze ? ' The freeze this video earned is taken back.' : ''}`;
 
 	async function loadDetails(id: string | undefined) {
 		if (!id || id in details) return;
@@ -143,9 +149,30 @@
 		if (event.key === 'ArrowRight') go(1);
 	}
 
+	function filterReviewer(event: Event) {
+		const reviewer = (event.currentTarget as HTMLSelectElement).value;
+		goto(reviewer ? `/review?show=reviewed&reviewer=${reviewer}` : '/review?show=reviewed', { noScroll: true });
+	}
+
+	async function showMore() {
+		if (loadingMore) return;
+		loadingMore = true;
+		const url = new URL(page.url);
+		url.searchParams.set('limit', String(data.reviewed.length + REVIEWED_PAGE));
+		await goto(url, { noScroll: true, keepFocus: true, replaceState: true }).finally(() => (loadingMore = false));
+	}
+
+	function whenVisible(node: HTMLElement) {
+		const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && showMore(), {
+			rootMargin: '400px'
+		});
+		observer.observe(node);
+		return { destroy: () => observer.disconnect() };
+	}
+
 	const rejectQuestion = (submitter: HTMLElement | null) =>
 		data.admin && (submitter as HTMLButtonElement | null)?.value === 'reject'
-			? `Reject this video? ${impactText[video.rejection.impact](video.rejection)}`
+			? `Reject this video? ${impactOf(video.rejection)}`
 			: '';
 	const revertQuestion = () =>
 		'Revert this review? Its feedback messages and reaction are deleted and it goes back in the queue.';
@@ -355,6 +382,7 @@
 								<li>
 									<span class="muted-day">Day {h.day}</span>
 									<a href={h.url} target="_blank" rel="noopener">{h.title || h.url}</a>
+									<a href={h.slackUrl} target="_blank" rel="noopener">Slack thread</a>
 									{#if h.status}<span class="status">{h.status}</span>{/if}
 									{#if h.feedback}<p class="quote">{h.feedback}</p>{/if}
 								</li>
@@ -404,7 +432,7 @@
 					</div>
 					<p class="impact">
 						<strong>If rejected:</strong>
-						{impactText[video.rejection.impact](video.rejection)}
+						{impactOf(video.rejection)}
 						{#if !data.admin}An admin approves rejections and stars before they happen.{/if}
 					</p>
 				</form>
@@ -435,14 +463,15 @@
 			</section>
 
 			<section class="panel">
-				<h2>
-					{#if data.reviewer}
-						Reviewed by {data.reviewers.find((r) => r.slackId === data.reviewer)?.name || data.reviewer}
-						· <a href="/review?show=reviewed">Show everyone</a>
-					{:else}
-						Recently reviewed
-					{/if}
-				</h2>
+				<div class="reviewed-top">
+					<h2>Recently reviewed</h2>
+					<select aria-label="Reviewer" value={data.reviewer} onchange={filterReviewer}>
+						<option value="">Everyone</option>
+						{#each data.reviewers as r}
+							<option value={r.slackId}>{r.name || r.slackId || 'unknown'}</option>
+						{/each}
+					</select>
+				</div>
 				<table>
 					<thead>
 						<tr><th>Who</th><th>Video</th><th>Result</th><th>By</th><th>When</th><th>Feedback</th><th></th></tr>
@@ -451,7 +480,10 @@
 						{#each data.reviewed as r}
 							<tr>
 								<td><a href="/user/{r.slackId}">{r.name || r.slackId}</a></td>
-								<td><a href={r.url} target="_blank" rel="noopener">{r.url}</a></td>
+								<td>
+									<a href={r.url} target="_blank" rel="noopener">{r.url}</a>
+									· <a href={r.slackUrl} target="_blank" rel="noopener">Slack thread</a>
+								</td>
 								<td>{r.status}</td>
 								<td><a href="/review?show=reviewed&reviewer={r.by}">{r.byName || r.by}</a></td>
 								<td>{formatDate(r.at)}</td>
@@ -466,6 +498,9 @@
 						{/each}
 					</tbody>
 				</table>
+				{#if data.moreReviewed}
+					{#key data.reviewed.length}<div use:whenVisible class="more">Loading more…</div>{/key}
+				{/if}
 			</section>
 		{/if}
 	</main>
@@ -894,6 +929,28 @@
 		border: 1px solid var(--line);
 		border-radius: 6px;
 		cursor: pointer;
+	}
+
+	.reviewed-top {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 12px;
+	}
+
+	.reviewed-top select {
+		font: inherit;
+		padding: 2px 8px;
+		color: var(--ink);
+		background: var(--bg);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+	}
+
+	.more {
+		padding: 12px 8px 0;
+		font-style: italic;
+		color: var(--ink-soft);
 	}
 
 	tr.selected td {

@@ -15,7 +15,7 @@ import { messages } from './messages.js';
 import * as unified from './unified.js';
 import { combineStats } from './videos.js';
 import { syncParticipantTotalViews, findParticipant } from './jobs.js';
-import { streakDay, afterDeletingPost } from './streak.js';
+import { streakDay, afterDeletingPost, postEarnedFreeze } from './streak.js';
 import { PENDING_REACTION } from './pending.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
@@ -28,21 +28,33 @@ const RESTORED_FIELDS = [
 	F.participants.lastDay
 ];
 
+// submissions only needs to hold the participant's own; others are filtered out.
 /**
  * @param {AirtableRecord} participant
  * @param {AirtableRecord} submission
+ * @param {AirtableRecord[]} submissions
  */
-export function deletionPlan(participant, submission) {
+export function deletionPlan(participant, submission, submissions) {
 	const p = participant.fields;
-	return afterDeletingPost(
+	const counted = submissions.filter(
+		(s) =>
+			s.fields[F.submissions.slackId] === p[F.participants.slackId] &&
+			s.fields[F.submissions.countedTowardStreak] &&
+			!s.fields[F.submissions.deletedAt] &&
+			!s.fields[F.submissions.primarySubmission]
+	);
+	const earnedFreeze = postEarnedFreeze(submission, counted);
+	const plan = afterDeletingPost(
 		{
 			streak: p[F.participants.currentStreak] ?? 0,
 			freezes: p[F.participants.streakFreezes] ?? 0,
 			daysCompleted: p[F.participants.daysCompleted] ?? 0
 		},
 		submission.fields[F.submissions.day],
-		streakDay(p[F.participants.tz])
+		streakDay(p[F.participants.tz]),
+		earnedFreeze
 	);
+	return { ...plan, earnedFreeze };
 }
 
 // The participant's earliest other video that day, which takes over the streak if this one's rejected.
@@ -303,7 +315,10 @@ export async function deleteSubmission(submissionId, slackId, { rejection, revie
 		});
 	} else if (participant && fields[F.submissions.countedTowardStreak]) {
 		const p = participant.fields;
-		const next = deletionPlan(participant, submission);
+		const counted = await airtable.list(TABLES.submissions, {
+			filterByFormula: `AND(${airtable.eq(F.submissions.slackId, slackId)}, {${F.submissions.countedTowardStreak}}, ${SUBMISSION_NOT_DELETED}, ${SUBMISSION_IS_PRIMARY})`
+		});
+		const next = deletionPlan(participant, submission, counted);
 		impact = next.impact;
 		participantFields = next.fields;
 

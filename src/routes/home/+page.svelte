@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { formatDate, formatViews, initials } from '$lib/format';
 	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
+	import { score } from '$lib/search';
 	import { numberTape, sprite } from '$lib/asset_sheet';
 	import { HELP_URL } from '$lib/help';
 	import { SITE_URL } from '$lib/site';
@@ -38,14 +40,48 @@
 		starred: 'Starred reels'
 	};
 
-	const videos = $derived(
+	let query = $state(page.url.searchParams.get('q') ?? '');
+	let searchBox = $state<HTMLInputElement>();
+
+	const sorted = $derived(
 		sort === 'views'
 			? [...data.videos].sort((a, b) => b.views - a.views)
 			: sort === 'starred'
 				? data.videos.filter((v) => v.starred)
 				: data.videos
 	);
+	// Best matches first; ties keep the chosen sort's order.
+	const videos = $derived.by(() => {
+		if (!query.trim()) return sorted;
+		return sorted
+			.map((video, i) => ({
+				video,
+				i,
+				score: score({ names: [video.name, ...video.platforms.map((p) => p.handle)], titles: video.platforms.map((p) => p.title) }, query)
+			}))
+			.filter((r) => r.score > 0)
+			.sort((a, b) => b.score - a.score || a.i - b.i)
+			.map((r) => r.video);
+	});
+
+	function search(value: string) {
+		query = value;
+		const url = new URL(page.url);
+		if (value.trim()) url.searchParams.set('q', value);
+		else url.searchParams.delete('q');
+		replaceState(url, page.state);
+	}
+
+	function onKey(event: KeyboardEvent) {
+		const target = event.target as HTMLElement;
+		if (event.key === '/' && !target.closest('input, textarea')) {
+			event.preventDefault();
+			searchBox?.focus();
+		}
+	}
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <svelte:head>
 	<title>Every video and streak · Day One Of</title>
@@ -158,7 +194,27 @@
 	<div class="columns">
 		<section class="feed">
 			<div class="feed-head">
-				<h1>{headings[sort]}</h1>
+				<h1>{query.trim() ? `${videos.length} result${videos.length === 1 ? '' : 's'}` : headings[sort]}</h1>
+				<div class="feed-tools">
+				<label class="search">
+					<svg viewBox="0 0 24 24" aria-hidden="true"
+						><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg
+					>
+					<input
+						bind:this={searchBox}
+						type="search"
+						value={query}
+						oninput={(e) => search(e.currentTarget.value)}
+						onkeydown={(e) => e.key === 'Escape' && search('')}
+						placeholder="Search titles, @handles, names"
+						aria-label="Search videos by title, platform username or Slack name"
+						autocomplete="off"
+						spellcheck="false"
+					/>
+					{#if query}
+						<button type="button" class="clear" aria-label="Clear search" onclick={() => search('')}>×</button>
+					{/if}
+				</label>
 				<div class="segmented" role="group" aria-label="Sort videos">
 					{#each sorts as option}
 						<button
@@ -172,11 +228,14 @@
 						</button>
 					{/each}
 				</div>
+				</div>
 			</div>
 
 			{#if videos.length === 0}
 				<p class="empty">
-					{sort === 'starred'
+					{query.trim()
+						? `Nothing matches "${query.trim()}". Try a creator's name, their @handle, or a word from a title.`
+						: sort === 'starred'
 						? 'No starred reels yet. The reviewers star the best ones, so check back soon!'
 						: 'No videos yet. Post a link in the Slack channel to start the wall!'}
 				</p>
@@ -546,6 +605,80 @@
 		justify-content: space-between;
 		flex-wrap: wrap;
 		gap: 12px;
+	}
+
+	.feed-tools {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.search {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		min-width: min(17rem, 100%);
+		padding: 0.15rem 0.5rem 0.15rem 0.7rem;
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
+		border-radius: 10px;
+		box-shadow: 3px 3px 0 var(--shadow);
+	}
+
+	.search:focus-within {
+		outline: 3px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	.search svg {
+		flex: 0 0 auto;
+		width: 1.1rem;
+		height: 1.1rem;
+		fill: none;
+		stroke: var(--ink-soft);
+		stroke-width: 2.5;
+		stroke-linecap: round;
+	}
+
+	.search input {
+		flex: 1 1 auto;
+		min-width: 0;
+		font: inherit;
+		font-size: clamp(0.9rem, 1vw, 1.05rem);
+		font-weight: 600;
+		color: var(--ink);
+		background: none;
+		border: none;
+		outline: none;
+		padding: 0.4rem 0;
+	}
+
+	.search input::placeholder {
+		color: var(--ink-soft);
+		font-family: 'Figtree', system-ui, sans-serif;
+		font-size: 0.85em;
+		font-weight: 700;
+	}
+
+	.search input::-webkit-search-cancel-button {
+		display: none;
+	}
+
+	.clear {
+		flex: 0 0 auto;
+		font: inherit;
+		font-size: 1.3rem;
+		line-height: 1;
+		color: var(--ink-soft);
+		background: none;
+		border: none;
+		padding: 0 0.2rem;
+		cursor: var(--cursor-pointer);
+	}
+
+	.clear:hover {
+		color: var(--accent);
 	}
 
 	.feed-head h1 {

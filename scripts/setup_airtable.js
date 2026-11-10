@@ -10,6 +10,8 @@
 import {
 	tablesFor,
 	shippingTableFor,
+	statsTableFor,
+	feedbackTableFor,
 	F,
 	DAY_STATUSES,
 	REVIEW_STATUSES,
@@ -118,7 +120,8 @@ function schemaFor(appEnv) {
 				{ name: F.submissions.reviewedAt, ...when },
 				{ name: F.submissions.reviewFeedback, type: 'multilineText' },
 				{ name: F.submissions.escalatedBy, ...text },
-				{ name: F.submissions.escalatedAt, ...when }
+				{ name: F.submissions.escalatedAt, ...when },
+				{ name: F.submissions.accountHandle, ...text }
 			]
 		},
 		{
@@ -139,6 +142,36 @@ function schemaFor(appEnv) {
 				{ name: F.shipping.shirtSize, ...select(SHIRT_SIZES) },
 				{ name: F.shipping.shippedPrizes, ...multiSelect(PRIZE_NAMES) },
 				{ name: F.shipping.submittedAt, ...when }
+			]
+		},
+		{
+			name: statsTableFor(appEnv),
+			fields: Object.entries(F.stats).map(([key, name]) =>
+				key === 'date'
+					? { name, ...text }
+					: key === 'takenAt'
+						? { name, ...when }
+						: key === 'details'
+							? { name, type: 'multilineText' }
+							: key === 'averageStreak' || key === 'nps'
+								? { name, type: 'number', options: { precision: 1 } }
+								: { name, ...int }
+			)
+		},
+		{
+			name: feedbackTableFor(appEnv),
+			fields: [
+				{ name: F.feedback.slackId, ...text },
+				{ name: F.feedback.name, ...text },
+				{ name: F.feedback.email, type: 'email' },
+				{ name: F.feedback.score, ...int },
+				{ name: F.feedback.heardFrom, type: 'multilineText' },
+				{ name: F.feedback.doingWell, type: 'multilineText' },
+				{ name: F.feedback.doBetter, type: 'multilineText' },
+				{ name: F.feedback.otherFeedback, type: 'multilineText' },
+				{ name: F.feedback.currentStreak, ...int },
+				{ name: F.feedback.daysCompleted, ...int },
+				{ name: F.feedback.submittedAt, ...when }
 			]
 		}
 	];

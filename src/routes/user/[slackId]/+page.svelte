@@ -1,8 +1,9 @@
 <script lang="ts">
-	import { formatDate, formatViews, initials } from '$lib/format';
+	import { formatDate, formatViews, initials, PLATFORM_NAMES } from '$lib/format';
 	import { numberTape, sprite } from '$lib/asset_sheet';
 	import { HELP_URL } from '$lib/help';
 	import PlatformSwitch from '$lib/platform_switch.svelte';
+	import ViewsChart from '$lib/views_chart.svelte';
 
 	let { data, form } = $props();
 
@@ -23,6 +24,8 @@
 	);
 
 	type Video = (typeof data.videos)[number];
+
+	const platformTotal = $derived(data.viewsByPlatform.reduce((sum, p) => sum + p.views, 0));
 
 	let dialog = $state<HTMLDialogElement>();
 	let pending = $state<Video | null>(null);
@@ -85,9 +88,21 @@
 						<span class="stat-label">day streak</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value taped" style={numberTape('stat', 1)}>{formatViews(data.totalViews)}</span>
-						<span class="stat-label">views</span>
+						<span class="stat-value taped" style={numberTape('stat', 3)}>{data.streakFreezes}</span>
+						<span class="stat-label">streak freeze{data.streakFreezes === 1 ? '' : 's'}</span>
 					</div>
+					<div class="stat">
+						<span class="stat-value taped" style={numberTape('stat', 1)}
+							>{formatViews(data.viewsByPlatform.length ? platformTotal : data.totalViews)}</span
+						>
+						<span class="stat-label">total views</span>
+					</div>
+					{#each data.viewsByPlatform as p, i}
+						<div class="stat">
+							<span class="stat-value taped" style={numberTape('stat', 4 + i)}>{formatViews(p.views)}</span>
+							<span class="stat-label">{PLATFORM_NAMES[p.platform] ?? p.platform} views</span>
+						</div>
+					{/each}
 					<div class="stat">
 						<span class="stat-value taped" style={numberTape('stat', 2)}>{data.videosPosted}</span>
 						<span class="stat-label">video{data.videosPosted === 1 ? '' : 's'}</span>
@@ -95,6 +110,13 @@
 				</div>
 			</div>
 		</section>
+
+		{#if data.viewsByDay.length > 1}
+			<section class="views-chart">
+				<h2>Views by day</h2>
+				<ViewsChart kind="line" points={data.viewsByDay} height={130} label="Views on each day's videos" />
+			</section>
+		{/if}
 
 		<div class="feed-head">
 			<h2>{isMe ? 'Your videos' : 'Videos'}</h2>
@@ -167,7 +189,10 @@
 		{#if pending}
 			<form method="POST" action="?/deleteVideo">
 				<h2>⚠️ Delete this video?</h2>
-				<p class="warn">{impactText[pending.deleteImpact]}</p>
+				<p class="warn">
+					{impactText[pending.deleteImpact]}
+					{#if pending.deleteTakesFreeze}It also takes back the streak freeze this video earned you.{/if}
+				</p>
 				<p>
 					It disappears from the site, its views stop counting, and the bot's reply in Slack is
 					deleted. You can't undo this yourself.
@@ -309,30 +334,53 @@
 	.stats {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
+		align-items: baseline;
+		gap: 0.5rem 0;
 	}
 
 	.stat {
 		display: flex;
-		align-items: center;
-		gap: 14px;
-		background: var(--grain), var(--bg-2);
-		border: 1.5px solid var(--line);
-		border-radius: 999px;
-		padding: 4px 12px 4px 4px;
+		align-items: baseline;
+		gap: 0.7rem;
+		padding: 0 clamp(0.9rem, 1.6vw, 1.4rem);
+		border-left: 2px dashed var(--line);
+	}
+
+	.stat:first-child {
+		padding-left: 0.3rem;
+		border-left: none;
 	}
 
 	.stat-value {
-		font-weight: 800;
+		font-family: var(--font-hand);
+		font-weight: 700;
 		font-variant-numeric: tabular-nums;
-		font-size: 0.95rem;
+		font-size: clamp(1.15rem, 0.6vh + 1vw, 1.5rem);
 		color: var(--accent-ink);
-		padding: 3px 12px;
+		padding: 0 0.5rem;
 	}
 
 	.stat-label {
-		font-size: 0.9rem;
+		font-family: var(--font-hand);
+		font-size: clamp(0.95rem, 1vw, 1.1rem);
 		color: var(--ink-soft);
+	}
+
+	.views-chart {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		width: min(44rem, 100%);
+		background: var(--paper), var(--pencil);
+		border: 3px solid transparent;
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		box-shadow: 4px 5px 0 var(--shadow);
+		padding: clamp(0.9rem, 1.6vw, 1.3rem);
+		transform: rotate(-0.4deg);
+	}
+
+	.views-chart h2 {
+		font-size: clamp(1.15rem, 0.8vh + 0.9vw, 1.5rem);
 	}
 
 	.feed-head {
@@ -660,6 +708,7 @@
 		.grid {
 			grid-template-columns: repeat(3, minmax(0, 1fr));
 		}
+
 	}
 
 	@media (max-width: 30rem) {
