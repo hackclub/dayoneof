@@ -4,6 +4,37 @@ import * as airtable from '$lib/server/airtable.js';
 import { deleteSubmission, deletionPlan, sameDayBackup } from '$lib/server/deletion.js';
 import { serialize } from '$lib/server/queue.js';
 import { groupByVideo, videoPlatforms } from '$lib/server/videos.js';
+import { addDays } from '$lib/server/streak.js';
+
+/** @param {ReturnType<typeof groupByVideo>} groups */
+function viewsByDay(groups) {
+	/** @type {Map<string, number>} */
+	const views = new Map();
+	for (const { primary, views: n } of groups) {
+		const day = primary.fields[F.submissions.day];
+		if (day) views.set(day, (views.get(day) ?? 0) + n);
+	}
+	const days = [...views.keys()].sort();
+	const points = [];
+	for (let day = days[0]; day && day <= days[days.length - 1]; day = addDays(day, 1)) {
+		points.push({ date: day, value: views.get(day) ?? 0 });
+	}
+	return points;
+}
+
+/** @param {import('$lib/server/airtable.js').AirtableRecord[]} rows */
+function viewsByPlatform(rows) {
+	/** @type {Map<string, number>} */
+	const views = new Map();
+	for (const s of rows) {
+		const platform = s.fields[F.submissions.platform];
+		views.set(platform, (views.get(platform) ?? 0) + (s.fields[F.submissions.views] ?? 0));
+	}
+	return [...views]
+		.filter(([, n]) => n > 0)
+		.map(([platform, n]) => ({ platform, views: n }))
+		.sort((a, b) => b.views - a.views);
+}
 
 export async function load({ params, locals }) {
 	const [participants, allSubmissions] = await Promise.all([
@@ -33,22 +64,26 @@ export async function load({ params, locals }) {
 		slackId: params.slackId,
 		avatar: participant.fields[F.participants.avatar] || '',
 		currentStreak: participant.fields[F.participants.currentStreak] ?? 0,
+		streakFreezes: Number(participant.fields[F.participants.streakFreezes] ?? 0),
 		totalViews: participant.fields[F.participants.totalViews] ?? 0,
 		videosPosted: groups.length,
-		videos: groups.map(({ primary: s, rows, views }) => ({
-			key: s.id,
-			id: isMe ? s.id : '',
-			platforms: videoPlatforms(rows),
-			postedAt: s.fields[F.submissions.postedAt],
-			views,
-			countedTowardStreak: !!s.fields[F.submissions.countedTowardStreak],
-			deleteImpact:
-				!isMe || !s.fields[F.submissions.countedTowardStreak]
-					? 'none'
-					: sameDayBackup(allSubmissions, s)
-						? 'transfer'
-						: deletionPlan(participant, s).impact
-		}))
+		viewsByDay: viewsByDay(groups),
+		viewsByPlatform: viewsByPlatform(groups.flatMap(({ rows }) => rows)),
+		videos: groups.map(({ primary: s, rows, views }) => {
+			const counted = !!s.fields[F.submissions.countedTowardStreak];
+			const plan =
+				isMe && counted && !sameDayBackup(allSubmissions, s) ? deletionPlan(participant, s, allSubmissions) : null;
+			return {
+				key: s.id,
+				id: isMe ? s.id : '',
+				platforms: videoPlatforms(rows),
+				postedAt: s.fields[F.submissions.postedAt],
+				views,
+				countedTowardStreak: counted,
+				deleteImpact: !isMe || !counted ? 'none' : (plan?.impact ?? 'transfer'),
+				deleteTakesFreeze: !!plan?.earnedFreeze
+			};
+		})
 	};
 }
 

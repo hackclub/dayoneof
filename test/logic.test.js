@@ -8,7 +8,8 @@ import {
 	settleMissedDays,
 	nextMilestone,
 	viewMilestoneCrossed,
-	afterDeletingPost
+	afterDeletingPost,
+	postEarnedFreeze
 } from '../src/lib/server/streak.js';
 
 test('streakDay rolls over at 3am local time', () => {
@@ -102,7 +103,7 @@ test('viewMilestoneCrossed returns the highest threshold newly passed', () => {
 });
 
 test('afterDeletingPost rolls back a post from today', () => {
-	const next = afterDeletingPost({ streak: 4, freezes: 2, daysCompleted: 4 }, '2026-01-10', '2026-01-10');
+	const next = afterDeletingPost({ streak: 4, freezes: 2, daysCompleted: 4 }, '2026-01-10', '2026-01-10', true);
 	assert.equal(next.impact, 'today');
 	assert.equal(next.dayStatus, null);
 	assert.deepEqual(next.fields, {
@@ -115,6 +116,29 @@ test('afterDeletingPost rolls back a post from today', () => {
 
 	const capped = afterDeletingPost({ streak: 4, freezes: 3, daysCompleted: 4 }, '2026-01-10', '2026-01-10');
 	assert.equal(capped.fields.streak_freezes, 3);
+});
+
+test('afterDeletingPost takes back a freeze an earlier post earned', () => {
+	const frozen = afterDeletingPost({ streak: 4, freezes: 2, daysCompleted: 5 }, '2026-01-08', '2026-01-10', true);
+	assert.equal(frozen.dayStatus, 'frozen');
+	assert.deepEqual(frozen.fields, { current_streak: 3, streak_freezes: 0, days_completed: 4 });
+
+	const broke = afterDeletingPost({ streak: 4, freezes: 1, daysCompleted: 5 }, '2026-01-08', '2026-01-10', true);
+	assert.equal(broke.dayStatus, 'missed');
+	assert.deepEqual(broke.fields, { current_streak: 0, streak_freezes: 0, days_completed: 4, status: 'broken' });
+});
+
+test('postEarnedFreeze checks the posted day and the cap', () => {
+	/** @type {(id: string, day: string, freezes: number) => { id: string, fields: Record<string, any> }} */
+	const post = (id, day, freezes) => ({ id, fields: { day, freezes_at_post: freezes } });
+	const counted = [post('a', '2026-01-01', 0), post('b', '2026-01-02', 1), post('c', '2026-01-03', 1)];
+	assert.equal(postEarnedFreeze(counted[1], counted), true);
+	assert.equal(postEarnedFreeze(counted[2], counted), false);
+
+	const atCap = [post('a', '2026-01-01', 3), post('b', '2026-01-02', 3)];
+	assert.equal(postEarnedFreeze(atCap[1], atCap), false);
+	const reachedCap = [post('a', '2026-01-01', 2), post('b', '2026-01-02', 3)];
+	assert.equal(postEarnedFreeze(reachedCap[1], reachedCap), true);
 });
 
 test('afterDeletingPost spends a freeze for an earlier day, or breaks without one', () => {

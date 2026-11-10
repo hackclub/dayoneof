@@ -7,6 +7,8 @@ export function count(value: unknown) {
 	return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
+export const PLATFORM_NAMES: Record<string, string> = { youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram' };
+
 export function formatViews(views: number) {
 	return viewFormatter.format(views);
 }

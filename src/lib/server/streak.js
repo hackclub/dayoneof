@@ -125,25 +125,43 @@ export function compareStreaks(a, b) {
 	);
 }
 
+// Whether a counted post banked a freeze, judged from the participant's live counted posts. At the
+// cap it only did if the post before it was under the cap, and when that's unknown they keep it.
+/**
+ * @param {{ id: string, fields: Record<string, any> }} post
+ * @param {{ id: string, fields: Record<string, any> }[]} counted
+ */
+export function postEarnedFreeze(post, counted) {
+	const day = post.fields[F.submissions.day];
+	const before = counted
+		.filter((s) => s.id !== post.id && s.fields[F.submissions.day] < day)
+		.sort((a, b) => (a.fields[F.submissions.day] < b.fields[F.submissions.day] ? 1 : -1));
+	if ((before.length + 1) % 2) return false;
+	const freezes = post.fields[F.submissions.freezesAtPost] ?? 0;
+	if (freezes < MAX_STREAK_FREEZES) return freezes > 0;
+	return (before[0]?.fields[F.submissions.freezesAtPost] ?? MAX_STREAK_FREEZES) < MAX_STREAK_FREEZES;
+}
+
 // Deleting today's counted post rolls it back so another can still be posted before the deadline.
-// An earlier one leaves that day unposted: a freeze covers it, or the streak breaks.
-// At the freeze cap it's unknown whether the post earned one, so the participant keeps it.
+// An earlier one leaves that day unposted: a freeze covers it, or the streak breaks. A freeze the
+// post earned is taken back first, as if it was never banked.
 /**
  * @param {{ streak: number, freezes: number, daysCompleted: number }} state
  * @param {string} postDay
  * @param {string} today
+ * @param {boolean} [earnedFreeze]
  */
-export function afterDeletingPost({ streak, freezes, daysCompleted }, postDay, today) {
+export function afterDeletingPost({ streak, freezes: had, daysCompleted }, postDay, today, earnedFreeze = false) {
 	const completed = Math.max(0, daysCompleted - 1);
+	const freezes = earnedFreeze ? Math.max(0, had - 1) : had;
 	if (postDay >= today) {
 		const kept = Math.max(0, streak - 1);
-		const earned = daysCompleted % 2 === 0 && freezes > 0 && freezes < MAX_STREAK_FREEZES;
 		return {
 			impact: /** @type {const} */ ('today'),
 			dayStatus: null,
 			fields: {
 				[F.participants.currentStreak]: kept,
-				[F.participants.streakFreezes]: earned ? freezes - 1 : freezes,
+				[F.participants.streakFreezes]: freezes,
 				[F.participants.daysCompleted]: completed,
 				[F.participants.status]: kept > 0 ? 'active' : completed > 0 ? 'broken' : 'notStarted',
 				[F.participants.lastDay]: addDays(today, -1)
@@ -168,6 +186,7 @@ export function afterDeletingPost({ streak, freezes, daysCompleted }, postDay, t
 		dayStatus: /** @type {const} */ ('missed'),
 		fields: {
 			[F.participants.currentStreak]: 0,
+			...(earnedFreeze ? { [F.participants.streakFreezes]: freezes } : {}),
 			[F.participants.daysCompleted]: completed,
 			[F.participants.status]: 'broken'
 		}

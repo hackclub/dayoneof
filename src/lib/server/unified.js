@@ -12,7 +12,7 @@ function headers() {
 /**
  * @param {string} platform
  * @param {string} platformPostId
- * @returns {Promise<{ id: number, views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean, title: string, caption: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null, durationSeconds: number | null, noHcMention: boolean, channelId: string | null } | null>}
+ * @returns {Promise<{ id: number, views: number, likes: number, shares: number | null, watchHours: number | null, watchHoursEstimated: boolean, title: string, caption: string, thumbnailUrl: string, archiveUrl: string, publishedAt: string | null, durationSeconds: number | null, noHcMention: boolean, channelId: string | null, accountHandle: string } | null>}
  */
 export async function fetchPostByPlatformId(platform, platformPostId) {
 	const params = new URLSearchParams({ platform, platform_post_id: platformPostId });
@@ -35,7 +35,8 @@ export async function fetchPostByPlatformId(platform, platformPostId) {
 		publishedAt: post.published_at ?? null,
 		durationSeconds: post.duration_seconds ?? null,
 		noHcMention: post.hc_share === 0,
-		channelId: post.account_platform_id ?? null
+		channelId: post.account_platform_id ?? null,
+		accountHandle: String(post.account_handle ?? post.channel_name ?? '').replace(/^@/, '')
 	};
 }
 

@@ -16,7 +16,7 @@ import { claim, release, decided, undecided } from '$lib/server/presence.js';
 
 const LOW_LIKES = 5;
 const LOW_LIKES_AFTER_MS = 24 * 60 * 60 * 1000;
-const REVIEWED_SHOWN = 30;
+const REVIEWED_PAGE = 30;
 // Reviewers who aren't admins can only suggest these; an admin makes the call. "Extra decision"
 // notes are from before suggestions said which way they leaned.
 const ADMIN_ONLY = ['reject', 'star'];
@@ -76,21 +76,23 @@ function flagsFor(primary, rows) {
  * @param {AirtableRecord[]} submissions
  */
 function rejection(participant, primary, submissions) {
-	if (!primary.fields[F.submissions.countedTowardStreak]) return { impact: 'none', streak: 0, freezes: 0 };
+	if (!primary.fields[F.submissions.countedTowardStreak]) return { impact: 'none', streak: 0, freezes: 0, earnedFreeze: false };
 	if (sameDayBackup(submissions, primary)) {
 		return {
 			impact: 'transfer',
 			streak: participant.fields[F.participants.currentStreak] ?? 0,
-			freezes: participant.fields[F.participants.streakFreezes] ?? 0
+			freezes: participant.fields[F.participants.streakFreezes] ?? 0,
+			earnedFreeze: false
 		};
 	}
-	const plan = deletionPlan(participant, primary);
+	const plan = deletionPlan(participant, primary, submissions);
 	return {
 		impact: plan.impact,
 		streak: Number(plan.fields[F.participants.currentStreak] ?? 0),
 		freezes: Number(
 			plan.fields[F.participants.streakFreezes] ?? participant.fields[F.participants.streakFreezes] ?? 0
-		)
+		),
+		earnedFreeze: plan.earnedFreeze
 	};
 }
 
@@ -100,6 +102,7 @@ export async function load({ locals, url }) {
 	const admin = isAdmin(me);
 	const showReviewed = url.searchParams.get('show') === 'reviewed';
 	const reviewer = url.searchParams.get('reviewer') ?? '';
+	const shown = Math.max(REVIEWED_PAGE, Number(url.searchParams.get('limit')) || 0);
 
 	// Cached so the reload after each decision is instant; this process's own writes land in it right away.
 	const [participants, allSubmissions] = await Promise.all([
@@ -125,9 +128,10 @@ export async function load({ locals, url }) {
 	const allReviewed = allSubmissions
 		.filter((s) => s.fields[F.submissions.reviewStatus] && !s.fields[F.submissions.primarySubmission])
 		.sort((a, b) => (a.fields[F.submissions.reviewedAt] < b.fields[F.submissions.reviewedAt] ? 1 : -1));
-	const reviewed = reviewer
+	const filtered = reviewer
 		? allReviewed.filter((s) => s.fields[F.submissions.reviewedBy] === reviewer)
-		: allReviewed.slice(0, REVIEWED_SHOWN);
+		: allReviewed;
+	const reviewed = filtered.slice(0, shown);
 	/** @type {Map<string, Record<string, number>>} */
 	const tallies = new Map();
 	for (const s of allReviewed) {
@@ -144,6 +148,8 @@ export async function load({ locals, url }) {
 		text.replace(/<@(\w+)>/g, (/** @type {string} */ _, /** @type {string} */ id) => `@${nameOf(id) || id}`);
 	/** @param {AirtableRecord} s */
 	const showFeedback = (s) => showMentions(s.fields[F.submissions.reviewFeedback] ?? '');
+	/** @param {AirtableRecord} s */
+	const slackUrlOf = (s) => slack.permalink(s.fields[F.submissions.channelId], s.fields[F.submissions.messageTs]);
 
 	/** @type {Map<string, AirtableRecord[]>} */
 	const postsBy = new Map();
@@ -167,7 +173,7 @@ export async function load({ locals, url }) {
 			postedAt: f[F.submissions.postedAt],
 			streakAtPost: f[F.submissions.streakAtPost] ?? null,
 			views,
-			slackUrl: slack.permalink(f[F.submissions.channelId], f[F.submissions.messageTs]),
+			slackUrl: slackUrlOf(primary),
 			unifiedUrl: f[F.submissions.unifiedId]
 				? `${UNIFIED_WEB_URL}/posts/${f[F.submissions.platform]}-${f[F.submissions.videoId]}`
 				: '',
@@ -188,6 +194,7 @@ export async function load({ locals, url }) {
 					day: s.fields[F.submissions.day],
 					url: s.fields[F.submissions.url],
 					title: s.fields[F.submissions.title] ?? '',
+					slackUrl: slackUrlOf(s),
 					status:
 						s.fields[F.submissions.reviewStatus] ??
 						(s.fields[F.submissions.deletedAt]
@@ -214,7 +221,7 @@ export async function load({ locals, url }) {
 				: null,
 			rejection: participant
 				? rejection(participant, primary, allSubmissions)
-				: { impact: 'none', streak: 0, freezes: 0 }
+				: { impact: 'none', streak: 0, freezes: 0, earnedFreeze: false }
 		};
 	});
 
@@ -241,13 +248,15 @@ export async function load({ locals, url }) {
 					slackId: s.fields[F.submissions.slackId],
 					name: nameOf(s.fields[F.submissions.slackId]),
 					url: s.fields[F.submissions.url],
+					slackUrl: slackUrlOf(s),
 					status: s.fields[F.submissions.reviewStatus],
 					by: s.fields[F.submissions.reviewedBy] ?? '',
 					byName: nameOf(s.fields[F.submissions.reviewedBy] ?? ''),
 					at: s.fields[F.submissions.reviewedAt] ?? '',
 					feedback: showFeedback(s)
 				}))
-			: []
+			: [],
+		moreReviewed: showReviewed && filtered.length > shown
 	};
 }
 

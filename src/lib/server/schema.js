@@ -21,6 +21,16 @@ export function shippingTableFor(appEnv) {
 	return appEnv === 'prod' ? 'shipping' : 'shipping_dev';
 }
 
+/** @param {'dev' | 'prod'} appEnv */
+export function statsTableFor(appEnv) {
+	return appEnv === 'prod' ? 'stats' : 'stats_dev';
+}
+
+/** @param {'dev' | 'prod'} appEnv */
+export function feedbackTableFor(appEnv) {
+	return appEnv === 'prod' ? 'feedback' : 'feedback_dev';
+}
+
 export const F = {
 	participants: {
 		slackId: 'slack_id',
@@ -89,7 +99,8 @@ export const F = {
 		reviewedAt: 'reviewed_at',
 		reviewFeedback: 'review_feedback',
 		escalatedBy: 'escalated_by',
-		escalatedAt: 'escalated_at'
+		escalatedAt: 'escalated_at',
+		accountHandle: 'account_handle'
 	},
 	shipping: {
 		slackId: 'slack_id',
@@ -106,6 +117,69 @@ export const F = {
 		birthday: 'birthday',
 		shirtSize: 'shirt_size',
 		shippedPrizes: 'shipped_prizes',
+		submittedAt: 'submitted_at'
+	},
+	// One row per Eastern day, rewritten each hour so it ends up holding that day's last numbers.
+	stats: {
+		date: 'date',
+		takenAt: 'taken_at',
+		signups: 'signups',
+		verified: 'verified',
+		started: 'ever_posted',
+		live: 'live_streaks',
+		active: 'active',
+		frozen: 'frozen',
+		broken: 'broken',
+		notStarted: 'not_started',
+		averageStreak: 'average_streak',
+		longestStreak: 'longest_streak',
+		freezesBanked: 'freezes_banked',
+		daysCompleted: 'days_completed',
+		warnings: 'warnings',
+		remindersOff: 'reminders_off',
+		videos: 'videos',
+		links: 'links',
+		views: 'views',
+		likes: 'likes',
+		youtubeViews: 'youtube_views',
+		tiktokViews: 'tiktok_views',
+		instagramViews: 'instagram_views',
+		youtubeLinks: 'youtube_links',
+		tiktokLinks: 'tiktok_links',
+		instagramLinks: 'instagram_links',
+		postedToday: 'posted_today',
+		frozenToday: 'frozen_today',
+		missedToday: 'missed_today',
+		signupsToday: 'signups_today',
+		videosToday: 'videos_today',
+		starred: 'starred',
+		passed: 'passed',
+		rejected: 'rejected',
+		unreviewed: 'unreviewed',
+		escalated: 'escalated',
+		pending: 'pending',
+		deletedVideos: 'deleted_videos',
+		unavailable: 'unavailable',
+		noHcMention: 'no_hc_mention',
+		repeats: 'repeats',
+		shippingForms: 'shipping_forms',
+		shirtsUnlocked: 'shirts_unlocked',
+		shirtSizesIn: 'shirt_sizes_in',
+		feedbackResponses: 'feedback_responses',
+		nps: 'nps',
+		details: 'details'
+	},
+	feedback: {
+		slackId: 'slack_id',
+		name: 'name',
+		email: 'email',
+		score: 'score',
+		heardFrom: 'heard_from',
+		doingWell: 'doing_well',
+		doBetter: 'do_better',
+		otherFeedback: 'other_feedback',
+		currentStreak: 'current_streak',
+		daysCompleted: 'days_completed',
 		submittedAt: 'submitted_at'
 	}
 };

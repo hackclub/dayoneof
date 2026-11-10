@@ -33,6 +33,7 @@ export function postFields(post) {
 		// Left out while blank, so a stand-in from previews.js isn't wiped before the archive is ready.
 		...(post.title ? { [F.submissions.title]: post.title } : {}),
 		...(post.thumbnailUrl ? { [F.submissions.thumbnailUrl]: post.thumbnailUrl } : {}),
+		...(post.accountHandle ? { [F.submissions.accountHandle]: post.accountHandle } : {}),
 		[F.submissions.archiveUrl]: post.archiveUrl,
 		[F.submissions.unifiedId]: String(post.id),
 		[F.submissions.noHcMention]: post.noHcMention,

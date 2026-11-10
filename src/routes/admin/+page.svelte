@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { SHIRT_PRIZE } from '$lib/prizes';
+	import Dashboard from './dashboard.svelte';
 
 	let { data, form } = $props();
+
+	let scoreFilter = $state<'all' | 'promoters' | 'passives' | 'detractors'>('all');
+	const group = (score: number) => (score >= 9 ? 'promoters' : score >= 7 ? 'passives' : 'detractors');
+	const shownFeedback = $derived(
+		scoreFilter === 'all' ? data.feedback : data.feedback.filter((f) => group(f.score) === scoreFilter)
+	);
+	const groupCount = (g: string) => data.feedback.filter((f) => group(f.score) === g).length;
 
 	function confirmNuke(event: SubmitEvent) {
 		const ok = confirm(
@@ -55,32 +63,7 @@
 		{/if}
 
 		<section>
-			<h2>Program stats</h2>
-			<p>
-				Live submissions only. Views are each link's latest count. Signup dates are Eastern; streak
-				days are each participant's own day.
-			</p>
-			<div class="stats">
-				<div><strong>{data.stats.signups}</strong> signups</div>
-				<div><strong>{data.stats.verified}</strong> verified</div>
-				<div><strong>{data.stats.started}</strong> ever posted</div>
-				<div><strong>{data.stats.live}</strong> live streaks</div>
-				<div><strong>{data.stats.active}</strong> active</div>
-				<div><strong>{data.stats.frozen}</strong> frozen</div>
-				<div><strong>{data.stats.broken}</strong> broken</div>
-				<div><strong>{data.stats.notStarted}</strong> not started</div>
-				<div><strong>{data.stats.averageStreak}</strong> avg live streak</div>
-				<div><strong>{data.stats.longestStreak}</strong> longest streak</div>
-				<div><strong>{data.stats.videos}</strong> videos</div>
-				<div><strong>{data.stats.links}</strong> links</div>
-				<div><strong>{data.stats.views.toLocaleString()}</strong> views</div>
-				<div><strong>{data.stats.likes.toLocaleString()}</strong> likes</div>
-				<div><strong>{data.stats.shippingForms}</strong> shipping forms</div>
-				<div>
-					<strong>{data.stats.shirtSizesIn}/{data.stats.shirtsUnlocked}</strong> shirt sizes in
-					({data.stats.shirtFormsMissingSize} forms missing one)
-				</div>
-			</div>
+			<Dashboard history={data.history} />
 
 			<h3>Milestones reached</h3>
 			<p>
@@ -118,13 +101,13 @@
 				<thead>
 					<tr>
 						<th>Days</th>
-						{#each data.stats.daysCompleted as d}<th>{d.days}</th>{/each}
+						{#each data.stats.daysCompletedSpread as d}<th>{d.days}</th>{/each}
 					</tr>
 				</thead>
 				<tbody>
 					<tr>
 						<td>People</td>
-						{#each data.stats.daysCompleted as d}<td>{d.count}</td>{/each}
+						{#each data.stats.daysCompletedSpread as d}<td>{d.count}</td>{/each}
 					</tr>
 				</tbody>
 			</table>
@@ -163,6 +146,51 @@
 		</section>
 
 		<section>
+			<h2>Feedback ({data.feedback.length})</h2>
+			<p>
+				Answers from <a href="/feedbackform">/feedbackform</a>, newest first. NPS:
+				<strong>{data.stats.nps ?? '—'}</strong>. Promoters gave 9–10, passives 7–8, detractors 1–6.
+			</p>
+			<p class="filters">
+				{#each ['all', 'promoters', 'passives', 'detractors'] as const as g}
+					<button type="button" class="filter" class:active={scoreFilter === g} onclick={() => (scoreFilter = g)}>
+						{g === 'all' ? `All (${data.feedback.length})` : `${g[0].toUpperCase()}${g.slice(1)} (${groupCount(g)})`}
+					</button>
+				{/each}
+			</p>
+			{#if shownFeedback.length === 0}
+				<p>None yet.</p>
+			{:else}
+				<div class="responses">
+					{#each shownFeedback as f (f.id)}
+						<article class="response">
+							<header>
+								<span class="score {group(f.score)}">{f.score}</span>
+								<span class="who">
+									{#if f.slackId}
+										<a href="/user/{f.slackId}">{f.name || f.slackId}</a>
+										{#if f.currentStreak != null}· {f.currentStreak}-day streak, {f.daysCompleted} days posted{/if}
+									{:else}
+										Anonymous
+									{/if}
+									{#if f.email}· <a href="mailto:{f.email}">{f.email}</a>{/if}
+								</span>
+								<span class="when">{new Date(f.submittedAt).toLocaleString()}</span>
+							</header>
+							<dl>
+								<dt>Heard about it from</dt>
+								<dd>{f.heardFrom || '—'}</dd>
+								{#if f.doingWell}<dt>Doing well</dt><dd>{f.doingWell}</dd>{/if}
+								{#if f.doBetter}<dt>Could do better</dt><dd>{f.doBetter}</dd>{/if}
+								{#if f.otherFeedback}<dt>Other feedback</dt><dd>{f.otherFeedback}</dd>{/if}
+							</dl>
+						</article>
+					{/each}
+				</div>
+			{/if}
+		</section>
+
+		<section>
 			<h2>Jobs</h2>
 			<ul>
 				<li>
@@ -196,7 +224,8 @@
 				</li>
 				<li>
 					<strong>backup</strong>: hourly, writes every Airtable table (prod and dev) to one JSON
-					file on the server's backup volume, keeping the last 30 days.
+					file on the server's backup volume, keeping the last 30 days. Then saves today's program
+					numbers to the stats table, filling any earlier day it's missing from the backups.
 				</li>
 				<li>
 					<strong>sweep deleted messages</strong>: manual only. Checks every submission's Slack
@@ -222,6 +251,9 @@
 			</form>
 			<form class="inline" method="POST" action="?/runBackup">
 				<button type="submit">Run backup</button>
+			</form>
+			<form class="inline" method="POST" action="?/runStats">
+				<button type="submit">Run stats snapshot</button>
 			</form>
 			<form class="inline" method="POST" action="?/runSweepDeleted">
 				<button type="submit">Sweep deleted messages</button>
@@ -793,18 +825,6 @@
 		display: inline;
 	}
 
-	.stats {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-		gap: 10px 16px;
-		color: var(--ink-soft);
-	}
-
-	.stats strong {
-		display: block;
-		font-size: 1.4rem;
-	}
-
 	button {
 		font: inherit;
 		font-weight: 700;
@@ -877,6 +897,108 @@
 		padding: 6px 8px;
 		border-top: 1px dashed var(--line);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.filter {
+		color: var(--ink);
+		background: transparent;
+		box-shadow: none;
+		border: 2px solid var(--line);
+		padding: 3px 12px;
+		margin: 0;
+		transform: none;
+	}
+
+	.filter.active {
+		color: var(--accent-ink);
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.responses {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		max-height: 40rem;
+		overflow-y: auto;
+	}
+
+	.response {
+		padding: 12px 14px;
+		border: 2px solid var(--line);
+		border-radius: 12px 6px 10px 6px/6px 12px 6px 10px;
+		background: var(--bg-2);
+	}
+
+	.response header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.response .who {
+		flex: 1 1 auto;
+		color: var(--ink-soft);
+	}
+
+	.response .when {
+		font-size: 0.8rem;
+		color: var(--ink-soft);
+	}
+
+	.score {
+		display: grid;
+		place-items: center;
+		width: 2.2rem;
+		height: 2.2rem;
+		font-family: var(--font-hand);
+		font-weight: 700;
+		font-size: 1.2rem;
+		border-radius: 8px;
+		border: 2px solid var(--ink);
+	}
+
+	.score.promoters {
+		background: #d8efd5;
+	}
+
+	.score.passives {
+		background: #ffe9a8;
+	}
+
+	.score.detractors {
+		background: #f9d6d2;
+	}
+
+	.response dl {
+		margin: 10px 0 0;
+		display: grid;
+		grid-template-columns: 10rem 1fr;
+		gap: 6px 12px;
+	}
+
+	.response dt {
+		font-weight: 700;
+		font-size: 0.85rem;
+	}
+
+	.response dd {
+		margin: 0;
+		white-space: pre-wrap;
+		color: var(--ink);
+	}
+
+	@media (max-width: 640px) {
+		.response dl {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	td button {
