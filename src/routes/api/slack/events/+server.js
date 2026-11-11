@@ -321,6 +321,23 @@ async function handleMessageDeleted(event, deletedTs) {
 	for (const submission of submissions) await markMessageDeleted(submission);
 }
 
+// Slack sometimes redelivers a message event without a retry header, which would rerun the
+// submission against its own stored row. In-process only, like the queue.
+const HANDLED_LIMIT = 1000;
+/** @type {Set<string>} */
+const handledMessages = new Set();
+
+/** @param {SlackEvent} event */
+function alreadyHandled(event) {
+	const key = `${event.channel}:${event.ts}`;
+	if (handledMessages.has(key)) return true;
+	handledMessages.add(key);
+	if (handledMessages.size > HANDLED_LIMIT) {
+		handledMessages.delete(handledMessages.values().next().value ?? '');
+	}
+	return false;
+}
+
 /** @param {SlackEvent} [event] */
 async function handleEvent(event) {
 	if (!event) return;
@@ -336,6 +353,7 @@ async function handleEvent(event) {
 		}
 		// Edits, joins and the bot's own replies all arrive here as message events.
 		if (event.subtype || event.bot_id) return;
+		if (alreadyHandled(event)) return;
 		if (event.thread_ts && event.thread_ts !== event.ts) {
 			return serialize(() => handleThreadReply(event));
 		}
