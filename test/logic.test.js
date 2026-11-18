@@ -9,7 +9,8 @@ import {
 	nextMilestone,
 	viewMilestoneCrossed,
 	afterDeletingPost,
-	postEarnedFreeze
+	postEarnedFreeze,
+	isSameDayUpload
 } from '../src/lib/server/streak.js';
 
 test('streakDay rolls over at 3am local time', () => {
@@ -149,4 +150,22 @@ test('afterDeletingPost spends a freeze for an earlier day, or breaks without on
 	const broke = afterDeletingPost({ streak: 4, freezes: 0, daysCompleted: 5 }, '2026-01-08', '2026-01-10');
 	assert.equal(broke.dayStatus, 'missed');
 	assert.deepEqual(broke.fields, { current_streak: 0, days_completed: 4, status: 'broken' });
+});
+
+test('isSameDayUpload accepts a video from the post\'s day, judged by the 3am rollover', () => {
+	const la = 'America/Los_Angeles';
+	// 23:14 PT on Nov 17, the edit that should have fixed the Nov 17 post
+	assert.equal(isSameDayUpload(la, '2026-11-18T07:14:17Z', '2026-11-17'), true);
+	// 02:30 PT on Nov 18 still belongs to Nov 17
+	assert.equal(isSameDayUpload(la, '2026-11-18T10:30:00Z', '2026-11-17'), true);
+	assert.equal(isSameDayUpload(la, '2026-11-18T12:00:00Z', '2026-11-17'), false);
+	assert.equal(isSameDayUpload(la, '2026-11-16T20:00:00Z', '2026-11-17'), false);
+});
+
+test('isSameDayUpload also accepts the replaced video\'s upload day, and refuses unknown times', () => {
+	const ny = 'America/New_York';
+	assert.equal(isSameDayUpload(ny, '2026-11-16T23:00:00Z', '2026-11-17', '2026-11-16T22:00:00Z'), true);
+	assert.equal(isSameDayUpload(ny, '2026-11-15T23:00:00Z', '2026-11-17', '2026-11-16T22:00:00Z'), false);
+	assert.equal(isSameDayUpload(ny, null, '2026-11-17'), false);
+	assert.equal(isSameDayUpload(ny, 'not a date', '2026-11-17'), false);
 });

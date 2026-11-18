@@ -21,10 +21,16 @@ import {
 } from '$lib/server/pending.js';
 import { messages } from '$lib/server/messages.js';
 import { isYswsEligible } from '$lib/server/verification.js';
-import { syncParticipantTotalViews, postFields, previewFields, ensureTz } from '$lib/server/jobs.js';
+import {
+	syncParticipantTotalViews,
+	postFields,
+	previewFields,
+	ensureTz,
+	findParticipant
+} from '$lib/server/jobs.js';
 import { serialize } from '$lib/server/queue.js';
 import { markMessageDeleted } from '$lib/server/deletion.js';
-import { streakDay, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js';
+import { streakDay, isPostTooOld, isVideoTooShort, isSameDayUpload } from '$lib/server/streak.js';
 
 /**
  * @typedef {{
@@ -37,8 +43,16 @@ import { streakDay, isPostTooOld, isVideoTooShort } from '$lib/server/streak.js'
  *   ts: string,
  *   thread_ts?: string,
  *   deleted_ts?: string,
- *   message?: { subtype?: string, ts?: string },
- *   previous_message?: { user?: string, bot_id?: string }
+ *   message?: {
+ *     subtype?: string,
+ *     ts?: string,
+ *     user?: string,
+ *     text?: string,
+ *     thread_ts?: string,
+ *     bot_id?: string,
+ *     edited?: { ts: string }
+ *   },
+ *   previous_message?: { user?: string, bot_id?: string, text?: string }
  * }} SlackEvent
  */
 
@@ -298,6 +312,140 @@ async function handleThreadReply(event) {
 	if (added) await slack.addReaction(event.channel, event.ts, 'white_check_mark');
 }
 
+/** @param {Link} link */
+const linkKey = (link) => `${link.platform}:${link.videoId}`;
+
+/** @param {Link[]} links */
+const instagramLast = (links) =>
+	links.sort((a, b) => Number(a.platform === 'instagram') - Number(b.platform === 'instagram'));
+
+// Bot reactions a refused post may carry, cleared before the edited post is tried again.
+const REFUSAL_REACTIONS = ['question', 'lock', 'x', 'hourglass'];
+
+// An edit that swaps a post's link fixes it in place: the post keeps its day and streak and takes
+// the new video, if that was uploaded the same day. Text-only edits and link unfurls add no links.
+/** @param {SlackEvent} event */
+async function handleEditedSubmission(event) {
+	const edited = event.message;
+	if (!edited?.user || !edited.ts || !edited.edited || edited.bot_id || edited.subtype) return;
+	if (edited.thread_ts && edited.thread_ts !== edited.ts) return;
+
+	const links = await extractLinks(edited.text);
+	const before = new Set((await extractLinks(event.previous_message?.text)).map(linkKey));
+	const added = instagramLast(links.filter((l) => !before.has(linkKey(l))));
+	if (!added.length) return;
+
+	/** @type {SlackEvent} */
+	const post = {
+		type: 'message',
+		channel: event.channel,
+		user: edited.user,
+		text: edited.text ?? '',
+		ts: edited.ts
+	};
+	const primary = await airtable.find(
+		TABLES.submissions,
+		`AND(${airtable.eq(F.submissions.messageTs, post.ts)}, ${airtable.eq(F.submissions.slackId, post.user)}, ${SUBMISSION_IS_PRIMARY}, ${SUBMISSION_NOT_DELETED})`
+	);
+	if (!primary) return retryRefusedPost(post);
+
+	// The post's video still in the message means the edit only added other platforms' links.
+	const current = `${primary.fields[F.submissions.platform]}:${primary.fields[F.submissions.videoId]}`;
+	const kept = links.some((l) => linkKey(l) === current);
+	const updated = kept ? primary : await replaceVideo(post, primary, added[0]);
+	if (!updated) return;
+
+	let linked = false;
+	for (const other of kept ? added : added.slice(1)) {
+		if (await addOtherPlatform(post, updated, other)) linked = true;
+	}
+	if (linked && kept) await slack.addReaction(post.channel, post.ts, 'white_check_mark');
+}
+
+// Nothing was stored for a refused post, so it's only tried again while its day is still open.
+/** @param {SlackEvent} post */
+async function retryRefusedPost(post) {
+	const participant = await findParticipant(post.user);
+	if (participant) {
+		const tz = participant.fields[F.participants.tz];
+		if (streakDay(tz, new Date(Number(post.ts) * 1000)) !== streakDay(tz)) {
+			await slack.postMessage(post.channel, messages.editNotSameDay(post.user), post.ts);
+			return;
+		}
+	}
+	for (const name of REFUSAL_REACTIONS) {
+		await slack.removeReaction(post.channel, post.ts, name).catch(() => {});
+	}
+	return handleSubmissionMessage(post);
+}
+
+/**
+ * @param {SlackEvent} post
+ * @param {AirtableRecord} primary
+ * @param {Link} link
+ * @returns {Promise<AirtableRecord | null>} the post holding the new video, or null if refused
+ */
+async function replaceVideo(post, primary, link) {
+	const f = primary.fields;
+	const others = await listOtherPlatforms(primary);
+	if (others.some((s) => s.fields[F.submissions.platform] === link.platform)) {
+		await slack.postMessage(post.channel, messages.platformAlreadyLinked(post.user, link.platform), post.ts);
+		return null;
+	}
+	if (await findSubmissionByVideo(link.platform, link.videoId)) {
+		await slack.postMessage(post.channel, messages.duplicateVideo(post.user), post.ts);
+		return null;
+	}
+
+	const { stats, facts } = await lookupVideo(link);
+	const participant = await findParticipant(post.user);
+	if (!isAdmin(post.user)) {
+		const tz = participant?.fields[F.participants.tz];
+		if (!isSameDayUpload(tz, facts.publishedAt, f[F.submissions.day], f[F.submissions.publishedAt])) {
+			await slack.postMessage(post.channel, messages.editNotSameDay(post.user), post.ts);
+			return null;
+		}
+		if (isVideoTooShort(facts.durationSeconds, config.minVideoSeconds)) {
+			await slack.postMessage(post.channel, messages.videoTooShort(post.user, config.minVideoSeconds), post.ts);
+			return null;
+		}
+	}
+
+	const trackedId = stats ? null : await trackPost(link.url);
+	/** @type {Record<string, unknown>} */
+	const fields = {
+		[F.submissions.url]: link.url,
+		[F.submissions.platform]: link.platform,
+		[F.submissions.videoId]: link.videoId,
+		[F.submissions.views]: null,
+		[F.submissions.likes]: null,
+		[F.submissions.title]: '',
+		[F.submissions.thumbnailUrl]: '',
+		[F.submissions.archiveUrl]: '',
+		[F.submissions.accountHandle]: '',
+		[F.submissions.unifiedId]: trackedId ?? '',
+		[F.submissions.noHcMention]: false,
+		[F.submissions.availability]: '',
+		[F.submissions.availabilityCheckedAt]: null,
+		[F.submissions.repeatOf]: '',
+		[F.submissions.repeatReason]: '',
+		[F.submissions.replyStats]: '',
+		[F.submissions.durationSeconds]: facts.durationSeconds,
+		[F.submissions.publishedAt]: facts.publishedAt && new Date(facts.publishedAt).toISOString(),
+		// The new video hasn't been seen by a reviewer yet.
+		[F.submissions.reviewStatus]: null,
+		[F.submissions.reviewedBy]: '',
+		[F.submissions.reviewedAt]: null,
+		[F.submissions.reviewFeedback]: '',
+		...(stats ? postFields(stats) : {})
+	};
+	Object.assign(fields, await previewFields(link, fields));
+	const updated = await airtable.update(TABLES.submissions, primary.id, fields);
+	if (participant) await syncParticipantTotalViews(participant);
+	await slack.postMessage(post.channel, messages.linkEdited(post.user), post.ts);
+	return updated;
+}
+
 // Greets the channel when the bot itself is invited; every other member joining is ignored.
 /** @param {SlackEvent} event */
 async function handleMemberJoined(event) {
@@ -327,9 +475,8 @@ const HANDLED_LIMIT = 1000;
 /** @type {Set<string>} */
 const handledMessages = new Set();
 
-/** @param {SlackEvent} event */
-function alreadyHandled(event) {
-	const key = `${event.channel}:${event.ts}`;
+/** @param {string} key */
+function alreadyHandled(key) {
 	if (handledMessages.has(key)) return true;
 	handledMessages.add(key);
 	if (handledMessages.size > HANDLED_LIMIT) {
@@ -351,9 +498,13 @@ async function handleEvent(event) {
 		if (event.subtype === 'message_changed' && event.message?.subtype === 'tombstone') {
 			return handleMessageDeleted(event, event.message.ts);
 		}
-		// Edits, joins and the bot's own replies all arrive here as message events.
+		if (event.subtype === 'message_changed' && event.message?.edited) {
+			if (alreadyHandled(`${event.channel}:${event.message.ts}:${event.message.edited.ts}`)) return;
+			return serialize(() => handleEditedSubmission(event));
+		}
+		// Joins, unfurls and the bot's own replies all arrive here as message events.
 		if (event.subtype || event.bot_id) return;
-		if (alreadyHandled(event)) return;
+		if (alreadyHandled(`${event.channel}:${event.ts}`)) return;
 		if (event.thread_ts && event.thread_ts !== event.ts) {
 			return serialize(() => handleThreadReply(event));
 		}

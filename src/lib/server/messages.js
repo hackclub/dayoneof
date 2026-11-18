@@ -142,6 +142,14 @@ export const messages = {
 		return `<@${slackId}> this video already has a ${PLATFORM_NAMES[platform] ?? platform} link, so that one wasn't added. Link it from a different platform!`;
 	},
 	/** @param {string} slackId */
+	linkEdited(slackId) {
+		return `<@${slackId}> got your edit, this post now counts the new video instead!`;
+	},
+	/** @param {string} slackId */
+	editNotSameDay(slackId) {
+		return `<@${slackId}> Editing links to videos not uploaded on the same day doesn't work! Please ask in <#${HELP_CHANNEL_ID}> if you need help.`;
+	},
+	/** @param {string} slackId */
 	otherPlatformDuplicate(slackId) {
 		return `<@${slackId}> that video has already been posted, so it wasn't added as another platform. If you think this is a mistake, send a message in <#${HELP_CHANNEL_ID}>!`;
 	},

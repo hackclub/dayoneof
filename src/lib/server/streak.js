@@ -48,6 +48,20 @@ export function isPostTooOld(publishedAt, maxAgeDays, now = new Date()) {
 	return now.getTime() - published > maxAgeDays * 24 * 60 * 60 * 1000;
 }
 
+// An edited-in video has to be from the day its post counts for, or the day the replaced one was.
+/**
+ * @param {string | undefined} tz
+ * @param {string | null | undefined} publishedAt
+ * @param {string} day
+ * @param {string | null | undefined} [replacedPublishedAt]
+ */
+export function isSameDayUpload(tz, publishedAt, day, replacedPublishedAt) {
+	if (!publishedAt || Number.isNaN(Date.parse(publishedAt))) return false;
+	const uploaded = streakDay(tz, new Date(publishedAt));
+	if (uploaded === day) return true;
+	return !!replacedPublishedAt && uploaded === streakDay(tz, new Date(replacedPublishedAt));
+}
+
 /**
  * @param {number | null | undefined} durationSeconds
  * @param {number} minSeconds
