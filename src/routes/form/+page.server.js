@@ -69,14 +69,14 @@ export const actions = {
 			return fail(403, { error: "You haven't unlocked a prize yet.", values });
 		}
 
-		await saveShipping(
-			slackId,
-			Object.fromEntries(
+		await saveShipping(slackId, {
+			...Object.fromEntries(
 				Object.entries(values)
 					.filter(([key]) => key !== 'shirtSize' || prizes.includes(SHIRT_PRIZE))
 					.map(([key, value]) => [F.shipping[/** @type {keyof typeof values} */ (key)], value])
-			)
-		);
+			),
+			[F.shipping.eligiblePrizes]: prizes
+		});
 		return { success: true };
 	}
 };

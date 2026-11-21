@@ -116,6 +116,7 @@ export const F = {
 		country: 'country',
 		birthday: 'birthday',
 		shirtSize: 'shirt_size',
+		eligiblePrizes: 'eligible_prizes',
 		shippedPrizes: 'shipped_prizes',
 		submittedAt: 'submitted_at'
 	},

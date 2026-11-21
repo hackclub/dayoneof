@@ -140,6 +140,7 @@ function schemaFor(appEnv) {
 				{ name: F.shipping.country, ...text },
 				{ name: F.shipping.birthday, type: 'date', options: { dateFormat: { name: 'iso' } } },
 				{ name: F.shipping.shirtSize, ...select(SHIRT_SIZES) },
+				{ name: F.shipping.eligiblePrizes, ...multiSelect(PRIZE_NAMES) },
 				{ name: F.shipping.shippedPrizes, ...multiSelect(PRIZE_NAMES) },
 				{ name: F.shipping.submittedAt, ...when }
 			]

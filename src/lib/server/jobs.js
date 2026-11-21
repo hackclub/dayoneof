@@ -22,6 +22,7 @@ import { groupByVideo, combineStats, totalViews } from './videos.js';
 import { checkAvailability } from './availability.js';
 import { fetchPreview } from './previews.js';
 import { findRepeats } from './repeats.js';
+import { syncEligiblePrizes } from './shipping.js';
 
 /** @typedef {import('./airtable.js').AirtableRecord} AirtableRecord */
 
@@ -198,7 +199,9 @@ export async function runReconcile() {
 		else if (daysSettled) frozen++;
 	}
 
-	return { processed: participants.length, frozen, broken };
+	const eligibleSynced = await syncEligiblePrizes();
+
+	return { processed: participants.length, frozen, broken, eligibleSynced };
 }
 
 const UNIFIED_READ_CONCURRENCY = 5;
