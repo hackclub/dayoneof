@@ -39,6 +39,7 @@
 	let zip = $state(initial?.zip ?? '');
 	let country = $state(initial?.country || DEFAULT_COUNTRY);
 	let birthday = $state(initial?.birthday ?? '');
+	let phone = $state(initial?.phone ?? '');
 	let shirtSize = $state(initial?.shirtSize ?? '');
 	const needsShirt = $derived(data.prizes.includes(SHIRT_PRIZE));
 	const shirtOptions = SHIRT_SIZES.map((size) => ({ value: size, label: size }));
@@ -57,6 +58,7 @@
 			zip,
 			country,
 			birthday,
+			phone,
 			shirtSize
 		}, needsShirt)
 	);
@@ -278,6 +280,21 @@
 							bind:value={email}
 						/>
 						{#if errors.email}<p class="error">{errors.email}</p>{/if}
+					</div>
+
+					<div class="field">
+						<label for="phone">Phone number <span class="req">*</span></label>
+						<p class="hint">Couriers need it to deliver your package. Include your country code.</p>
+						<input
+							id="phone"
+							name="phone"
+							type="tel"
+							autocomplete="tel"
+							placeholder="+1 555 123 4567"
+							aria-invalid={!!errors.phone}
+							bind:value={phone}
+						/>
+						{#if errors.phone}<p class="error">{errors.phone}</p>{/if}
 					</div>
 
 					<div class="field">

@@ -12,7 +12,9 @@ import {
 	shippingTableFor,
 	statsTableFor,
 	feedbackTableFor,
+	endFeedbackTableFor,
 	F,
+	YES_MAYBE_NO,
 	DAY_STATUSES,
 	REVIEW_STATUSES,
 	PARTICIPANT_STATUSES
@@ -140,6 +142,7 @@ function schemaFor(appEnv) {
 				{ name: F.shipping.country, ...text },
 				{ name: F.shipping.birthday, type: 'date', options: { dateFormat: { name: 'iso' } } },
 				{ name: F.shipping.shirtSize, ...select(SHIRT_SIZES) },
+				{ name: F.shipping.phone, type: 'phoneNumber' },
 				{ name: F.shipping.eligiblePrizes, ...multiSelect(PRIZE_NAMES) },
 				{ name: F.shipping.shippedPrizes, ...multiSelect(PRIZE_NAMES) },
 				{ name: F.shipping.submittedAt, ...when }
@@ -173,6 +176,30 @@ function schemaFor(appEnv) {
 				{ name: F.feedback.currentStreak, ...int },
 				{ name: F.feedback.daysCompleted, ...int },
 				{ name: F.feedback.submittedAt, ...when }
+			]
+		},
+		{
+			name: endFeedbackTableFor(appEnv),
+			fields: [
+				{ name: F.endFeedback.slackId, ...text },
+				{ name: F.endFeedback.name, ...text },
+				{ name: F.endFeedback.score, ...int },
+				{ name: F.endFeedback.heardFrom, type: 'multilineText' },
+				{ name: F.endFeedback.improvedDays, ...text },
+				{ name: F.endFeedback.reviewsHelped, ...int },
+				{ name: F.endFeedback.doAgain, ...select(YES_MAYBE_NO) },
+				{ name: F.endFeedback.engagementHappy, ...int },
+				{ name: F.endFeedback.reviewsFair, ...int },
+				{ name: F.endFeedback.othersHelped, ...int },
+				{ name: F.endFeedback.minutesPerVideo, ...int },
+				{ name: F.endFeedback.keepPosting, ...select(YES_MAYBE_NO) },
+				{ name: F.endFeedback.bestVideo, type: 'url' },
+				{ name: F.endFeedback.doingWell, type: 'multilineText' },
+				{ name: F.endFeedback.doBetter, type: 'multilineText' },
+				{ name: F.endFeedback.nextProgram, type: 'multilineText' },
+				{ name: F.endFeedback.currentStreak, ...int },
+				{ name: F.endFeedback.daysCompleted, ...int },
+				{ name: F.endFeedback.submittedAt, ...when }
 			]
 		}
 	];

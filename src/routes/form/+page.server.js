@@ -33,6 +33,7 @@ export async function load({ locals }) {
 			zip: s[F.shipping.zip] ?? '',
 			country: s[F.shipping.country] ?? '',
 			birthday: s[F.shipping.birthday] ?? '',
+			phone: s[F.shipping.phone] ?? '',
 			shirtSize: s[F.shipping.shirtSize] ?? ''
 		}
 	};
@@ -58,6 +59,7 @@ export const actions = {
 			zip: field('zip'),
 			country: field('country'),
 			birthday: field('birthday'),
+			phone: field('phone'),
 			shirtSize: field('shirtSize')
 		};
 

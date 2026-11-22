@@ -117,6 +117,7 @@ export type ShippingValues = {
 	zip: string;
 	country: string;
 	birthday: string;
+	phone: string;
 	shirtSize?: string;
 };
 
@@ -161,7 +162,14 @@ export function validateShipping(v: ShippingValues, needsShirt = false) {
 		errors.zip = `That doesn't look like a valid postal code for ${name}. Is your country set right?`;
 	}
 
+	if (!validPhone(v.phone)) errors.phone = 'Enter a phone number, with your country code.';
 	if (!isPastDate(v.birthday)) errors.birthday = 'Enter a valid date of birth.';
 	if (needsShirt && !SHIRT_SIZES.includes(v.shirtSize ?? '')) errors.shirtSize = 'Pick a shirt size.';
 	return errors;
+}
+
+/** Loose on format so any country's number fits, but needs enough digits to be dialable. */
+function validPhone(value: string) {
+	const digits = value.replace(/\D/g, '');
+	return /^\+?[\d\s().-]+$/.test(value.trim()) && digits.length >= 7 && digits.length <= 15;
 }

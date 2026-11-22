@@ -31,6 +31,11 @@ export function feedbackTableFor(appEnv) {
 	return appEnv === 'prod' ? 'feedback' : 'feedback_dev';
 }
 
+/** @param {'dev' | 'prod'} appEnv */
+export function endFeedbackTableFor(appEnv) {
+	return appEnv === 'prod' ? 'feedback2' : 'feedback2_dev';
+}
+
 export const F = {
 	participants: {
 		slackId: 'slack_id',
@@ -116,6 +121,7 @@ export const F = {
 		country: 'country',
 		birthday: 'birthday',
 		shirtSize: 'shirt_size',
+		phone: 'phone',
 		eligiblePrizes: 'eligible_prizes',
 		shippedPrizes: 'shipped_prizes',
 		submittedAt: 'submitted_at'
@@ -182,8 +188,35 @@ export const F = {
 		currentStreak: 'current_streak',
 		daysCompleted: 'days_completed',
 		submittedAt: 'submitted_at'
+	},
+	// Answers from /end, the form people fill out once they finish.
+	endFeedback: {
+		slackId: 'slack_id',
+		name: 'name',
+		score: 'score',
+		heardFrom: 'heard_from',
+		improvedDays: 'improved_days',
+		reviewsHelped: 'reviews_helped',
+		doAgain: 'do_again',
+		engagementHappy: 'engagement_happy',
+		reviewsFair: 'reviews_fair',
+		othersHelped: 'others_helped',
+		minutesPerVideo: 'minutes_per_video',
+		keepPosting: 'keep_posting',
+		bestVideo: 'best_video',
+		doingWell: 'doing_well',
+		doBetter: 'do_better',
+		nextProgram: 'next_program',
+		currentStreak: 'current_streak',
+		daysCompleted: 'days_completed',
+		submittedAt: 'submitted_at'
 	}
 };
+
+export const YES_MAYBE_NO = ['Yes', 'Maybe', 'No'];
+
+// December 7's deadline: 3am Eastern the next morning.
+export const PROGRAM_ENDS_AT = new Date('2026-12-08T08:00:00Z');
 
 export const DAY_STATUSES = ['posted', 'frozen', 'missed'];
 export const REVIEW_STATUSES = ['starred', 'passed', 'rejected'];

@@ -2,14 +2,21 @@ import { env } from '$env/dynamic/private';
 // PUBLIC_SITE_URL needs the public env module — $env/dynamic/private excludes PUBLIC_-prefixed vars.
 import { env as publicEnv } from '$env/dynamic/public';
 
-import { tablesFor, shippingTableFor, statsTableFor, feedbackTableFor } from './schema.js';
+import {
+	tablesFor,
+	shippingTableFor,
+	statsTableFor,
+	feedbackTableFor,
+	endFeedbackTableFor
+} from './schema.js';
 
 export {
 	F,
 	PARTICIPANT_HAS_SLACK_ID,
 	SUBMISSION_NOT_DELETED,
 	SUBMISSION_IS_PRIMARY,
-	SUBMISSION_CHECKED
+	SUBMISSION_CHECKED,
+	PROGRAM_ENDS_AT
 } from './schema.js';
 
 /** @type {'dev' | 'prod'} */
@@ -20,6 +27,7 @@ export const TABLES = tablesFor(appEnv);
 export const SHIPPING_TABLE = shippingTableFor(appEnv);
 export const STATS_TABLE = statsTableFor(appEnv);
 export const FEEDBACK_TABLE = feedbackTableFor(appEnv);
+export const END_FEEDBACK_TABLE = endFeedbackTableFor(appEnv);
 
 /**
  * Every var may be suffixed `_DEV`/`_PROD` so the test and production Airtable base, Slack app and
